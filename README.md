@@ -23,20 +23,12 @@ Do not add Kolb-Bot branding, personal-assistant copy, personal data, or Kolb-sp
 The interface should be professional, focused, and practical without using generic corporate filler or therapy-style slogans. Do not invent claims about compliance, privacy certification, clinical capability, or medical use. The product may handle sensitive work, so use a conservative private-by-default security posture.
 
 
-## Licensing boundary that must be respected
 
-This project is intended as a private, self-hosted deployment with no more than 50 end users in any rolling 30-day period. Under the current Open WebUI license, that deployment size may replace or remove Open WebUI branding. Do not assume the same permission applies if usage grows beyond that limit. Preserve all required copyright notices, license files, third-party notices, and applicable source history.
-
-Open Terminal is MIT-licensed and may be modified and rebranded while retaining its copyright and license notice.
-
-CPTR, currently published as Open WebUI Computer, has a separate Open Use License that prohibits removing, replacing, supplementing, obscuring, or modifying its attribution elements. Therefore:
+## CPTR
 
 1. Integrate CPTR through its OpenAI-compatible gateway API.
 2. Brand the connection, launcher, model alias, surrounding navigation, and documentation inside this application.
-3. Do not modify CPTR's own product name, logos, icons, about screen, version screen, or attribution.
-4. Do not present a modified CPTR interface as a fully white-labeled component.
-5. Keep the CPTR adapter isolated so a fully branded replacement can be added later if written permission or a commercial license is obtained.
-6. Do not expose CPTR directly to the public internet. Treat access as equivalent to access to the host computer.
+3. Do not expose CPTR directly to the public internet. Treat access as equivalent to access to the host computer.
 
 This is an engineering constraint, not an instruction to remove or weaken any license notice.
 
