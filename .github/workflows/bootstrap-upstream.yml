@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   bootstrap:
-    name: Import Open WebUI dev into an isolated branch
+    name: Import Open WebUI dev into Tide-Bot
     runs-on: ubuntu-latest
     steps:
       - name: Check out Tide-Bot
@@ -37,7 +37,25 @@ jobs:
           git commit -m "chore: defer upstream workflows during Tide-Bot bootstrap"
           git push --force origin "$TARGET_BRANCH"
 
+      - name: Merge the upstream baseline into Tide-Bot main
+        env:
+          TARGET_BRANCH: bootstrap/open-webui-dev-2026-07-17
+        run: |
+          git fetch origin main "$TARGET_BRANCH"
+          git switch main
+          if ! git merge --no-commit --allow-unrelated-histories "origin/$TARGET_BRANCH"; then
+            git checkout --ours README.md
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo "Unexpected merge conflicts remain:"
+              git diff --name-only --diff-filter=U
+              exit 1
+            fi
+          fi
+          git add -A
+          git commit -m "chore: bootstrap Tide-Bot from Open WebUI dev"
+          git push origin main
+
       - name: Report imported commit
         run: |
-          printf 'Imported Open WebUI dev commit: '
-          git rev-parse HEAD
+          printf 'Tide-Bot main now includes Open WebUI dev commit: '
+          git rev-parse "origin/$TARGET_BRANCH"
