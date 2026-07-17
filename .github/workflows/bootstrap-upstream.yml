@@ -30,6 +30,11 @@ jobs:
           git remote add upstream "$UPSTREAM_URL"
           git fetch --tags upstream "$UPSTREAM_REF"
           git checkout -B "$TARGET_BRANCH" "upstream/$UPSTREAM_REF"
+
+          # GitHub's temporary Actions token is intentionally not allowed to
+          # create upstream workflow files. Tide-Bot will supply its own CI.
+          git rm -r .github/workflows || true
+          git commit -m "chore: defer upstream workflows during Tide-Bot bootstrap"
           git push --force origin "$TARGET_BRANCH"
 
       - name: Report imported commit
