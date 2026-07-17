@@ -45,6 +45,7 @@ jobs:
           git switch main
           if ! git merge --no-commit --allow-unrelated-histories "origin/$TARGET_BRANCH"; then
             git checkout --ours README.md
+            git add README.md
             if git diff --name-only --diff-filter=U | grep -q .; then
               echo "Unexpected merge conflicts remain:"
               git diff --name-only --diff-filter=U
@@ -56,6 +57,8 @@ jobs:
           git push origin main
 
       - name: Report imported commit
+        env:
+          TARGET_BRANCH: bootstrap/open-webui-dev-2026-07-17
         run: |
           printf 'Tide-Bot main now includes Open WebUI dev commit: '
           git rev-parse "origin/$TARGET_BRANCH"
