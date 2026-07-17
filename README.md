@@ -8,7 +8,7 @@ Build **Tide-Bot**, a completely branded, private, self-hosted work AI workspace
 
 Tide-Bot is the owner's work-focused AI interface. It must feel like a standalone product, not a renamed Open WebUI installation. The application will eventually be served at:
 
-- Primary domain: `https://tide-bot.com`
+- Primary domain: `https://tide-bot.com`via cloudfare
 - Product name: `Tide-Bot`
 - Product short name: `Tide-Bot`
 - Product slug: `tide-bot`
