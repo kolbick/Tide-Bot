@@ -1,0 +1,38 @@
+name: Bootstrap Open WebUI upstream
+
+on:
+  push:
+    paths:
+      - .github/workflows/bootstrap-upstream.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    name: Import Open WebUI dev into an isolated branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Tide-Bot
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and publish upstream baseline
+        env:
+          UPSTREAM_URL: https://github.com/open-webui/open-webui.git
+          UPSTREAM_REF: dev
+          TARGET_BRANCH: bootstrap/open-webui-dev-2026-07-17
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --tags upstream "$UPSTREAM_REF"
+          git checkout -B "$TARGET_BRANCH" "upstream/$UPSTREAM_REF"
+          git push --force origin "$TARGET_BRANCH"
+
+      - name: Report imported commit
+        run: |
+          printf 'Imported Open WebUI dev commit: '
+          git rev-parse HEAD
