@@ -37,11 +37,11 @@ This is an engineering constraint, not an instruction to remove or weaken any li
 
 The repository initially contains only this README and a logo/reference folder supplied by the owner. Treat the logo folder as the authoritative visual reference.
 
-Bootstrap the project from the latest stable Open WebUI release available when implementation begins. Do not build from an unpinned moving `main` branch.
+Bootstrap the project from the latest dev branch from Open WebUI 
 
 Required bootstrap process:
 
-1. Add the official Open WebUI repository as an `upstream` remote.
+1. Add the dev Open WebUI repository as an `upstream` remote.
 2. Import a stable release into this repository while retaining a useful commit history.
 3. Record the exact upstream tag and commit in `docs/UPSTREAM.md`.
 4. Preserve the upstream license files and license history.
