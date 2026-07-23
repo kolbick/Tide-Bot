@@ -22,11 +22,11 @@
 		height: 71.5rem;
 		max-width: none;
 		transform: translate(-0.1rem, -0.1rem);
-		animation: ted-bot-idle 4s steps(6, end) infinite;
+		animation: ted-bot-idle 4s steps(8, end) infinite;
 	}
 	@keyframes ted-bot-idle {
 		to {
-			transform: translateX(-36rem) translateY(-0.1rem);
+			transform: translateX(-42rem) translateY(-0.1rem);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
