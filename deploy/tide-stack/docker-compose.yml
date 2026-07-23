@@ -14,6 +14,8 @@ services:
       WEBUI_NAME: Tide-Bot
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
       ENABLE_SIGNUP: 'false'
+      ENABLE_VERSION_UPDATE_CHECK: 'false'
+      ENABLE_COMMUNITY_SHARING: 'false'
       WEBUI_FAVICON_URL: /tide-bot/tide-bot-96.png
     volumes:
       - tide-bot-data:/app/backend/data

@@ -3,6 +3,7 @@
 	import { v4 as uuidv4 } from 'uuid';
 
 	import { getBackendConfig, getVersionUpdates } from '$lib/apis';
+	import { BRAND } from '$lib/branding';
 	import { getAdminConfig, updateAdminConfig } from '$lib/apis/auths';
 	import { getBanners, setBanners } from '$lib/apis/configs';
 	import Switch from '$lib/components/common/Switch.svelte';
@@ -97,17 +98,13 @@
 							<Tooltip content={WEBUI_BUILD_HASH}>v{WEBUI_VERSION}</Tooltip>
 
 							{#if $config?.features?.enable_version_update_check}
-								<a
-									href="https://github.com/open-webui/open-webui/releases/tag/v{version.latest}"
-									target="_blank"
-									class="text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
-								>
+								<span class="text-gray-500 dark:text-gray-500">
 									{updateAvailable === null
 										? $i18n.t('Checking for updates...')
 										: updateAvailable
 											? `(v${version.latest} ${$i18n.t('available!')})`
 											: $i18n.t('(latest)')}
-								</a>
+								</span>
 							{/if}
 						</div>
 
@@ -140,35 +137,11 @@
 						<div class="min-w-0">
 							<div class="text-gray-600 dark:text-gray-400">{$i18n.t('Help')}</div>
 							<div class="mt-0.5 text-gray-400 dark:text-gray-600">
-								{$i18n.t('Discover how to use Open WebUI and seek support from the community.')}
+								{BRAND.supportLabel}
 							</div>
 						</div>
 
-						<a
-							class="shrink-0 text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-500 dark:hover:text-white"
-							href="https://docs.openwebui.com/"
-							target="_blank"
-						>
-							{$i18n.t('Documentation')}
-						</a>
-					</div>
-
-					<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-gray-400 dark:text-gray-600">
-						<a
-							class="hover:text-gray-700 dark:hover:text-gray-300"
-							href="https://discord.gg/5rJgQTnV4s"
-							target="_blank">Discord</a
-						>
-						<a
-							class="hover:text-gray-700 dark:hover:text-gray-300"
-							href="https://twitter.com/OpenWebUI"
-							target="_blank">X</a
-						>
-						<a
-							class="hover:text-gray-700 dark:hover:text-gray-300"
-							href="https://github.com/open-webui/open-webui"
-							target="_blank">GitHub</a
-						>
+						<span class="shrink-0 text-gray-500 dark:text-gray-500">Tide-Bot</span>
 					</div>
 				</div>
 
@@ -176,11 +149,7 @@
 					<div class="text-gray-600 dark:text-gray-400">{$i18n.t('License')}</div>
 
 					{#if $config?.license_metadata}
-						<a
-							href="https://docs.openwebui.com/enterprise"
-							target="_blank"
-							class="mt-0.5 block text-gray-500"
-						>
+						<div class="mt-0.5 block text-gray-500">
 							<span class="capitalize text-black dark:text-white"
 								>{$config?.license_metadata?.type} license</span
 							>
@@ -192,22 +161,16 @@
 							<span class="text-black dark:text-white"
 								>{$config?.license_metadata?.seats ?? 'Unlimited'} users.</span
 							>
-						</a>
+						</div>
 						{#if $config?.license_metadata?.html}
 							<div class="mt-0.5 text-gray-500">
 								{@html DOMPurify.sanitize($config?.license_metadata?.html)}
 							</div>
 						{/if}
 					{:else}
-						<a
-							class="mt-0.5 block text-gray-400 transition-colors hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300"
-							href="https://docs.openwebui.com/enterprise"
-							target="_blank"
-						>
-							{$i18n.t(
-								'Upgrade to a licensed plan for enhanced capabilities, including custom theming and branding, and dedicated support.'
-							)}
-						</a>
+						<div class="mt-0.5 text-gray-400 dark:text-gray-600">
+							Tide-Bot is configured locally by Changing Tides Treatment Center.
+						</div>
 					{/if}
 				</div>
 			</AdminSettingSection>
@@ -215,7 +178,7 @@
 			<AdminSettingSection title={$i18n.t('Features')}>
 				<AdminSettingRow
 					label={$i18n.t('Community Sharing')}
-					description={$i18n.t('Allow users to share chats with the Open WebUI community.')}
+					description={$i18n.t('Allow users to share chats with the configured community service.')}
 				>
 					<Switch bind:state={adminConfig.ENABLE_COMMUNITY_SHARING} />
 				</AdminSettingRow>
