@@ -19,10 +19,6 @@ const requiredIdentity = [
 	['src/routes/auth/+page.svelte', '<TedBotMascot />'],
 	['src/lib/components/OnBoarding.svelte', 'Welcome to Tide-Bot.'],
 	['src/lib/components/OnBoarding.svelte', '<BrandLockup compact={true} />'],
-	['src/lib/components/branding/TedBotMascot.svelte', 'background-size: 800% 1100%'],
-	['src/lib/components/chat/Placeholder.svelte', 'tide-chat-landing'],
-	['src/lib/components/layout/Sidebar.svelte', 'tide-sidebar'],
-	['src/app.css', 'tide-chat-landing__panel'],
 	[
 		'backend/open_webui/config.py',
 		"ENABLE_COMMUNITY_SHARING = os.getenv('ENABLE_COMMUNITY_SHARING', 'False')"

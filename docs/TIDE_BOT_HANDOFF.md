@@ -20,7 +20,7 @@ The public site does not update when the local testing stack is rebuilt. It need
 - Open WebUI is pinned to the current upstream development baseline used by this checkout.
 - Tide-Bot identity, favicon, manifest, auth/onboarding, and private deployment defaults are present.
 - Ted-Bot uses the supplied sprite atlas in the product interface, rather than launching as a separate site.
-- The application shell and new-chat landing area are being restyled as a Tide-Bot workspace: deep tide navigation, a clinical ocean palette, a product lockup, and a distinct composer surface.
+- The existing Tide-Bot application shell and new-chat experience remain the visual baseline. Do not replace them wholesale without reviewing the authenticated live product first.
 - Public Open WebUI community review/sharing exits are disabled in deployment and removed from the relevant product UI paths.
 - Upstream attribution remains in the About surface and license materials.
 
