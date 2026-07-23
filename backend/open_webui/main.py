@@ -2559,13 +2559,13 @@ async def get_manifest_json():
             'background_color': '#343541',
             'icons': [
                 {
-                    'src': '/static/tide-bot/tide-bot-512.png',
+                    'src': '/tide-bot/tide-bot-512.png',
                     'type': 'image/png',
                     'sizes': '500x500',
                     'purpose': 'any',
                 },
                 {
-                    'src': '/static/tide-bot/tide-bot-512.png',
+                    'src': '/tide-bot/tide-bot-512.png',
                     'type': 'image/png',
                     'sizes': '500x500',
                     'purpose': 'maskable',

@@ -247,7 +247,7 @@
 									<img
 										id="logo"
 										crossorigin="anonymous"
-										src="{WEBUI_BASE_URL}/static/tide-bot/tide-bot-96.png"
+										src="{WEBUI_BASE_URL}/tide-bot/tide-bot-96.png"
 										class="size-24 rounded-full"
 										alt="{$WEBUI_NAME} logo"
 									/>
@@ -599,7 +599,7 @@
 						<img
 							id="logo"
 							crossorigin="anonymous"
-							src="{WEBUI_BASE_URL}/static/tide-bot/tide-bot-96.png"
+							src="{WEBUI_BASE_URL}/tide-bot/tide-bot-96.png"
 							class=" w-6 rounded-full"
 							alt=""
 						/>

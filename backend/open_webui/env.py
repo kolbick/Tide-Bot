@@ -840,7 +840,7 @@ if LICENSE_PUBLIC_KEY:
 ####################################
 
 WEBUI_NAME = os.getenv('WEBUI_NAME', 'Tide-Bot')
-WEBUI_FAVICON_URL = os.getenv('WEBUI_FAVICON_URL', '/static/tide-bot/tide-bot-96.png')
+WEBUI_FAVICON_URL = os.getenv('WEBUI_FAVICON_URL', '/tide-bot/tide-bot-96.png')
 WEBUI_BUILD_HASH = os.getenv('WEBUI_BUILD_HASH', 'dev-build')
 TRUSTED_SIGNATURE_KEY = os.getenv('TRUSTED_SIGNATURE_KEY', '')
 
