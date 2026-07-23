@@ -7,7 +7,7 @@
 
 	const i18n = getContext<Writable<i18nType>>('i18n');
 
-	import { settings, toolServers, terminalServers } from '$lib/stores';
+	import { settings, toolServers, terminalServers, WEBUI_NAME } from '$lib/stores';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -143,13 +143,9 @@
 					</div>
 					<div class={helpTextClass}>
 						{$i18n.t(
-							'CORS must be properly configured by the provider to allow requests from Open WebUI.'
+							'CORS must be properly configured by the provider to allow requests from {{name}}.',
+							{ name: $WEBUI_NAME }
 						)}
-						<a
-							class="ml-1 text-gray-500 underline hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
-							href="https://github.com/open-webui/openapi-servers"
-							target="_blank">{$i18n.t('Learn more about OpenAPI tool servers.')} ↗</a
-						>
 					</div>
 				</div>
 			</UserSettingSection>
