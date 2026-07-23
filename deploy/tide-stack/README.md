@@ -16,8 +16,12 @@ gateway are privileged integrations and require explicit Compose overlays.
    account as the Tide-Bot administrator.
 
 The base stack has a dedicated `tide-bot-data` volume and a private
-`tide-bot-network`. Public signup is disabled. Put the published endpoint
-behind an HTTPS reverse proxy before using `tide-bot.com`.
+`tide-bot-network`. Public signup is disabled. It defaults CORS and Socket.IO
+to `https://tide-bot.com` and `https://www.tide-bot.com`; change
+`CORS_ALLOW_ORIGIN` only to exact HTTPS origins you operate. Put the published
+endpoint behind an HTTPS reverse proxy before using `tide-bot.com`. A safe
+Nginx reference and backup/release checklist are in
+[`PRODUCTION.md`](PRODUCTION.md).
 
 ## Tide Terminal overlay
 

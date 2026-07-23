@@ -16,6 +16,9 @@ services:
       ENABLE_SIGNUP: 'false'
       ENABLE_VERSION_UPDATE_CHECK: 'false'
       ENABLE_COMMUNITY_SHARING: 'false'
+      # Keep browser and Socket.IO access on Tide-Bot's HTTPS origin in production.
+      # Local same-origin traffic does not need a localhost CORS exception.
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-https://tide-bot.com;https://www.tide-bot.com}
       WEBUI_FAVICON_URL: /tide-bot/tide-bot-96.png
     volumes:
       - tide-bot-data:/app/backend/data
