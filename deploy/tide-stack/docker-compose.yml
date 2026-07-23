@@ -16,9 +16,10 @@ services:
       ENABLE_SIGNUP: 'false'
       ENABLE_VERSION_UPDATE_CHECK: 'false'
       ENABLE_COMMUNITY_SHARING: 'false'
-      # Testing stack only: keep browser and Socket.IO access limited to the
-      # two local origins. Production replaces this with HTTPS Tide-Bot origins.
-      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-http://localhost:3102;http://127.0.0.1:3102}
+      # Testing stack only: keep browser and Socket.IO access limited to local
+      # development plus the private Tailscale Serve origin. Production
+      # replaces this with the public Tide-Bot HTTPS origins.
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-http://localhost:3102;http://127.0.0.1:3102;https://kolbys-mac-mini.tail756dc8.ts.net:3102}
       WEBUI_FAVICON_URL: /tide-bot/tide-bot-96.png
     volumes:
       - tide-bot-data:/app/backend/data
