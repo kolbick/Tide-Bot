@@ -28,7 +28,12 @@ const productSurfaceFiles = [
 	'src/routes/error/+page.svelte',
 	'src/lib/components/layout/Sidebar/UserMenu.svelte',
 	'src/lib/components/chat/Settings/About.svelte',
-	'src/lib/components/admin/Settings/General.svelte'
+	'src/lib/components/chat/ShareChatModal.svelte',
+	'src/lib/components/admin/Settings/General.svelte',
+	'src/lib/components/admin/Functions.svelte',
+	'src/lib/components/workspace/Prompts.svelte',
+	'src/lib/components/workspace/Models.svelte',
+	'src/lib/components/workspace/Tools.svelte'
 ];
 
 const prohibitedPromotionalUrls = [
