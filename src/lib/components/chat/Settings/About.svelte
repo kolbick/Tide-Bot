@@ -108,9 +108,7 @@
 		<UserSettingSection title={$i18n.t('Tide-Bot support')}>
 			{#if $config?.license_metadata}
 				<div class="text-xs text-gray-600 dark:text-gray-400">
-					{#if !$WEBUI_NAME.includes('Open WebUI')}
-						<span>{$WEBUI_NAME}</span> -
-					{/if}
+					<span>{$WEBUI_NAME}</span> -
 
 					<span class="capitalize">{$config?.license_metadata?.type}</span> license purchased by
 					<span class="capitalize">{$config?.license_metadata?.organization_name}</span>
@@ -126,9 +124,9 @@
 			</div>
 
 			<div class="text-xs text-gray-400 dark:text-gray-500">
-				Tide-Bot is a private Changing Tides Treatment Center deployment built from Open WebUI.
+				Tide-Bot is a private workspace for Changing Tides Treatment Center.
 				<a href="https://github.com/open-webui/open-webui/blob/main/LICENSE" target="_blank"
-					>View upstream license.</a
+					>View open-source license.</a
 				>
 			</div>
 		</UserSettingSection>

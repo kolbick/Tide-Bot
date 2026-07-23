@@ -47,6 +47,28 @@ const productSurfaceFiles = [
 	'src/lib/components/admin/Evaluations/Feedbacks.svelte'
 ];
 
+const authenticatedBrandingFiles = [
+	'src/lib/components/chat/Settings/General.svelte',
+	'src/lib/components/chat/Settings/About.svelte',
+	'src/lib/components/chat/Settings/SyncStatsModal.svelte',
+	'src/lib/components/admin/Settings/Audio.svelte',
+	'src/lib/components/admin/Settings/Authentication.svelte',
+	'src/lib/components/admin/Settings/CodeExecution.svelte',
+	'src/lib/components/admin/Settings/Events.svelte',
+	'src/lib/components/admin/Settings/ExternalKnowledge.svelte',
+	'src/lib/components/admin/Functions/FunctionEditor.svelte',
+	'src/lib/components/workspace/Knowledge/KnowledgeBase.svelte',
+	'src/lib/components/workspace/common/CommunityDiscover.svelte',
+	'src/lib/components/workspace/common/ManifestModal.svelte',
+	'src/lib/components/AddTerminalServerModal.svelte',
+	'src/routes/(app)/admin/functions/create/+page.svelte',
+	'src/routes/(app)/admin/functions/edit/+page.svelte',
+	'src/routes/(app)/workspace/tools/create/+page.svelte',
+	'src/routes/(app)/workspace/tools/edit/+page.svelte'
+];
+
+const prohibitedVisibleBranding = ['Open WebUI', 'OpenWebUI'];
+
 const prohibitedPromotionalUrls = [
 	'https://docs.openwebui.com',
 	'https://discord.gg/5rJgQTnV4s',
@@ -72,6 +94,15 @@ for (const file of productSurfaceFiles) {
 	for (const url of prohibitedPromotionalUrls) {
 		if (contents.includes(url)) {
 			throw new Error(`Brand audit failed: upstream promotional URL ${url} remains in ${file}`);
+		}
+	}
+}
+
+for (const file of authenticatedBrandingFiles) {
+	const contents = await readFile(resolve(root, file), 'utf8');
+	for (const label of prohibitedVisibleBranding) {
+		if (contents.includes(label)) {
+			throw new Error(`Brand audit failed: visible upstream label ${JSON.stringify(label)} remains in ${file}`);
 		}
 	}
 }

@@ -480,7 +480,7 @@
 
 				<AdminSettingRow
 					label={$i18n.t('Group Mapping')}
-					description={$i18n.t('Map LDAP groups to Open WebUI groups.')}
+					description={$i18n.t('Map LDAP groups to Tide-Bot groups.')}
 				>
 					<Switch bind:state={LDAP_SERVER.enable_group_management} />
 				</AdminSettingRow>
@@ -662,7 +662,7 @@
 
 				<AdminSettingRow
 					label={$i18n.t('Role Mapping')}
-					description={$i18n.t('Map OAuth claims to Open WebUI roles.')}
+					description={$i18n.t('Map OAuth claims to Tide-Bot roles.')}
 				>
 					<Switch bind:state={oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT} />
 				</AdminSettingRow>
@@ -706,7 +706,7 @@
 
 				<AdminSettingRow
 					label={$i18n.t('Group Mapping')}
-					description={$i18n.t('Map OAuth claims to Open WebUI groups.')}
+					description={$i18n.t('Map OAuth claims to Tide-Bot groups.')}
 				>
 					<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT} />
 				</AdminSettingRow>
