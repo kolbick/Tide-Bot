@@ -24,15 +24,327 @@
 	font-display: swap;
 }
 
+@font-face {
+	font-family: 'Archivo';
+	src: url('/assets/fonts/Archivo-Variable.ttf');
+	font-display: swap;
+}
+
 /* --app-text-scale is updated via the UI Scale slider (Interface.svelte) */
 :root {
 	--app-text-scale: 1;
+	--tb-navy: #0b1b36;
+	--tb-navy-deep: #060d1b;
+	--tb-ocean: #124d78;
+	--tb-aqua: #29c9e8;
+	--tb-aqua-soft: rgba(41, 201, 232, 0.45);
+	--tb-seafoam: #9be6e8;
+	--tb-sand: #fff3dd;
+	--tb-shell: #fffbf3;
+	--tb-driftwood: #8b735c;
+	--tb-signal: #1877d2;
+	--tb-signal-deep: #0f5aa6;
+	--tb-ember: #b23a48;
 }
 
 html {
 	word-break: break-word;
 	/* font-size scales the entire document via the same UI control */
 	font-size: calc(1rem * var(--app-text-scale, 1));
+}
+
+/*
+ * Tide-Bot's established product theme. Keep this layer presentation-only so
+ * upstream Open WebUI layout and interaction changes remain easy to adopt.
+ */
+html,
+pre {
+	font-family:
+		'Archivo',
+		'Vazirmatn',
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
+		Ubuntu,
+		Cantarell,
+		'Noto Sans',
+		sans-serif,
+		'Helvetica Neue',
+		Arial,
+		'Apple Color Emoji',
+		'Segoe UI Emoji',
+		'Segoe UI Symbol',
+		'Noto Color Emoji';
+}
+
+.font-primary {
+	font-family: 'Archivo', 'Vazirmatn', sans-serif;
+}
+
+.dark body {
+	background:
+		radial-gradient(55% 40% at 72% 6%, rgba(41, 201, 232, 0.08), transparent 60%) fixed,
+		radial-gradient(45% 45% at 10% 94%, rgba(24, 119, 210, 0.1), transparent 65%),
+		linear-gradient(#081426 0%, #040a14 100%) !important;
+}
+
+.light body,
+:root:not(.dark) body {
+	background:
+		radial-gradient(60% 45% at 85% 4%, rgba(41, 201, 232, 0.1), transparent 58%) fixed,
+		radial-gradient(45% 40% at 5% 96%, rgba(255, 243, 221, 0.55), transparent 62%),
+		#f6fafc !important;
+}
+
+body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+	background-image: radial-gradient(rgba(155, 230, 232, 0.02) 1px, transparent 1px);
+	background-size: 3px 3px;
+	mix-blend-mode: overlay;
+}
+
+.light body::before,
+:root:not(.dark) body::before {
+	background-image: radial-gradient(rgba(11, 27, 54, 0.03) 1px, transparent 1px);
+	mix-blend-mode: multiply;
+}
+
+.dark button[aria-selected='true'],
+.dark [role='tab'][aria-selected='true'],
+.dark .active {
+	color: var(--tb-aqua) !important;
+}
+
+.light button[aria-selected='true'],
+.light [role='tab'][aria-selected='true'],
+:root:not(.dark) button[aria-selected='true'] {
+	color: var(--tb-signal-deep) !important;
+	font-weight: 500;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+	background: linear-gradient(180deg, var(--tb-aqua), var(--tb-signal));
+}
+
+.light ::-webkit-scrollbar-thumb:hover,
+:root:not(.dark) ::-webkit-scrollbar-thumb:hover {
+	background: linear-gradient(180deg, var(--tb-signal), var(--tb-signal-deep));
+}
+
+.dark #sidebar,
+.dark aside {
+	box-shadow: inset -1px 0 rgba(24, 119, 210, 0.12);
+	background: linear-gradient(#0a1830, #050d1a) !important;
+	border-right: 1px solid rgba(41, 201, 232, 0.08) !important;
+}
+
+.light #sidebar,
+.light aside,
+:root:not(.dark) #sidebar,
+:root:not(.dark) aside {
+	background: linear-gradient(#eaf2f7, #d8e6ef) !important;
+	border-right: 1px solid rgba(18, 77, 120, 0.18) !important;
+}
+
+.dark #sidebar::before,
+.dark aside::before,
+.light #sidebar::before,
+.light aside::before,
+:root:not(.dark) #sidebar::before,
+:root:not(.dark) aside::before {
+	content: '';
+	display: block;
+	height: 2px;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		var(--tb-signal) 25%,
+		var(--tb-aqua) 50%,
+		var(--tb-signal) 75%,
+		transparent 100%
+	);
+}
+
+.dark #sidebar::before,
+.dark aside::before {
+	opacity: 0.7;
+}
+
+.light #sidebar::before,
+.light aside::before,
+:root:not(.dark) #sidebar::before,
+:root:not(.dark) aside::before {
+	opacity: 0.6;
+}
+
+.dark .selected,
+.dark [class*='selected'] {
+	box-shadow: inset 0 0 12px rgba(41, 201, 232, 0.07);
+	background: linear-gradient(
+		90deg,
+		rgba(41, 201, 232, 0.12),
+		rgba(24, 119, 210, 0.1) 60%,
+		transparent
+	) !important;
+	border-left: 2px solid var(--tb-aqua) !important;
+	border-radius: 0 6px 6px 0 !important;
+}
+
+.light .selected,
+.light [class*='selected'],
+:root:not(.dark) .selected,
+:root:not(.dark) [class*='selected'] {
+	background: linear-gradient(
+		90deg,
+		rgba(41, 201, 232, 0.14),
+		rgba(24, 119, 210, 0.1) 60%,
+		transparent
+	) !important;
+	border-left: 2px solid var(--tb-signal) !important;
+	border-radius: 0 6px 6px 0 !important;
+}
+
+.light textarea:focus,
+:root:not(.dark) textarea:focus {
+	border-color: var(--tb-signal) !important;
+	box-shadow:
+		0 0 0 1px rgba(24, 119, 210, 0.25),
+		0 0 20px -4px rgba(24, 119, 210, 0.25) !important;
+}
+
+.dark #send-message-button:not(:disabled),
+.dark button.bg-black,
+.dark button.bg-white,
+.dark button[class*='bg-gray-100']:not([class*='hover']) {
+	letter-spacing: 0.02em;
+	text-shadow: 0 1px rgba(220, 250, 255, 0.35);
+	transition:
+		transform 0.1s ease-out,
+		box-shadow 0.18s ease-out;
+	background: linear-gradient(
+		135deg,
+		var(--tb-seafoam),
+		var(--tb-aqua) 45%,
+		#1fa6d0 70%,
+		var(--tb-signal)
+	) !important;
+	color: #06202e !important;
+	border: 1px solid rgba(155, 230, 232, 0.45) !important;
+	box-shadow:
+		inset 0 1px rgba(230, 252, 255, 0.45),
+		inset 0 -1px rgba(10, 60, 90, 0.3),
+		0 2px 8px rgba(41, 201, 232, 0.28) !important;
+}
+
+.light #send-message-button:not(:disabled),
+.light button.bg-black,
+:root:not(.dark) #send-message-button:not(:disabled),
+:root:not(.dark) button.bg-black {
+	letter-spacing: 0.02em;
+	background: linear-gradient(
+		135deg,
+		#2e8fe0,
+		var(--tb-signal) 50%,
+		var(--tb-signal-deep)
+	) !important;
+	color: #fff !important;
+	border: 1px solid rgba(41, 201, 232, 0.4) !important;
+	box-shadow:
+		inset 0 1px rgba(255, 255, 255, 0.22),
+		0 2px 10px rgba(24, 119, 210, 0.32) !important;
+}
+
+.dark pre,
+.dark code {
+	background-color: rgba(4, 10, 20, 0.85) !important;
+	border: 1px solid rgba(41, 201, 232, 0.12) !important;
+	border-left: 2px solid rgba(41, 201, 232, 0.4) !important;
+	color: var(--tb-seafoam) !important;
+}
+
+.light pre,
+:root:not(.dark) pre {
+	background-color: #eaf2f7 !important;
+	border: 1px solid rgba(18, 77, 120, 0.22) !important;
+	border-left: 2px solid var(--tb-signal) !important;
+}
+
+.light code,
+:root:not(.dark) code {
+	padding: 0.1em 0.35em;
+	border-radius: 3px;
+	background-color: rgba(41, 201, 232, 0.1) !important;
+	border: 1px solid rgba(24, 119, 210, 0.2) !important;
+	color: var(--tb-signal-deep) !important;
+}
+
+.dark a:not([class*='button']):not([class*='btn']) {
+	color: var(--tb-aqua);
+}
+
+.dark a:hover:not([class*='button']):not([class*='btn']) {
+	color: var(--tb-seafoam);
+}
+
+.light a:not([class*='button']):not([class*='btn']),
+:root:not(.dark) a:not([class*='button']):not([class*='btn']) {
+	color: var(--tb-signal);
+}
+
+.light a:hover:not([class*='button']):not([class*='btn']),
+:root:not(.dark) a:hover:not([class*='button']):not([class*='btn']) {
+	color: var(--tb-signal-deep);
+}
+
+.dark input:focus:not([type='checkbox']):not([type='radio']) {
+	outline: none !important;
+	border-color: var(--tb-aqua) !important;
+	box-shadow: 0 0 0 2px rgba(41, 201, 232, 0.25) !important;
+}
+
+.light input:focus:not([type='checkbox']):not([type='radio']),
+:root:not(.dark) input:focus:not([type='checkbox']):not([type='radio']) {
+	outline: none !important;
+	border-color: var(--tb-signal) !important;
+	box-shadow: 0 0 0 2px rgba(24, 119, 210, 0.2) !important;
+}
+
+.dark button[aria-label*='scroll' i],
+.dark button[aria-label*='bottom' i] {
+	background: radial-gradient(
+		circle at 30% 30%,
+		var(--tb-seafoam),
+		var(--tb-aqua) 55%,
+		var(--tb-signal)
+	) !important;
+	color: var(--tb-navy) !important;
+	border: 1px solid rgba(155, 230, 232, 0.55) !important;
+	box-shadow: 0 4px 18px rgba(41, 201, 232, 0.38) !important;
+}
+
+#progress-bar {
+	background: linear-gradient(90deg, var(--tb-signal), var(--tb-aqua)) !important;
+}
+
+.dark [class*='hover:bg-gray-50']:hover,
+.dark [class*='hover:bg-white']:hover {
+	background-color: rgba(41, 201, 232, 0.1) !important;
+	color: var(--tb-seafoam) !important;
+}
+
+.dark button.bg-red-500,
+.dark button.bg-red-600,
+.dark button.bg-red-700 {
+	background: linear-gradient(135deg, #c4485a, var(--tb-ember)) !important;
+	color: #ffeaea !important;
+	border: 1px solid rgba(224, 136, 148, 0.4) !important;
 }
 
 #sidebar-chat-item {

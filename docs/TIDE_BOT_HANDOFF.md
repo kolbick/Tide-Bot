@@ -8,10 +8,10 @@ Tide-Bot is the private, branded Open WebUI deployment for Changing Tides Treatm
 
 There are two distinct environments:
 
-| Environment                | Address                 | State                                                                                                            |
-| -------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Local Docker testing stack | `http://localhost:3102` | The current checkout. This is where source changes are verified.                                                 |
-| Public production site     | `https://tide-bot.com`  | A separate, older deployment. It is live, but it still presents the stock Open WebUI shell with Tide-Bot labels. |
+| Environment                | Address                 | State                                                                                                  |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| Local Docker testing stack | `http://localhost:3102` | The current checkout. This is where source changes are verified.                                       |
+| Public production site     | `https://tide-bot.com`  | A separate live deployment and the accepted visual reference for the authenticated Tide-Bot workspace. |
 
 The public site does not update when the local testing stack is rebuilt. It needs a deliberate production deployment using the current checkout and the production Compose overlay.
 
@@ -20,7 +20,8 @@ The public site does not update when the local testing stack is rebuilt. It need
 - Open WebUI is pinned to the current upstream development baseline used by this checkout.
 - Tide-Bot identity, favicon, manifest, auth/onboarding, and private deployment defaults are present.
 - Ted-Bot uses the supplied sprite atlas in the product interface, rather than launching as a separate site.
-- The existing Tide-Bot application shell and new-chat experience remain the visual baseline. Do not replace them wholesale without reviewing the authenticated live product first.
+- The authenticated public Tide-Bot workspace is the visual baseline: Archivo typography, ocean-blue palette, pale-blue sidebar, signal line, and restrained controls. That presentation layer is captured in `src/app.css` without replacing current Open WebUI layout or behavior.
+- Do not replace the application shell wholesale without reviewing the authenticated live product first.
 - Public Open WebUI community review/sharing exits are disabled in deployment and removed from the relevant product UI paths.
 - Upstream attribution remains in the About surface and license materials.
 
@@ -70,3 +71,4 @@ Before an actual production release, verify the server has the required producti
 - Do not commit secrets, databases, logs, or user data.
 - Preserve the user-owned untracked `AGENTS.md`, `tide-bot-pet/`, and `teddy-v2-upgrade/` directories.
 - Do not claim the public site is updated until the live domain is rechecked in an authenticated browser after deployment.
+- A local authenticated review still needs an approved local test account; do not use a production session or copy production data into the test stack.
