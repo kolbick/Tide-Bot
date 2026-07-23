@@ -566,13 +566,6 @@ class UsersTable:
             row = (await session.execute(stmt)).scalars().first()
             return UserModel.model_validate(row) if row else None
 
-    async def get_user_webhook_url_by_id(self, id: str, db: AsyncSession | None = None) -> str | None:
-        async with get_async_db_context(db) as session:
-            user = await session.get(User, id)
-            if user and user.settings:
-                return user.settings.get('ui', {}).get('notifications', {}).get('webhook_url', None)
-            return None
-
     async def get_num_users_active_today(self, db: AsyncSession | None = None) -> int | None:
         async with get_async_db_context(db) as session:
             current_timestamp = int(time.time())
@@ -762,11 +755,11 @@ class UsersTable:
 
     async def is_user_active(self, user_id: str, db: AsyncSession | None = None) -> bool:
         async with get_async_db_context(db) as session:
-            user = await session.get(User, user_id)
-            if user and user.last_active_at:
+            last_active_at = await session.scalar(select(User.last_active_at).where(User.id == user_id))
+            if last_active_at:
                 # Consider user active if last_active_at within the last 3 minutes
                 three_minutes_ago = int(time.time()) - 180
-                return user.last_active_at >= three_minutes_ago
+                return last_active_at >= three_minutes_ago
             return False
 
 
