@@ -19,6 +19,8 @@ const requiredIdentity = [
 	['src/routes/auth/+page.svelte', '<TedBotMascot />'],
 	['src/lib/components/OnBoarding.svelte', 'Welcome to Tide-Bot.'],
 	['src/lib/components/OnBoarding.svelte', '<BrandLockup compact={true} />'],
+	['src/app.html', '<title>Tide-Bot | Changing Tides Treatment Center</title>'],
+	['src/app.html', '/static/tide-bot/tide-bot-96.png'],
 	['static/static/site.webmanifest', 'Tide-Bot | Changing Tides Treatment Center']
 ];
 
