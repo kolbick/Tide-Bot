@@ -24,6 +24,20 @@ const requiredIdentity = [
 	['static/static/site.webmanifest', 'Tide-Bot | Changing Tides Treatment Center']
 ];
 
+const productSurfaceFiles = [
+	'src/routes/error/+page.svelte',
+	'src/lib/components/layout/Sidebar/UserMenu.svelte',
+	'src/lib/components/chat/Settings/About.svelte',
+	'src/lib/components/admin/Settings/General.svelte'
+];
+
+const prohibitedPromotionalUrls = [
+	'https://docs.openwebui.com',
+	'https://discord.gg/5rJgQTnV4s',
+	'https://twitter.com/OpenWebUI',
+	'https://github.com/open-webui/open-webui/releases'
+];
+
 for (const file of requiredFiles) {
 	await access(resolve(root, file));
 }
@@ -32,6 +46,15 @@ for (const [file, expected] of requiredIdentity) {
 	const contents = await readFile(resolve(root, file), 'utf8');
 	if (!contents.includes(expected)) {
 		throw new Error(`Brand audit failed: expected ${JSON.stringify(expected)} in ${file}`);
+	}
+}
+
+for (const file of productSurfaceFiles) {
+	const contents = await readFile(resolve(root, file), 'utf8');
+	for (const url of prohibitedPromotionalUrls) {
+		if (contents.includes(url)) {
+			throw new Error(`Brand audit failed: upstream promotional URL ${url} remains in ${file}`);
+		}
 	}
 }
 

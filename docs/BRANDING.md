@@ -30,4 +30,7 @@ Compose configuration directly to the public internet.
 Tide-Bot remains derived from Open WebUI. Upstream names stay in licenses,
 dependency metadata, source comments, and attribution records. The brand audit
 checks the product shell and assets; it intentionally does not rewrite those
-required attribution surfaces.
+required attribution surfaces. It also guards the error, account-menu, user
+about, and admin-general product surfaces against inherited upstream
+promotional URLs. Broader workspace/community surfaces are intentionally
+tracked as follow-up work rather than being represented as complete.
