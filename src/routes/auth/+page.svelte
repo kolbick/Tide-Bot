@@ -234,7 +234,7 @@
 					</div>
 				{:else}
 					<div class="my-auto flex flex-col justify-center items-center">
-						<div id="auth-login-card" class="sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
+						<div id="auth-login-card" class="sm:max-w-md my-auto pb-10 w-full text-slate-100">
 							<div class="auth-brand-intro">
 								<div>
 									<BrandLockup />
@@ -621,6 +621,16 @@
 		margin: 0.85rem 0 0;
 		font-size: 0.8rem;
 		color: #b8d9df;
+	}
+	#auth-login-card :global(input) {
+		color: #f1f5f9;
+	}
+	#auth-login-card :global(button[type='submit']) {
+		color: #f1f5f9;
+		background: rgb(241 245 249 / 12%);
+	}
+	#auth-login-card :global(button[type='submit']:hover) {
+		background: rgb(241 245 249 / 18%);
 	}
 	@media (max-width: 420px) {
 		.auth-brand-intro {
