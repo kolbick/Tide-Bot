@@ -26,7 +26,9 @@ const requiredIdentity = [
 
 const productSurfaceFiles = [
 	'src/routes/error/+page.svelte',
+	'src/routes/+layout.svelte',
 	'src/lib/components/layout/Sidebar/UserMenu.svelte',
+	'src/lib/components/channel/Channel.svelte',
 	'src/lib/components/chat/Settings/About.svelte',
 	'src/lib/components/chat/ShareChatModal.svelte',
 	'src/lib/components/admin/Settings/General.svelte',
