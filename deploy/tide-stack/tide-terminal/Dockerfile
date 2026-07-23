@@ -1,7 +1,7 @@
 ARG PYTHON_IMAGE=python:3.12.13-slim
 FROM ${PYTHON_IMAGE}
 
-ARG OPEN_TERMINAL_REF
+ARG OPEN_TERMINAL_REF=9162e808c3aaf8dba38745cea55204a42bbb348d
 RUN test "${OPEN_TERMINAL_REF}" = "9162e808c3aaf8dba38745cea55204a42bbb348d"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
