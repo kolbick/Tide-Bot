@@ -63,9 +63,10 @@ The running local stack is available only to devices signed into this tailnet:
 https://kolbys-mac-mini.tail756dc8.ts.net:3102/
 ```
 
-Use an existing Tide-Bot account. No test account or credential was created for this proxy. This is
-Tailscale Serve, not Funnel, so it is not publicly reachable from the internet. The Tide routes on
-the main tailnet hostname are intentionally left unchanged.
+Use the Tide-Bot administrator account provisioned for this checkout. Credentials were supplied
+out-of-band and are not stored in this repository. This is Tailscale Serve, not Funnel, so it is not
+publicly reachable from the internet. The Tide routes on the main tailnet hostname are intentionally
+left unchanged.
 
 The proxy survives Tailscale restarts and can be checked or restored with:
 
@@ -99,4 +100,5 @@ Before an actual production release, verify the server has the required producti
 - Do not commit secrets, databases, logs, or user data.
 - Preserve the user-owned untracked `AGENTS.md`, `tide-bot-pet/`, and `teddy-v2-upgrade/` directories.
 - Do not claim the public site is updated until the live domain is rechecked in an authenticated browser after deployment.
-- A local authenticated review still needs an approved local test account; do not use a production session or copy production data into the test stack.
+- The local administrator account was created directly in the persistent Tide-Bot data volume; do not
+  copy a production database, session, or user data into the test stack.
