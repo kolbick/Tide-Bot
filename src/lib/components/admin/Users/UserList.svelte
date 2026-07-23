@@ -469,7 +469,8 @@
 	{/if}
 {/if}
 
-{#if !$config?.license_metadata}
+<!-- Tide-Bot is a private deployment; upstream licensing and sponsorship promotion is not shown here. -->
+{#if false}
 	{#if total > 50}
 		<div class="mt-3 mb-3 pb-1 text-gray-700 dark:text-gray-300">
 			<div class="max-w-3xl text-xs leading-5">
