@@ -3,7 +3,9 @@
 This document is for an operator deploying the private Tide-Bot instance at
 `https://tide-bot.com`. It is deliberately separate from the local testing
 stack: the Compose port is a loopback or private-network upstream, never the
-public security boundary.
+public security boundary. Start this deployment with both Compose files so
+Socket.IO and API CORS permit only `https://tide-bot.com` and
+`https://www.tide-bot.com`.
 
 ## Public proxy
 

@@ -16,11 +16,18 @@ gateway are privileged integrations and require explicit Compose overlays.
    account as the Tide-Bot administrator.
 
 The base stack has a dedicated `tide-bot-data` volume and a private
-`tide-bot-network`. Public signup is disabled. It defaults CORS and Socket.IO
-to `https://tide-bot.com` and `https://www.tide-bot.com`; change
-`CORS_ALLOW_ORIGIN` only to exact HTTPS origins you operate. Put the published
-endpoint behind an HTTPS reverse proxy before using `tide-bot.com`. A safe
-Nginx reference and backup/release checklist are in
+`tide-bot-network`. Public signup is disabled. Its CORS and Socket.IO defaults
+allow only `localhost:3102` and `127.0.0.1:3102` for local testing. Production
+must use the production overlay, which allows only the exact Tide-Bot HTTPS
+origins:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+```
+
+Do not use a wildcard origin. Put the published endpoint behind an HTTPS
+reverse proxy before using `tide-bot.com`. A safe Nginx reference and
+backup/release checklist are in
 [`PRODUCTION.md`](PRODUCTION.md).
 
 ## Tide Terminal overlay
