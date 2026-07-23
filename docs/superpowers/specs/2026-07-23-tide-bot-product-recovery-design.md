@@ -30,7 +30,7 @@ volumes. The unrelated `cptr` container remains outside scope.
 ## Upstream foundation
 
 After recovery, Tide-Bot will merge official Open WebUI `dev` at the reviewed
-commit `ca11bd90a7a23106f4267fdb79fee4b80af0ee9d`, then retain an explicit
+commit `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237`, then retain an explicit
 upstream merge record and repeatable sync process. Upstream functionality,
 license files, and attribution remain intact. Tide-Bot changes live in a
 small, maintainable brand layer rather than broad scattered substitutions.

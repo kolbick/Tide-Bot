@@ -14,7 +14,7 @@
 - Preserve `AGENTS.md`, `tide-bot-pet/`, `teddy-v2-upgrade/`, and `/Users/kolbyunderwood/Desktop/Teddy-desktop-pet.zip` exactly as user-owned assets.
 - Never run `git clean`, delete Docker volumes, or touch the unrelated `cptr` container.
 - Stop only the wrong Tide-Bot Compose containers before changing the active source branch.
-- Keep Open WebUI license files and history; merge `upstream/dev` at `ca11bd90a7a23106f4267fdb79fee4b80af0ee9d`.
+- Keep Open WebUI license files and history; merge `upstream/dev` at `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237`.
 - Use Node `v22.18.0` and npm `10.9.3`; never use the installed Node 25 runtime.
 - Treat a red repository-wide `npm run check` as a baseline to measure, not an error to hide.
 
@@ -150,7 +150,7 @@ The cherry-pick and plan-retention commit in Step 2 are the commits for this tas
 - Modify: `docs/UPSTREAM_SYNC.md` to record the exact reviewed dev commit for this recovery merge while retaining its release-pin procedure for future production updates.
 
 **Interfaces:**
-- Consumes: active branch from Task 2 and `upstream/dev` at `ca11bd90a7a23106f4267fdb79fee4b80af0ee9d`.
+- Consumes: active branch from Task 2 and `upstream/dev` at `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237`.
 - Produces: a non-fast-forward Tide-Bot merge whose first parent is the recovered product branch and whose second parent is current Open WebUI dev.
 
 - [ ] **Step 1: Verify the official upstream ref before merging**
@@ -159,11 +159,11 @@ Run:
 
 ```bash
 git fetch upstream dev --tags --prune
-test "$(git rev-parse upstream/dev)" = ca11bd90a7a23106f4267fdb79fee4b80af0ee9d
+test "$(git rev-parse upstream/dev)" = e64acf1c0a532c7a87c5f6666cb88ba02f8fe237
 git show -s --format='%H%n%cI%n%s' upstream/dev
 ```
 
-Expected: the ref is exactly `ca11bd90a7a23106f4267fdb79fee4b80af0ee9d`. If it moved, stop and record the new ref for renewed review instead of silently merging a different commit.
+Expected: the ref is exactly `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237`. If it moved, stop and record the new ref for renewed review instead of silently merging a different commit.
 
 - [ ] **Step 2: Create a no-commit merge for review**
 
@@ -187,7 +187,7 @@ Add this recovery entry to `docs/UPSTREAM.md`:
 | Item | Value |
 | --- | --- |
 | Upstream branch | `dev` |
-| Reviewed commit | `ca11bd90a7a23106f4267fdb79fee4b80af0ee9d` |
+| Reviewed commit | `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237` |
 | Commit date | 2026-07-23 |
 | Reason | Replace the stale July 17 bootstrap with the current development baseline before Tide-Bot branding. |
 ```
@@ -205,7 +205,7 @@ Run:
 
 ```bash
 git add README.md docs/UPSTREAM.md docs/UPSTREAM_SYNC.md
-git commit -m 'chore: sync Open WebUI dev ca11bd90'
+git commit -m 'chore: sync Open WebUI dev e64acf1c'
 git show --no-patch --format='%P%n%s' HEAD
 ```
 
@@ -227,7 +227,7 @@ Run:
 
 ```bash
 git log --graph --oneline --decorate -12
-git merge-base --is-ancestor ca11bd90a7a23106f4267fdb79fee4b80af0ee9d HEAD
+git merge-base --is-ancestor e64acf1c0a532c7a87c5f6666cb88ba02f8fe237 HEAD
 test ! -e src/lib/components/companion
 test ! -e desktop/tide-companion
 git status --short
