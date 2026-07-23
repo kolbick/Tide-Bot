@@ -53,6 +53,8 @@
 	import { updateUserSettings } from '$lib/apis/users';
 	import { createNoteHandler } from '$lib/components/notes/utils';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import BrandLockup from '$lib/components/branding/BrandLockup.svelte';
+	import TedBotMascot from '$lib/components/branding/TedBotMascot.svelte';
 
 	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
@@ -829,9 +831,9 @@
 							class=" self-center flex size-[30px] items-center justify-center rounded-lg transition group-hover:bg-gray-50 dark:group-hover:bg-gray-900"
 						>
 							<img
-								src="{WEBUI_BASE_URL}/static/favicon.png"
-								class="sidebar-new-chat-icon size-5 rounded-full group-hover:hidden"
-								alt=""
+								src="{WEBUI_BASE_URL}/tide-bot/tide-bot-96.png"
+								class="sidebar-new-chat-icon size-5 rounded-md group-hover:hidden"
+								alt="Tide-Bot"
 							/>
 
 							<Sidebar className="size-4 hidden group-hover:flex" />
@@ -980,7 +982,7 @@
 	<div
 		bind:this={navElement}
 		id="sidebar"
-		class="h-screen max-h-[100dvh] min-h-screen select-none {$showSidebar
+		class="tide-sidebar h-screen max-h-[100dvh] min-h-screen select-none {$showSidebar
 			? `${$mobile ? 'bg-gray-50 dark:bg-gray-950' : 'bg-gray-50/70 dark:bg-gray-950/70'} z-50`
 			: ' bg-transparent z-0 '} {$isApp
 			? `ml-[4.5rem] md:ml-0 `
@@ -995,30 +997,18 @@
 				: 'invisible'}"
 		>
 			<div
-				class="sidebar px-1 pt-1.5 pb-1 flex justify-between space-x-1 text-gray-600 dark:text-gray-400 sticky top-0 z-10 -mb-2"
+				class="tide-sidebar-header sidebar px-3 pt-3 pb-2 flex items-center gap-2 text-gray-600 dark:text-gray-400 sticky top-0 z-10"
 			>
 				<a
-					class="flex items-center rounded-xl size-8.5 h-full justify-center hover:bg-gray-50 dark:hover:bg-gray-900 transition no-drag-region"
+					class="tide-sidebar-brand flex min-w-0 flex-1 items-center no-drag-region"
 					href="/"
 					draggable="false"
 					on:click={newChatHandler}
 				>
-					<img
-						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
-						class="sidebar-new-chat-icon size-5 rounded-full"
-						alt=""
-					/>
+					<BrandLockup compact={true} />
 				</a>
 
-				<a href="/" class="flex flex-1 px-0.5" on:click={newChatHandler}>
-					<div
-						id="sidebar-webui-name"
-						class=" self-center font-normal text-gray-700 dark:text-gray-200"
-					>
-						{$WEBUI_NAME}
-					</div>
-				</a>
+				<TedBotMascot compact={true} label="Ted-Bot, Tide-Bot mascot" />
 				<Tooltip
 					content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
 					placement="bottom"
