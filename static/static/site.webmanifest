@@ -1,21 +1,21 @@
 {
-  "name": "Open WebUI",
-  "short_name": "WebUI",
+  "name": "Tide-Bot | Changing Tides Treatment Center",
+  "short_name": "Tide-Bot",
   "icons": [
     {
-      "src": "/static/web-app-manifest-192x192.png",
+      "src": "/static/tide-bot/tide-bot-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/static/web-app-manifest-512x512.png",
+      "src": "/static/tide-bot/tide-bot-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#07151d",
+  "background_color": "#07151d",
   "display": "standalone"
 }

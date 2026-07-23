@@ -1,5 +1,7 @@
 <script>
 	import { getContext } from 'svelte';
+	import BrandLockup from '$lib/components/branding/BrandLockup.svelte';
+	import TedBotMascot from '$lib/components/branding/TedBotMascot.svelte';
 	const i18n = getContext('i18n');
 
 	export let show = true;
@@ -40,13 +42,7 @@
 {#if show}
 	<div class="relative h-screen max-h-[100dvh] w-full overflow-hidden text-white">
 		<div class="fixed top-6 left-6 z-50 sm:top-10 sm:left-10">
-			<img
-				id="logo"
-				crossorigin="anonymous"
-				src="/static/favicon.png"
-				class="size-6 rounded-full"
-				alt="logo"
-			/>
+			<BrandLockup compact={true} />
 		</div>
 
 		<video
@@ -68,17 +64,20 @@
 		<div class="relative z-10 flex h-screen max-h-[100dvh] w-full">
 			<div class="flex w-full flex-col justify-end px-6 pb-8 sm:px-10 sm:pb-10 lg:px-16 lg:pb-14">
 				<div class="max-w-3xl">
-					<div class="mb-4 text-[11px] font-medium tracking-[0.18em] uppercase opacity-35">
-						Open WebUI
+					<div
+						class="mb-4 flex items-end gap-3 text-[11px] font-medium tracking-[0.18em] uppercase opacity-80"
+					>
+						<span>Changing Tides Treatment Center</span>
+						<TedBotMascot label="Ted-Bot welcomes you to Tide-Bot" />
 					</div>
 
 					<h1 class="m-0 max-w-3xl text-2xl leading-[1.15] font-light tracking-tight lg:text-4xl">
-						{$i18n.t('Welcome to your AI home.')}
+						{$i18n.t('Welcome to Tide-Bot.')}
 					</h1>
 
 					<p class="mt-6 max-w-xl text-sm leading-relaxed font-light text-white/60 lg:text-base">
 						{$i18n.t(
-							'Run AI on your own terms. Connect any model, extend with code, and protect what matters without compromise. Your models, your data, your machine, wherever you open it.'
+							'Your private, personalized workspace for conversation, tools, and trusted care-team workflows.'
 						)}
 					</p>
 
@@ -103,14 +102,9 @@
 							</svg>
 						</button>
 
-						<a
-							class="inline-flex items-center text-sm text-white/60 transition hover:text-white"
-							href="https://docs.openwebui.com/"
-							target="_blank"
-							rel="noopener noreferrer"
-						>
-							{$i18n.t('Read the docs')}
-						</a>
+						<span class="inline-flex items-center text-sm text-white/60">
+							{$i18n.t('Ted-Bot is here to help you get started.')}
+						</span>
 					</div>
 				</div>
 			</div>

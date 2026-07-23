@@ -62,6 +62,7 @@
 	} from '$lib/utils/connections';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL, WEBUI_HOSTNAME } from '$lib/constants';
+	import { BRAND } from '$lib/branding';
 	import {
 		bestMatchingLanguage,
 		cleanText,
@@ -539,9 +540,9 @@
 
 			if ($isLastActiveTab) {
 				if ($settings?.notificationEnabled ?? false) {
-					new Notification(`${data.title} / Open WebUI`, {
+					new Notification(`${data.title} / ${BRAND.name}`, {
 						body: timeStr,
-						icon: `${WEBUI_BASE_URL}/static/favicon.png`
+						icon: `${WEBUI_BASE_URL}${BRAND.faviconPath}`
 					});
 				}
 			}
@@ -674,9 +675,9 @@
 
 					if ($isLastActiveTab) {
 						if ($settings?.notificationEnabled ?? false) {
-							new Notification(`${displayTitle} / Open WebUI`, {
+							new Notification(`${displayTitle} / ${BRAND.name}`, {
 								body: contentPreview,
-								icon: `${WEBUI_BASE_URL}/static/favicon.png`
+								icon: `${WEBUI_BASE_URL}${BRAND.faviconPath}`
 							});
 						}
 					}
@@ -781,7 +782,7 @@
 
 				if ($isLastActiveTab) {
 					if ($settings?.notificationEnabled ?? false) {
-						new Notification(`${title} / Open WebUI`, {
+						new Notification(`${title} / ${BRAND.name}`, {
 							body: data?.content,
 							icon: `${WEBUI_API_BASE_URL}/users/${data?.user?.id}/profile/image`
 						});
@@ -1298,10 +1299,10 @@
 
 <svelte:head>
 	<title>{$WEBUI_NAME}</title>
-	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}/static/favicon.png" />
+	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}{BRAND.faviconPath}" />
 
 	<meta name="apple-mobile-web-app-title" content={$WEBUI_NAME} />
-	<meta name="description" content={$WEBUI_NAME} />
+	<meta name="description" content={BRAND.description} />
 	<link
 		rel="search"
 		type="application/opensearchdescription+xml"

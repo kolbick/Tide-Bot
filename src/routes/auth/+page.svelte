@@ -18,6 +18,8 @@
 	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import BrandLockup from '$lib/components/branding/BrandLockup.svelte';
+	import TedBotMascot from '$lib/components/branding/TedBotMascot.svelte';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
 
 	import { generateInitialsImage, canvasPixelTest, getUserTimezone } from '$lib/utils';
@@ -206,7 +208,7 @@
 />
 
 <div class="w-full h-screen max-h-[100dvh] text-white relative" id="auth-page">
-	<div class="w-full h-full absolute top-0 left-0 bg-white dark:bg-black"></div>
+	<div class="w-full h-full absolute top-0 left-0 auth-brand-backdrop"></div>
 
 	<div class="w-full absolute top-0 left-0 right-0 h-8 drag-region" />
 
@@ -232,13 +234,20 @@
 					</div>
 				{:else}
 					<div class="my-auto flex flex-col justify-center items-center">
-						<div id="auth-login-card" class=" sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
+						<div id="auth-login-card" class="sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
+							<div class="auth-brand-intro">
+								<div>
+									<BrandLockup />
+									<p class="auth-brand-note">A private, personalized workspace.</p>
+								</div>
+								<TedBotMascot />
+							</div>
 							{#if $config?.metadata?.auth_logo_position === 'center'}
 								<div class="flex justify-center mb-6">
 									<img
 										id="logo"
 										crossorigin="anonymous"
-										src="{WEBUI_BASE_URL}/static/favicon.png"
+										src="{WEBUI_BASE_URL}/static/tide-bot/tide-bot-96.png"
 										class="size-24 rounded-full"
 										alt="{$WEBUI_NAME} logo"
 									/>
@@ -590,7 +599,7 @@
 						<img
 							id="logo"
 							crossorigin="anonymous"
-							src="{WEBUI_BASE_URL}/static/favicon.png"
+							src="{WEBUI_BASE_URL}/static/tide-bot/tide-bot-96.png"
 							class=" w-6 rounded-full"
 							alt=""
 						/>
@@ -600,3 +609,38 @@
 		{/if}
 	{/if}
 </div>
+
+<style>
+	.auth-brand-backdrop {
+		background:
+			radial-gradient(circle at 18% 15%, rgb(15 104 126 / 28%), transparent 34%),
+			linear-gradient(145deg, #07151d 0%, #0b222b 50%, #071018 100%);
+	}
+	:global(.dark) .auth-brand-backdrop {
+		background:
+			radial-gradient(circle at 18% 15%, rgb(15 141 169 / 24%), transparent 34%),
+			linear-gradient(145deg, #03090d 0%, #08171e 52%, #02070b 100%);
+	}
+	.auth-brand-intro {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 1.6rem;
+		padding: 1rem;
+		border: 1px solid rgb(123 216 234 / 24%);
+		border-radius: 0.75rem;
+		background: rgb(3 16 24 / 68%);
+		box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 18%);
+	}
+	.auth-brand-note {
+		margin: 0.85rem 0 0;
+		font-size: 0.8rem;
+		color: #b8d9df;
+	}
+	@media (max-width: 420px) {
+		.auth-brand-intro {
+			align-items: center;
+		}
+	}
+</style>

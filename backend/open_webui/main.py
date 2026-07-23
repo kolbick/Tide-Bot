@@ -447,7 +447,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title='Open WebUI',
+    title='Tide-Bot',
     docs_url='/docs' if ENV == 'dev' else None,
     openapi_url='/openapi.json' if ENV == 'dev' else None,
     redoc_url=None,
@@ -2553,19 +2553,19 @@ async def get_manifest_json():
         return {
             'name': app.state.WEBUI_NAME,
             'short_name': app.state.WEBUI_NAME,
-            'description': f'{app.state.WEBUI_NAME} is an open, extensible, user-friendly interface for AI that adapts to your workflow.',
+            'description': 'A private, personalized AI workspace for Changing Tides Treatment Center.',
             'start_url': '/',
             'display': 'standalone',
             'background_color': '#343541',
             'icons': [
                 {
-                    'src': '/static/logo.png',
+                    'src': '/static/tide-bot/tide-bot-512.png',
                     'type': 'image/png',
                     'sizes': '500x500',
                     'purpose': 'any',
                 },
                 {
-                    'src': '/static/logo.png',
+                    'src': '/static/tide-bot/tide-bot-512.png',
                     'type': 'image/png',
                     'sizes': '500x500',
                     'purpose': 'maskable',
