@@ -2,16 +2,11 @@
 	import { BRAND } from '$lib/branding';
 
 	export let label = 'Ted-Bot, Tide-Bot mascot';
-	export let compact = false;
 </script>
 
-<div
-	class:compact
-	class="ted-bot"
-	role="img"
-	aria-label={label}
-	style:background-image={`url(${BRAND.tedBotSpritePath})`}
-></div>
+<div class="ted-bot" role="img" aria-label={label}>
+	<img src={BRAND.tedBotSpritePath} alt="" />
+</div>
 
 <style>
 	.ted-bot {
@@ -20,23 +15,22 @@
 		overflow: hidden;
 		flex: none;
 		border-bottom: 1px solid rgb(83 216 236 / 25%);
-		background-repeat: no-repeat;
-		background-size: 800% 1100%;
-		background-position: 0 0;
-		animation: ted-bot-idle 5.6s steps(7, end) infinite;
 	}
-	.ted-bot.compact {
-		width: 3rem;
-		height: 3.25rem;
-		border-bottom: 0;
+	.ted-bot img {
+		display: block;
+		width: 48rem;
+		height: 71.5rem;
+		max-width: none;
+		transform: translate(-0.1rem, -0.1rem);
+		animation: ted-bot-idle 4s steps(8, end) infinite;
 	}
 	@keyframes ted-bot-idle {
 		to {
-			background-position: 100% 0;
+			transform: translateX(-42rem) translateY(-0.1rem);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ted-bot {
+		.ted-bot img {
 			animation: none;
 		}
 	}

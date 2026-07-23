@@ -21,7 +21,6 @@
 	import { sanitizeResponseContent, extractCurlyBraceWords } from '$lib/utils';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { BRAND } from '$lib/branding';
-	import BrandLockup from '$lib/components/branding/BrandLockup.svelte';
 
 	import Suggestions from './Suggestions.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -83,7 +82,7 @@
 		$selectedFolder.permission !== 'write';
 </script>
 
-<div class="tide-chat-landing m-auto w-full max-w-[58rem] px-4 @2xl:px-20 py-12 text-center">
+<div class="m-auto w-full max-w-[58rem] px-2 @2xl:px-20 translate-y-6 py-24 text-center">
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
@@ -96,9 +95,7 @@
 		</Tooltip>
 	{/if}
 
-	<div
-		class="tide-chat-landing__panel w-full text-gray-800 dark:text-gray-100 text-center flex items-center gap-4"
-	>
+	<div class="w-full text-3xl text-gray-800 dark:text-gray-100 text-center flex items-center gap-4">
 		<div class="w-full flex flex-col justify-center items-center">
 			{#if $selectedFolder}
 				<FolderTitle
@@ -114,78 +111,65 @@
 					}}
 				/>
 			{:else}
-				<div
-					class="tide-chat-landing__identity flex flex-col items-center gap-3 w-full max-w-2xl px-5"
-				>
-					<div class="flex items-center justify-center gap-3">
-						<BrandLockup compact={true} />
-						<span class="tide-chat-landing__eyebrow">Private workspace</span>
-					</div>
-
-					<div class="flex flex-row justify-center gap-2.5 @sm:gap-3 w-fit">
-						<div class="flex shrink-0 justify-center">
-							<div class="flex -space-x-4 mb-0.5" in:fade={{ duration: 100 }}>
-								{#each models as model, modelIdx}
-									<Tooltip
-										content={(models[modelIdx]?.info?.meta?.tags ?? [])
-											.map((tag) => tag.name.toUpperCase())
-											.join(', ')}
-										placement="top"
-									>
-										<button
-											aria-hidden={models.length <= 1}
-											aria-label={$i18n.t('Get information on {{name}} in the UI', {
-												name: models[modelIdx]?.name
-											})}
-											on:click={() => {
-												selectedModelIdx = modelIdx;
-											}}
-										>
-											<img
-												src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
-												class=" size-9 @sm:size-10 rounded-2xl"
-												aria-hidden="true"
-												draggable="false"
-												on:error={(e) => {
-													e.currentTarget.src = '/favicon.png';
-												}}
-											/>
-										</button>
-									</Tooltip>
-								{/each}
-							</div>
-						</div>
-
-						<div
-							class="text-2xl @sm:text-2xl line-clamp-1 flex items-center"
-							in:fade={{ duration: 100 }}
-						>
-							{#if models[selectedModelIdx]?.name}
+				<div class="flex flex-row justify-center gap-2.5 @sm:gap-3 w-fit px-5 max-w-xl">
+					<div class="flex shrink-0 justify-center">
+						<div class="flex -space-x-4 mb-0.5" in:fade={{ duration: 100 }}>
+							{#each models as model, modelIdx}
 								<Tooltip
-									content={models[selectedModelIdx]?.name}
+									content={(models[modelIdx]?.info?.meta?.tags ?? [])
+										.map((tag) => tag.name.toUpperCase())
+										.join(', ')}
 									placement="top"
-									className=" flex items-center "
 								>
-									<span class="line-clamp-1">
-										{models[selectedModelIdx]?.name}
-									</span>
+									<button
+										aria-hidden={models.length <= 1}
+										aria-label={$i18n.t('Get information on {{name}} in the UI', {
+											name: models[modelIdx]?.name
+										})}
+										on:click={() => {
+											selectedModelIdx = modelIdx;
+										}}
+									>
+										<img
+											src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
+											class=" size-9 @sm:size-10 rounded-2xl"
+											aria-hidden="true"
+											draggable="false"
+											on:error={(e) => {
+												e.currentTarget.src = '/favicon.png';
+											}}
+										/>
+									</button>
 								</Tooltip>
-							{:else}
-								{$i18n.t('Welcome back, {{name}}', { name: $user?.name })}
-							{/if}
+							{/each}
 						</div>
 					</div>
 
-					{#if !models[selectedModelIdx]?.name}
-						<p class="tide-chat-landing__prompt">What would you like to work through?</p>
-					{/if}
+					<div
+						class="text-2xl @sm:text-2xl line-clamp-1 flex items-center"
+						in:fade={{ duration: 100 }}
+					>
+						{#if models[selectedModelIdx]?.name}
+							<Tooltip
+								content={models[selectedModelIdx]?.name}
+								placement="top"
+								className=" flex items-center "
+							>
+								<span class="line-clamp-1">
+									{models[selectedModelIdx]?.name}
+								</span>
+							</Tooltip>
+						{:else}
+							{$i18n.t('Welcome back, {{name}}', { name: $user?.name })}
+						{/if}
+					</div>
 				</div>
 
 				{#if !models[selectedModelIdx]?.name}
-					<div class="mt-5 flex flex-col items-center gap-3" in:fade={{ duration: 160, delay: 40 }}>
+					<div class="mt-3 flex flex-col items-center gap-2" in:fade={{ duration: 160, delay: 40 }}>
 						<TedBotMascot label="Ted-Bot, the Tide-Bot mascot" />
-						<p class="max-w-lg text-sm leading-6 text-gray-500 dark:text-gray-400">
-							{BRAND.description} Ted-Bot is here whenever you are ready to start a conversation.
+						<p class="max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
+							{BRAND.description} Ted-Bot is here to help you get started.
 						</p>
 					</div>
 				{/if}
@@ -219,8 +203,18 @@
 
 							{#if models[selectedModelIdx]?.info?.meta?.user}
 								<div class="mt-0.5 text-sm font-normal text-gray-400 dark:text-gray-500">
-									By {models[selectedModelIdx]?.info?.meta?.user.name ??
-										`@${models[selectedModelIdx]?.info?.meta?.user.username}`}
+									By
+									{#if models[selectedModelIdx]?.info?.meta?.user.community}
+										<a
+											href="https://openwebui.com/m/{models[selectedModelIdx]?.info?.meta?.user
+												.username}"
+											>{models[selectedModelIdx]?.info?.meta?.user.name
+												? models[selectedModelIdx]?.info?.meta?.user.name
+												: `@${models[selectedModelIdx]?.info?.meta?.user.username}`}</a
+										>
+									{:else}
+										{models[selectedModelIdx]?.info?.meta?.user.name}
+									{/if}
 								</div>
 							{/if}
 						{/if}
