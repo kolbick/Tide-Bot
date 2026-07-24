@@ -194,7 +194,8 @@ both hashes to match the SHA-256 recorded in acceptance evidence. The same
 absolute `ATLAS` path is the input to every release-only command:
 
 ~~~
-SKILL_DIR="$HOME/.codex/skills/hatch-pet"
+HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
+SKILL_DIR="$HATCH_PET_SKILL_DIR"
 "$PYTHON" "$SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" \
   --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
 "$PYTHON" "$SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" \
@@ -373,7 +374,8 @@ neutral temporary working directory (not the repository or any deployment
 directory) and then runs only:
 
 ~~~
-env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUN_TMPDIR" \
+env -i PATH="$PATH" TMPDIR="$RUN_TMPDIR" \
+  DOCKER_CONFIG="$RUN_TMPDIR/docker-config" \
   docker compose --file "$COMPOSE_FILE_PATH" --env-file "$RUN_ENV_FILE" \
   --project-name "tedbot-presence-it-${RUN_ID}" <up|ps|logs|run|down arguments>
 ~~~
@@ -1018,8 +1020,9 @@ node --test scripts/validate-ted-bot-pet.test.mjs
 node scripts/validate-ted-bot-pet.mjs
 # Release-only: call load_workspace_dependencies; set PYTHON to its exact bundled runtime.
 ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/superpowers/evidence/2026-07-24-ted-bot-native-companion"; shasum -a 256 "$ATLAS"
-"$PYTHON" "$HOME/.codex/skills/hatch-pet/scripts/validate_atlas.py" "$ATLAS" --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
-"$PYTHON" "$HOME/.codex/skills/hatch-pet/scripts/make_contact_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
+HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
 shasum -a 256 "$ATLAS"
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
 npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts src/lib/ted-bot/openMainWindow.test.ts

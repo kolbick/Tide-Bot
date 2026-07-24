@@ -173,3 +173,13 @@ release.
 - `git diff --check` passed before the focused documentation commit.
 - No product files, dependencies, lockfiles, secrets, or user assets were
   modified.
+
+## Final Task 0 documentation safety cleanup
+
+- Task 2 and the final release gate now assign
+  `HATCH_PET_SKILL_DIR` to the explicit Hatch Pet skill path before invoking
+  the validator or contact-sheet script; the plan does not rely on a home
+  directory expansion.
+- Task 3's isolated Compose example now uses only `PATH`, `TMPDIR`, and the
+  run-specific `DOCKER_CONFIG` under `RUN_TMPDIR`; it does not preserve or
+  reset a home-directory environment variable.
