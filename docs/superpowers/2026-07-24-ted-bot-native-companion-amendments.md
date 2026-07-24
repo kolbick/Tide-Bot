@@ -9,8 +9,11 @@ reviewing the approved native-companion plan against Tide-Bot at
 - Tide-Bot remains the product; Ted-Bot remains its black-goldendoodle
   companion.
 - `static/tide-bot/ted-bot/` is the canonical tracked Ted-Bot package. It
-  contains the already validated `spritesheet.webp` and will gain the matching
-  v2 `pet.json` metadata. The web app continues to load that sprite directly.
+  contains the already validated `spritesheet.webp` and must gain `pet.json`
+  with `id: "ted-bot"`, `displayName: "Ted-Bot"`, a description identifying
+  Tide-Bot's black-goldendoodle companion, `spriteVersionNumber: 2`, and
+  `spritesheetPath: "spritesheet.webp"`. The web app continues to load that
+  tracked sprite directly.
 - Do not stage the root `tide-bot-pet/` directory: it is a different Cyborg
   Captain package. Do not stage `teddy-v2-upgrade/`: it is local generation
   and QA provenance, not runtime source.
@@ -36,7 +39,8 @@ reviewing the approved native-companion plan against Tide-Bot at
 - `Chat.svelte` must make lifecycle resets safe before companion reuse: an
   epoch invalidates stale load, completion, stop, and queue continuations; a
   pending confirmation or input callback resolves `false` before reset or
-  destroy; and a cleared `chatIdProp` is handled as a route switch.
+  destroy; and an empty (`''`) or nullish `chatIdProp` transition is handled as
+  a route-switch reset.
 - `MessageInput.svelte` receives a companion mode that exposes only typed
   input, send, and stop. It removes attachment, audio, web-search, tool,
   terminal, and other optional controls from the compact surface without
@@ -58,10 +62,10 @@ reviewing the approved native-companion plan against Tide-Bot at
 - Presence data is ephemeral and limited to client ID, authorized chat ID,
   canonical chat title, device label, focus flag, and focus timestamp. It is
   never logged or persisted in Tide-Bot's application database.
-- A memory store is allowed only for one worker without a Redis Socket.IO
+- A memory store is allowed only with exactly one worker and no Redis Socket.IO
   manager. With `WEBSOCKET_MANAGER=redis`, use the existing async Redis
-  connection and atomic per-user updates with a shared revision. Multiple
-  workers without Redis fail startup rather than silently diverging.
+  connection and atomic per-user updates with a shared revision. Startup fails
+  when multiple workers run without Redis rather than silently diverging.
 - Disconnect removes its socket before session cleanup. The TTL loop has a
   stored FastAPI lifespan task that is cancelled and awaited on shutdown.
   Reconnect resets the browser revision before accepting a fresh snapshot.
@@ -78,9 +82,10 @@ reviewing the approved native-companion plan against Tide-Bot at
   `CompanionPanel.test.ts` remains a Node source/contract test that reads the
   Svelte source and verifies canonical Chat reuse without rendering it. Do not
   make jsdom the global Vitest environment.
-- Add authenticated Cypress smoke coverage for companion routing, chrome
-  suppression, typed send/stop, confirmation denial, chat synchronization,
-  and no duplicate completion request.
+- Add environment-gated authenticated Cypress smoke coverage for companion
+  routing, chrome suppression, typed send/stop, confirmation denial, chat
+  synchronization, and no duplicate completion request. It must never log or
+  commit credentials; release evidence requires a required-mode green run.
 - The desktop shell permits only a companion-scoped `show_main_window` native
   command. It uses a release HTTPS Tide-Bot origin and an explicitly separate
   loopback development origin, with no filesystem, shell, credential bridge,
