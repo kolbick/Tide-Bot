@@ -1,0 +1,96 @@
+name: tedbot-presence-integration
+
+x-presence-worker: &presence-worker
+  image: tide-bot:local
+  restart: 'no'
+  environment: &presence-environment
+    WEBUI_NAME: Tide-Bot
+    WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?private integration secret required}
+    DATABASE_URL: sqlite:////app/backend/data/presence-integration.db
+    DATA_DIR: /app/backend/data
+    ENABLE_SIGNUP: 'true'
+    ENABLE_VERSION_UPDATE_CHECK: 'false'
+    ENABLE_COMMUNITY_SHARING: 'false'
+    ENABLE_WEBSOCKET_SUPPORT: 'true'
+    WEBSOCKET_MANAGER: redis
+    WEBSOCKET_REDIS_URL: redis://presence-redis:6379/0
+    REDIS_URL: redis://presence-redis:6379/0
+    REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:?private integration namespace required}
+    UVICORN_WORKERS: '1'
+    CORS_ALLOW_ORIGIN: '*'
+  volumes:
+    - integration-data:/app/backend/data
+    - ../../backend/open_webui:/app/backend/open_webui:ro
+  healthcheck:
+    test:
+      [
+        'CMD-SHELL',
+        'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:8080/health'', timeout=5)"'
+      ]
+    interval: 5s
+    timeout: 5s
+    retries: 48
+    start_period: 20s
+  networks:
+    - presence-integration
+
+services:
+  presence-redis:
+    image: redis:7-alpine
+    restart: 'no'
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - presence-integration
+
+  presence-worker-a:
+    <<: *presence-worker
+    depends_on:
+      presence-redis:
+        condition: service_healthy
+    environment:
+      <<: *presence-environment
+      INSTANCE_ID: presence-worker-a
+
+  presence-worker-b:
+    <<: *presence-worker
+    depends_on:
+      presence-redis:
+        condition: service_healthy
+      presence-worker-a:
+        condition: service_healthy
+    environment:
+      <<: *presence-environment
+      INSTANCE_ID: presence-worker-b
+
+  presence-integration:
+    image: tide-bot:local
+    restart: 'no'
+    profiles: ['integration-test']
+    depends_on:
+      presence-worker-a:
+        condition: service_healthy
+      presence-worker-b:
+        condition: service_healthy
+    environment:
+      PRESENCE_WORKER_A_URL: http://presence-worker-a:8080
+      PRESENCE_WORKER_B_URL: http://presence-worker-b:8080
+      WEBSOCKET_REDIS_URL: redis://presence-redis:6379/0
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:?private integration namespace required}
+    command:
+      ['python', '/app/backend/open_webui/socket/test_companion_presence_redis_integration.py']
+    volumes:
+      - ../../backend/open_webui:/app/backend/open_webui:ro
+    networks:
+      - presence-integration
+
+volumes:
+  integration-data:
+
+networks:
+  presence-integration:
+    driver: bridge

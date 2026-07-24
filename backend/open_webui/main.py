@@ -175,11 +175,16 @@ from open_webui.routers.retrieval import (
     get_reranking_function,
     get_rf,
 )
+from open_webui.socket.companion_presence import (
+    start_presence_expiry_task,
+    stop_presence_expiry_task,
+)
 from open_webui.socket.main import (
     MODELS,
     get_event_emitter,
     get_models_in_use,
     get_user_id_from_session_pool,
+    initialize_companion_presence_service,
     periodic_session_pool_cleanup,
     periodic_usage_pool_cleanup,
 )
@@ -314,6 +319,8 @@ https://github.com/open-webui/open-webui
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    companion_presence = initialize_companion_presence_service()
+
     # Store reference to main event loop for sync->async calls (e.g., embedding generation)
     # This allows sync functions to schedule work on the main loop without blocking health checks
     app.state.main_loop = asyncio.get_running_loop()
@@ -431,7 +438,11 @@ async def lifespan(app: FastAPI):
     app.state.startup_complete = True
     await publish_event(app, EVENTS.SYSTEM_STARTUP_COMPLETED, source='system')
 
-    yield
+    start_presence_expiry_task(app, companion_presence)
+    try:
+        yield
+    finally:
+        await stop_presence_expiry_task(app)
 
     await publish_event(app, EVENTS.SYSTEM_SHUTDOWN_STARTED, source='system')
 

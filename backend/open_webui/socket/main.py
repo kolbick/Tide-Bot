@@ -16,6 +16,7 @@ from open_webui.env import (
     ENABLE_WEBSOCKET_SUPPORT,
     GLOBAL_LOG_LEVEL,
     REDIS_KEY_PREFIX,
+    UVICORN_WORKERS,
     VERSION,
     WEBSOCKET_EVENT_CALLER_TIMEOUT,
     WEBSOCKET_MANAGER,
@@ -35,6 +36,10 @@ from open_webui.models.channels import Channels
 from open_webui.models.chats import Chats
 from open_webui.models.notes import Notes, NoteUpdateForm
 from open_webui.models.users import UserNameResponse, Users
+from open_webui.socket.companion_presence import (
+    CompanionPresenceSocketService,
+    create_presence_store,
+)
 from open_webui.socket.utils import RedisDict, RedisLock, YdocManager
 from open_webui.tasks import create_task, stop_item_tasks
 from open_webui.utils.access_control import has_permission
@@ -180,6 +185,26 @@ else:
 
     aquire_func = release_func = renew_func = lambda: True
     session_aquire_func = session_release_func = session_renew_func = lambda: True
+
+
+COMPANION_PRESENCE_SERVICE: CompanionPresenceSocketService | None = None
+
+
+def initialize_companion_presence_service() -> CompanionPresenceSocketService:
+    global COMPANION_PRESENCE_SERVICE
+    if COMPANION_PRESENCE_SERVICE is None:
+        store = create_presence_store(
+            worker_count=UVICORN_WORKERS,
+            websocket_manager=WEBSOCKET_MANAGER,
+            redis=REDIS,
+            redis_key_prefix=REDIS_KEY_PREFIX,
+        )
+        COMPANION_PRESENCE_SERVICE = CompanionPresenceSocketService(
+            sio=sio,
+            session_pool=SESSION_POOL,
+            store=store,
+        )
+    return COMPANION_PRESENCE_SERVICE
 
 
 YDOC_MANAGER = YdocManager(
@@ -439,6 +464,18 @@ async def heartbeat(sid, data):
     if user:
         SESSION_POOL[sid] = {**user, 'last_seen_at': int(time.time())}
         await Users.update_last_active_by_id(user['id'])
+
+
+@sio.on('companion:presence:update')
+async def companion_presence_update(sid, data):
+    service = COMPANION_PRESENCE_SERVICE or initialize_companion_presence_service()
+    return await service.update(sid, data)
+
+
+@sio.on('companion:presence:subscribe')
+async def companion_presence_subscribe(sid, data=None):
+    service = COMPANION_PRESENCE_SERVICE or initialize_companion_presence_service()
+    return await service.subscribe(sid)
 
 
 @sio.on('join-channels')
@@ -858,6 +895,12 @@ async def yjs_awareness_update(sid, data):
 
 @sio.event
 async def disconnect(sid, reason=None):
+    if COMPANION_PRESENCE_SERVICE is not None:
+        try:
+            await COMPANION_PRESENCE_SERVICE.disconnect(sid)
+        except Exception:
+            log.exception('Failed to remove companion presence during socket disconnect')
+
     if sid in SESSION_POOL:
         user = SESSION_POOL[sid]
         del SESSION_POOL[sid]
