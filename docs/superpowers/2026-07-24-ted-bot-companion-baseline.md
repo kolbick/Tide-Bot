@@ -57,7 +57,11 @@ implementation plan requires separate future gates that have not run here:
   contact-sheet, direction, blind, semantic, and metadata artifacts exist only
   under its 0700 pending directory until `publish-pet-qa-run` validates and
   atomically publishes the whole run. A pending path is never acceptance
-  evidence; the baseline has no published run and remains pending.
+  evidence; the baseline has no published run and remains pending. The required
+  ID has the same nonempty lowercase letters/digits/hyphens, alphanumeric-edge
+  grammar as `BLIND_RUN_ID`; the verifier checks derived path containment before
+  creation and safely refuses malformed/traversal values and pending/final
+  collisions.
 - Lifecycle acceptance must exercise the narrow binding that `Chat.svelte`
   itself uses for deferred load, completion, stop, and queue continuations.
   A standalone epoch test is not sufficient; reset/navigation/destruction must

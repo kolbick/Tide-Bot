@@ -198,7 +198,9 @@ absolute `ATLAS` path is the input to every release-only command:
 
 ~~~
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
-PET_QA_RUN_ID="release-<unique-lowercase-id>" # required; no generated fallback
+# Required grammar: lowercase letters, digits, and hyphens only; first and last
+# characters are alphanumeric. No generated fallback.
+PET_QA_RUN_ID="release-<unique-lowercase-id>"
 PET_QA_RUNS_ROOT="$EVIDENCE_DIR/pet-qa-runs"
 node scripts/verify-ted-bot-direction-evidence.mjs prepare-pet-qa-run \
   --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
@@ -287,9 +289,16 @@ ID, unverifiable manifest, replaced verdict, failed Hatch combine, or envelope
 mismatch. Direct raw Hatch combine is prohibited for release evidence.
 
 The same verifier owns the outer pet-QA transaction. It requires the distinct
-conservative `PET_QA_RUN_ID` and creates only
-`$PET_QA_RUNS_ROOT/.${PET_QA_RUN_ID}.pending` mode 0700, refusing an existing
-`$PET_QA_RUNS_ROOT/$PET_QA_RUN_ID`. All release QA output belongs there:
+conservative `PET_QA_RUN_ID` with the exact `BLIND_RUN_ID` grammar: it is
+nonempty, uses only lowercase letters, digits, and hyphens, and begins and ends
+alphanumeric. It rejects a dot, path separator, whitespace, uppercase letter,
+or any other malformed value. Before any path creation, it validates that the
+resolved runs root and both derived pending/final paths are contained within
+`$PET_QA_RUNS_ROOT`; traversal or a root-escape attempt is refused. It then
+creates only `$PET_QA_RUNS_ROOT/.${PET_QA_RUN_ID}.pending` mode 0700, safely
+refusing either an existing `$PET_QA_RUNS_ROOT/$PET_QA_RUN_ID` final directory
+or an existing same-run pending directory without changing either. All release
+QA output belongs there:
 validator JSON, contact sheet, direction QA sheet, continuity JSON, blind
 sheet/key/manifest/reviewer material, the published blind subdirectory,
 semantic-review JSON, and final run metadata. After the independent semantic
@@ -315,7 +324,11 @@ run cannot publish the current run; a failure/mutation leaves no current-run
 final directory; and an existing same-run final directory is refused. Extend
 the same focused Node test with outer `publish-pet-qa-run` fixtures for complete
 publish, expected-artifact/hash mutation rejection with no current final run,
-and existing-final refusal; a `.pending` fixture is never accepted. Run:
+and existing-final refusal; a `.pending` fixture is never accepted. Add
+`prepare-pet-qa-run` refusals for malformed `PET_QA_RUN_ID` values (empty, dot,
+traversal, path separator, whitespace, and uppercase), root-containment escape
+attempts, and existing same-run pending/final collisions, proving that no path
+is created outside the runs root and no colliding directory is changed. Run:
 
 ~~~
 node --test scripts/verify-ted-bot-direction-evidence.test.mjs
@@ -1344,6 +1357,7 @@ node --test scripts/verify-ted-bot-direction-evidence.test.mjs
 # Release-only: call load_workspace_dependencies; set PYTHON to its exact bundled runtime.
 ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/superpowers/evidence/2026-07-24-ted-bot-native-companion"; shasum -a 256 "$ATLAS"
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
+# PET_QA_RUN_ID grammar: lowercase letters/digits/hyphens only; first/last alphanumeric.
 PET_QA_RUN_ID="release-<unique-lowercase-id>"; PET_QA_RUNS_ROOT="$EVIDENCE_DIR/pet-qa-runs"
 node scripts/verify-ted-bot-direction-evidence.mjs prepare-pet-qa-run --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
 PET_QA_PENDING_DIR="$PET_QA_RUNS_ROOT/.${PET_QA_RUN_ID}.pending"; PET_QA_RUN_DIR="$PET_QA_RUNS_ROOT/$PET_QA_RUN_ID"

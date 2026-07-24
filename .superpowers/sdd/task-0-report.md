@@ -310,8 +310,13 @@ release.
   live only in the 0700 outer pending run. `publish-pet-qa-run` revalidates the
   complete artifact/hash chain and atomically publishes the entire run; root
   evidence receives only the run root. Pending paths are explicitly nonaccepted
-  diagnostics and cannot be cited as acceptance.
+  diagnostics and cannot be cited as acceptance. `PET_QA_RUN_ID` has the exact
+  nonempty lowercase letters/digits/hyphens, alphanumeric-edge grammar of
+  `BLIND_RUN_ID`; the verifier validates derived-path containment before any
+  creation and refuses malformed/traversal values or pending/final collisions
+  without changing existing directories.
 - The existing Node verifier test contract additionally covers outer publish,
-  mutation/no-current-final, and existing-final refusal. Acceptance must name
-  the current published `PET_QA_RUN_ID` path, not an inner blind or pending
-  path. This remains a future release gate, not a claim of completed QA.
+  mutation/no-current-final, existing-final refusal, and malformed
+  `PET_QA_RUN_ID`/traversal/pending-collision refusals. Acceptance must name the
+  current published `PET_QA_RUN_ID` path, not an inner blind or pending path.
+  This remains a future release gate, not a claim of completed QA.
