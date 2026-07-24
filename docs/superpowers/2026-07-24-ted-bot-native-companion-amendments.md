@@ -18,9 +18,17 @@ reviewing the approved native-companion plan against Tide-Bot at
 ## Companion surface and canonical chat flow
 
 - `/companion` is an authenticated route inside the existing `(app)` route
-  group. Both root and app layouts must use a single companion-route predicate
-  to suppress desktop chrome, overlays, and global shortcuts while preserving
-  the normal authentication, model, socket, tool, terminal, and CPTR setup.
+  group. Create `src/lib/ted-bot/routes.ts` as the single route source with
+  `export const isCompanionRoute = (pathname: string) => pathname ===
+  '/companion';`. `src/routes/+layout.svelte` and
+  `src/routes/(app)/+layout.svelte` must both import it and derive
+  `isCompanionRoute($page.url.pathname)` from the SvelteKit page store. The
+  root layout uses it to suppress its app-shell chrome; the app layout uses it
+  to suppress its sidebar and global overlays and to return before evaluating
+  any global shortcut. Do not use `includes`, `startsWith`, or a duplicate
+  local pathname check: only the exact `/companion` route is the compact
+  surface. Authentication, model, socket, tool, terminal, and CPTR setup stay
+  active.
 - Do not create a parallel `chatController` or duplicate completion payload,
   event, confirmation, queue, tool, terminal, or stop logic. Extend the
   canonical `Chat.svelte` with a typed `surface: 'full' | 'note' |
@@ -43,7 +51,8 @@ reviewing the approved native-companion plan against Tide-Bot at
 - The service authorizes from `SESSION_POOL[sid]` only. Presence payloads
   never carry a user ID, role, credential, or chat title accepted as truth.
 - Extract `get_readable_chat(user_id, role, chat_id, db) -> ChatModel | None`
-  from the existing chat GET route. It preserves the exact owner,
+  from the existing chat GET route. It returns the existing
+  `backend.open_webui.models.chats.ChatModel`, not a Boolean, and preserves the exact owner,
   admin-enabled-or-internal, shared-chat-grant, and inherited shared-folder
   rules. Presence uses the returned chat title rather than client input.
 - Presence data is ephemeral and limited to client ID, authorized chat ID,

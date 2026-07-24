@@ -33,7 +33,7 @@
 | src/lib/components/ted-bot/TedBotPet.svelte | Accessible atlas renderer with idle and reduced-motion states. |
 | src/lib/components/ted-bot/CompanionPanel.svelte | Compact transcript, typed composer, status, and full-app action. |
 | src/lib/ted-bot/presence.ts | Browser presence publisher, subscriber, and wire-payload guards. |
-| src/lib/ted-bot/chatController.ts | Typed companion controller over existing Tide-Bot chat APIs and events. |
+| src/lib/ted-bot/routes.ts | The single exact `/companion` route predicate used by root and app layouts. |
 | src/routes/(app)/companion/+page.svelte | Authenticated companion route. |
 | backend/open_webui/socket/companion_presence.py | Ephemeral registry, parser, limiter, and Socket.IO service. |
 | backend/open_webui/utils/chat_access.py | One chat-read authorization helper for routes and presence. |
@@ -144,7 +144,8 @@ git commit -m 'feat: add ted-bot companion renderer'
 - Modify: backend/open_webui/socket/main.py
 
 **Interfaces:**
-- Produces: can_read_chat(user_id, role, chat_id, db) -> bool.
+- Produces: get_readable_chat(user_id, role, chat_id, db) -> ChatModel | None,
+  where `ChatModel` is `backend.open_webui.models.chats.ChatModel`.
 - Produces: CompanionPresenceSocketService.update(sid, data), subscribe(sid), disconnect(sid), and expire().
 - Consumes: SESSION_POOL, user:{id} Socket.IO rooms, Chats, AccessGrants, and Folders.
 
@@ -153,10 +154,10 @@ git commit -m 'feat: add ted-bot companion renderer'
 ~~~py
 @pytest.mark.asyncio
 async def test_update_rejects_another_users_chat_before_registry_mutation():
-	service, has_access = make_service(access=False)
+	service, get_readable_chat = make_service(readable_chat=None)
 	result = await service.update('sid-1', payload(chatId='other-user-chat'))
 	assert result == {'ok': False, 'error': 'chat_access_denied'}
-	has_access.assert_awaited_once()
+	get_readable_chat.assert_awaited_once()
 	assert service.registry.state('user-1', now=0).active is None
 
 @pytest.mark.asyncio
@@ -181,15 +182,27 @@ Expected: FAIL because the presence module does not exist.
 Extract the existing owner, admin, shared-chat-grant, and shared-folder checks from the GET /chats/{id} handler into:
 
 ~~~py
-async def can_read_chat(user_id: str, role: str, chat_id: str, db: AsyncSession) -> bool:
+async def get_readable_chat(
+    user_id: str, role: str, chat_id: str, db: AsyncSession
+) -> ChatModel | None:
 	owned = await Chats.get_chat_by_id_and_user_id(chat_id, user_id, db=db)
 	if owned:
-		return True
+		return owned
 	# Retain the route's existing admin, AccessGrants, and shared-folder branches here.
-	return False
+	return None
 ~~~
 
-Make the route call that helper. In companion_presence.py define a frozen update record with exactly clientId, chatId, chatTitle, deviceLabel, isFocused, and focusedAt. Reject unknown keys, invalid types, oversized fields, and timestamps below zero. Use a 30-second TTL, 30 updates per minute per socket, newest-focused arbitration, and room=user:{user_id} emits. Wire only companion:presence:update and companion:presence:subscribe handlers, call service.disconnect from the existing disconnect handler, and run one expiry coroutine from startup through shutdown.
+Make the GET `/chats/{id}` route call that helper and build its response from
+the returned model. The presence service calls the same helper and rejects
+when it returns `None`; it takes the canonical title from the returned model,
+never from the payload. In companion_presence.py define a frozen update record
+with exactly clientId, chatId, chatTitle, deviceLabel, isFocused, and focusedAt.
+Reject unknown keys, invalid types, oversized fields, and timestamps below
+zero. Use a 30-second TTL, 30 updates per minute per socket, newest-focused
+arbitration, and room=user:{user_id} emits. Wire only
+companion:presence:update and companion:presence:subscribe handlers, call
+service.disconnect from the existing disconnect handler, and run one expiry
+coroutine from startup through shutdown.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -208,6 +221,8 @@ git commit -m 'feat: synchronize ted-bot active chat presence'
 - Create: src/lib/ted-bot/presence.ts
 - Create: src/lib/ted-bot/presence.test.ts
 - Create: src/lib/components/ted-bot/MainPresencePublisher.svelte
+- Create: src/lib/ted-bot/routes.ts
+- Modify: src/routes/+layout.svelte
 - Modify: src/routes/(app)/+layout.svelte
 
 **Interfaces:**
@@ -261,7 +276,7 @@ export type CompanionPresenceUpdate = {
 };
 ~~~
 
-Store a per-window client ID in sessionStorage. Derive focus from document.hasFocus() and document.visibilityState === 'visible'. Publish unfocused state at destroy. Mount MainPresencePublisher in the authenticated layout; pass the active /c/[id] route chat ID and null on the new-chat route. The subscriber must request companion:presence:subscribe on connect and ignore any state at or below its latest revision.
+Store a per-window client ID in sessionStorage. Derive focus from document.hasFocus() and document.visibilityState === 'visible'. Publish unfocused state at destroy. In `src/lib/ted-bot/routes.ts`, define exactly `export const isCompanionRoute = (pathname: string) => pathname === '/companion';`. Both root and app layouts import this helper and derive their route state from `$page.url.pathname`: the root layout suppresses `AppSidebar` when it is true; the app layout suppresses `Sidebar`, Settings/Changelog/Account-Pending overlays, and returns from the keydown handler before calling `matchKeybinding`. Mount MainPresencePublisher only when the predicate is false; pass the active /c/[id] route chat ID and null on the new-chat route. The subscriber must request companion:presence:subscribe on connect and ignore any state at or below its latest revision.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -270,74 +285,83 @@ Run: npx vitest run src/lib/ted-bot/presence.test.ts
 Expected: PASS.
 
 ~~~
-git add src/lib/ted-bot src/lib/components/ted-bot/MainPresencePublisher.svelte src/routes/'(app)'/+layout.svelte
+git add src/lib/ted-bot src/lib/components/ted-bot/MainPresencePublisher.svelte src/routes/+layout.svelte src/routes/'(app)'/+layout.svelte
 git commit -m 'feat: publish tide-bot active chat presence'
 ~~~
 
 ## Task 5: Build the typed companion route
 
 **Files:**
-- Create: src/lib/ted-bot/chatController.ts
-- Create: src/lib/ted-bot/chatController.test.ts
 - Create: src/lib/components/ted-bot/CompanionPanel.svelte
 - Create: src/lib/components/ted-bot/CompanionPanel.test.ts
 - Create: src/routes/(app)/companion/+page.svelte
-- Modify: src/lib/components/chat/Chat.svelte only if a small, tested completion adapter is necessary.
+- Modify: src/lib/components/chat/Chat.svelte
+- Modify: src/lib/components/chat/MessageInput.svelte
 
 **Interfaces:**
-- Produces: createCompanionChatController with open, startNew, submit, stop, handleEvent, and destroy.
-- Consumes: existing Tide-Bot load, completion, stop, event, tool, and confirmation behavior.
-- Constraint: existing chat code remains the only completion-payload owner.
+- Produces: `Chat.svelte` surface prop `'full' | 'note' | 'companion'` and a
+  compact companion presentation of that canonical surface.
+- Consumes: the existing Chat load, completion, stop, event, tool, terminal,
+  queue, and confirmation behavior.
+- Constraint: canonical `Chat.svelte` remains the only completion-payload,
+  lifecycle, event, confirmation, and stop owner. Do not create or retain a
+  `chatController` or duplicate chat APIs/events for the companion.
 
-- [ ] **Step 1: Write the failing lifecycle tests**
+- [ ] **Step 1: Write the failing canonical-surface tests**
 
 ~~~ts
-test('does not attach a completion after Start New', async () => {
-	const complete = deferred<{ chat_id: string; task_id: string }>();
-	const controller = createCompanionChatController(makeDependencies({ complete: () => complete.promise }));
-	void controller.submit('hello');
-	await controller.startNew();
-	complete.resolve({ chat_id: 'old-chat', task_id: 'old-task' });
-	await Promise.resolve();
-	expect(get(controller).chatId).toBeNull();
+test('uses the canonical Chat surface for the companion route', async () => {
+	render(CompanionPanel, { chatId: 'chat-1' });
+	expect(Chat).toHaveBeenCalledWith(expect.objectContaining({
+		chatIdProp: 'chat-1',
+		surface: 'companion'
+	}), expect.anything());
 });
 
-test('does not auto-approve a confirmation', async () => {
-	const controller = createCompanionChatController(makeDependencies());
-	await controller.handleEvent(confirmationEvent());
-	expect(get(controller).confirmation?.title).toBe('Confirmation required');
+test('companion input leaves typed send and stop available while hiding optional controls', () => {
+	render(MessageInput, { surface: 'companion' });
+	expect(screen.getByRole('textbox')).toBeVisible();
+	expect(screen.queryByLabelText(/attach/i)).not.toBeInTheDocument();
+	expect(screen.queryByLabelText(/microphone/i)).not.toBeInTheDocument();
 });
 ~~~
 
 - [ ] **Step 2: Verify the tests fail**
 
-Run: npx vitest run src/lib/ted-bot/chatController.test.ts
+Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts
 
-Expected: FAIL because the controller does not exist.
+Expected: FAIL because the companion canonical surface and compact input mode do not exist.
 
-- [ ] **Step 3: Implement epoch-protected typed chat**
+- [ ] **Step 3: Reuse the canonical, epoch-protected Chat surface**
 
 ~~~ts
-const stillCurrent = (epoch: number) => epoch === lifecycleEpoch;
-
-async function startNew() {
-	confirmationCallback?.(false);
-	confirmationCallback = null;
-	lifecycleEpoch += 1;
-	setState(emptyState());
-}
+type ChatSurface = 'full' | 'note' | 'companion';
+export let surface: ChatSurface = 'full';
 ~~~
 
-Capture lifecycleEpoch before each load, completion, stop, and queued operation. After every await, return without mutating state when the epoch changed. Use normal Tide-Bot APIs to load and create chats, submit messages, attach to current streams, stop work, and pass confirmation callbacks through unchanged. CompanionPanel contains only pet state, transcript, typed composer, send, stop, connection state, confirmation UI, and Open Tide-Bot. It contains no microphone or speech controls.
+Extend `Chat.svelte` directly rather than introducing a controller. Its existing
+epoch/token protection applies before and after every awaited load,
+completion, stop, and queued operation; reset resolves a pending confirmation
+or input callback with `false`, and a cleared `chatIdProp` switches route state.
+The companion page obtains the active authorized chat ID from presence and
+renders `CompanionPanel`, which renders `<Chat chatIdProp={chatId}
+surface="companion" />`. Companion presentation retains the canonical
+transcript, typed send, stop, connection state, and confirmation UI. Pass
+`surface` to `MessageInput.svelte`; in companion mode hide attachments, audio,
+web search, tools, terminal, and other optional controls while retaining only
+typed input, send, and stop. Do not alter server permissions or confirmation
+behavior, and do not add a second completion request, stream attachment, or
+event handler.
 
 - [ ] **Step 4: Verify and commit**
 
-Run: npx vitest run src/lib/ted-bot/chatController.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts
+Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts
 
-Expected: PASS with Start New race, reconnect, denied confirmation, and no-duplicate completion coverage.
+Expected: PASS with canonical-surface reuse, typed-only controls, Start New
+race, denied confirmation, and no-duplicate completion coverage.
 
 ~~~
-git add src/lib/ted-bot/chatController.ts src/lib/ted-bot/chatController.test.ts src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte
+git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte
 git commit -m 'feat: add ted-bot typed companion chat'
 ~~~
 
@@ -481,4 +505,4 @@ git commit -m 'docs: record ted-bot companion acceptance'
 
 - The tasks cover the approved native architecture, typed current-chat behavior, session lifecycle, security, accessibility, and both-platform acceptance.
 - Push-to-talk, read-aloud, browser Picture-in-Picture, autonomous actions, and a standalone Ted-Bot service are excluded.
-- Presence supplies active-chat state, the controller supplies typed chat, and Tauri supplies the only native main-window command.
+- Presence supplies active-chat state, the canonical Chat surface supplies typed chat, and Tauri supplies the only native main-window command.
