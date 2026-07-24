@@ -477,4 +477,3 @@ git commit -m 'docs: record ted-bot companion acceptance'
 - The tasks cover the approved native architecture, typed current-chat behavior, session lifecycle, security, accessibility, and both-platform acceptance.
 - Push-to-talk, read-aloud, browser Picture-in-Picture, autonomous actions, and a standalone Ted-Bot service are excluded.
 - Presence supplies active-chat state, the controller supplies typed chat, and Tauri supplies the only native main-window command.
-
