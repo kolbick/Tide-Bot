@@ -84,12 +84,26 @@ reviewing the approved native-companion plan against Tide-Bot at
   must drive actual Socket.IO handlers and the Redis atomic path, not
   `fake_redis` or injected revisions/counts; prove concurrent cross-worker
   updates share revision ordering, disconnect cleanup promotes the remaining
-  focused client, and user rooms are isolated. Use a generated ephemeral key
-  namespace, no real credentials or credential logging, and unconditional
-  teardown. The final Docker gate is
+  focused client, and user rooms are isolated. The wrapper requires a nonempty,
+  project-name-safe `RUN_ID` and derives the explicit Compose project
+  `tedbot-presence-it-${RUN_ID}`. Every Compose `up`, `ps`, `logs`, test, and
+  `down` command uses that exact project name; there is no default-project
+  invocation or generated fallback ID. The run owns isolated volumes/database,
+  an ephemeral Redis namespace, and a generated private test configuration
+  including a fresh `WEBUI_SECRET_KEY`. It must not read root deployment `.env`
+  files, production configuration, or production credentials.
+- The one-shot test service creates randomized disposable users and authorized
+  chats in that isolated database, gets session tokens through the supported
+  Tide-Bot auth flow (or a documented test-only isolated bootstrap), and keeps
+  credentials/tokens in-memory or internal environment channels only. It never
+  logs them. Unconditional cleanup may target only
+  `tedbot-presence-it-${RUN_ID}` resources; after teardown it verifies its
+  labelled containers, network, and volumes are gone, and confirms no existing
+  Tide-Bot service was stopped or restarted. The final Docker gate is
   `RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs`;
-  record both worker endpoints, ordered revisions, promotion/isolation
-  assertions, and teardown in acceptance evidence.
+  record the isolated project name, both worker endpoints, ordered revisions,
+  promotion/isolation assertions, namespace-empty check, and safe teardown in
+  acceptance evidence.
 
 ## Tests and native boundary
 

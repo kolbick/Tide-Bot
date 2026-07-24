@@ -320,14 +320,46 @@ service, two independently started Tide-Bot worker services
 The workers expose separate Socket.IO endpoints to the test service while
 sharing one real Redis instance; they use a generated ephemeral Redis key
 namespace (for example `tedbot-presence-it-${RUN_ID}:`), never default
-application presence data. The configuration uses only local test values,
-reads no real credentials, and never prints credentials.
+application presence data. All database bind mounts and named volumes are
+unique to this Compose project/run. The configuration uses only local test
+values: it generates an ephemeral `WEBUI_SECRET_KEY` and test-only database,
+Redis, and application settings in a private temporary env file. It must not
+read the repository-root deployment `.env`, any production env file, or
+production credentials, and it must never print credentials or secrets.
 
-Create `scripts/run-companion-presence-redis-integration.mjs` to generate the
-run ID, start the composed stack, wait for both worker health endpoints, run
-the test service, collect only non-sensitive worker/test logs and request
-evidence, then always run `docker compose ... down --volumes --remove-orphans`
-in `finally`/trap cleanup. Create
+Create `scripts/run-companion-presence-redis-integration.mjs` as the only
+wrapper for this harness. It requires `RUN_ID`; reject an empty value or one
+that fails a documented conservative project-name-safe validation (lowercase
+letters, digits, and hyphens, beginning and ending alphanumeric). Derive and
+use exactly `--project-name tedbot-presence-it-${RUN_ID}` for **every** Compose
+`up`, `ps`, `logs`, test-exec, and `down` invocation. Do not generate a
+fallback RUN_ID and never invoke Compose without that explicit project name.
+Before `up`, generate the private ephemeral env/config file and retain its path
+only in process memory or a mode-0600 temporary directory. Start the composed
+stack, wait for both worker health endpoints, run the test service, and collect
+only redacted/non-sensitive worker and test evidence.
+
+The one-shot test service creates two randomized, disposable users and their
+authorized chats only in the isolated test database. It obtains each session
+token by exercising Tide-Bot's supported sign-up/sign-in flow against an
+isolated worker, or by a documented test-only bootstrap that creates the same
+password/session records and is enabled solely by the private ephemeral test
+configuration. It then connects one authenticated client to each distinct
+worker and creates an unrelated second user's chat for isolation assertions.
+The service passes credentials/tokens only through in-memory request headers or
+environment variables internal to the Compose project; it never writes or logs
+them. The tests retain the real-handler/real-Redis assertions: a shared,
+monotonically ordered revision stream for concurrent cross-worker updates,
+disconnect promotion of the remaining focused client, and no user-room state
+or event crossing.
+
+In an unconditional `finally`/trap, cleanup runs only
+`docker compose --project-name tedbot-presence-it-${RUN_ID} ... down --volumes
+--remove-orphans`, deletes that run's private temporary config, and verifies
+that only resources bearing this exact project label/name were removed (the
+project containers, networks, and volumes). It must inspect, but never stop,
+restart, recreate, or remove any pre-existing Tide-Bot container, network, or
+volume; a live Tide-Bot Compose stack is explicitly out of scope. Create
 `backend/open_webui/socket/test_companion_presence_redis_integration.py` as
 the test-service entrypoint. It connects authenticated test clients to both
 independently started workers and exercises the actual Socket.IO handler and
@@ -335,8 +367,9 @@ independently started workers and exercises the actual Socket.IO handler and
 two workers result in one shared monotonically ordered revision stream,
 disconnect cleanup promotes the remaining focused client, and no state/event
 crosses from `user-a` into `user-b`'s room. Assert the ephemeral namespace is
-empty at the end. No test is complete if it calls `fake_redis`, directly patches
-a store count/revision, or runs both clients through one worker.
+empty at the end before namespaced teardown. No test is complete if it calls
+`fake_redis`, directly patches a store count/revision, or runs both clients
+through one worker.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -350,7 +383,10 @@ RUN_ID=local-$(date +%s) node scripts/run-companion-presence-redis-integration.m
 Expected: PASS with malformed, unauthorized, cross-user, rate-limit, expiry,
 disconnect-promotion, topology, Redis atomic revision, disconnect ordering, and
 lifespan shutdown coverage, plus disposable real-Redis/two-worker
-concurrent-revision, disconnect-promotion, and room-isolation evidence.
+concurrent-revision, disconnect-promotion, and room-isolation evidence. The
+wrapper output records the explicit project name, redacted worker endpoints,
+assertion results, namespace-empty check, namespaced-resource teardown check,
+and confirmation that no existing Tide-Bot service was stopped or restarted.
 
 ~~~
 git add backend/open_webui/utils/chat_access.py backend/open_webui/socket backend/open_webui/routers/chats.py backend/open_webui/main.py deploy/tide-stack/docker-compose.presence-integration.yml scripts/run-companion-presence-redis-integration.mjs
@@ -888,9 +924,11 @@ inherited global npm run check result separately if it remains non-clean.
 The release acceptance record must include a current visual atlas-inspection
 entry for the tracked black-goldendoodle asset and the exact successful
 `RUN_ID=release-... node scripts/run-companion-presence-redis-integration.mjs`
-command, worker-a/worker-b endpoint evidence, shared ordered revisions,
-disconnect-promotion result, user-room-isolation result, and teardown
-confirmation. A structural package check or single-worker/fake-Redis pytest
+command, explicit isolated Compose project name, worker-a/worker-b endpoint
+evidence, shared ordered revisions, disconnect-promotion result,
+user-room-isolation result, namespace-empty result, and confirmation that only
+the namespaced test resources were removed without stopping or restarting an
+existing Tide-Bot service. A structural package check or single-worker/fake-Redis pytest
 does not replace either gate.
 Final release evidence additionally requires the green GitHub Windows artifact
 build and the completed manual Windows procedure; neither is replaced by the
