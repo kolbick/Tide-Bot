@@ -49,6 +49,18 @@ reviewing the approved native-companion plan against Tide-Bot at
   Every artifact and reviewer verdict must identify the exact atlas SHA-256.
   This has not run: lack of a bundled runtime/evidence is a pending release
   gate, not a passing claim.
+- Hatch consensus alone does not attest which atlas a reviewer saw. Task 2 must
+  therefore add tracked Node-built-in
+  `scripts/verify-ted-bot-direction-evidence.mjs` and its focused Node test.
+  After blind-sheet/key generation, it writes a redacted manifest containing
+  atlas SHA, blind-sheet SHA, answer-key SHA, and a canonical self-hash. Blind
+  reviewers receive only that manifest plus the blind sheet. Every verdict must
+  attest schema version, distinct reviewer ID, atlas/sheet/manifest hashes, and
+  pair votes. Before combine/validate, the verifier recomputes atlas, sheet,
+  key, and manifest hashes; checks the key's `atlas_sha256`; validates all
+  three attestations and reviewer-ID uniqueness; and writes a passing verifier
+  result JSON. Any mismatch is a hard pending release gate. The focused fixture
+  test must reject a mismatched hash; this evidence has not run.
 
 ## Companion surface and canonical chat flow
 

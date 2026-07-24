@@ -81,6 +81,8 @@ git commit -m 'docs: record ted-bot companion baseline'
 - Create: static/tide-bot/ted-bot/pet.json
 - Create: scripts/validate-ted-bot-pet.mjs
 - Create: scripts/validate-ted-bot-pet.test.mjs
+- Create: scripts/verify-ted-bot-direction-evidence.mjs
+- Create: scripts/verify-ted-bot-direction-evidence.test.mjs
 - Modify: src/lib/components/branding/TedBotMascot.svelte
 - Modify: package.json
 - Modify: package-lock.json
@@ -179,6 +181,7 @@ Run:
 npx vitest run src/lib/components/ted-bot/TedBotPet.test.ts
 node --test scripts/validate-ted-bot-pet.test.mjs
 node scripts/validate-ted-bot-pet.mjs
+node --test scripts/verify-ted-bot-direction-evidence.test.mjs
 ~~~
 
 Expected: PASS.
@@ -206,9 +209,23 @@ HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" \
   --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
   --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
-# Three independent reviewers receive only ted-bot-direction-blind-sheet.png.
-# Each writes one redacted verdict JSON; none may see the answer key, labeled
-# direction sheet, atlas, prompts, or either other reviewer's verdict.
+node scripts/verify-ted-bot-direction-evidence.mjs create-manifest \
+  --atlas "$ATLAS" \
+  --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
+  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
+  --output "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json"
+# Each of three independent reviewers receives only the blind sheet and this
+# redacted manifest, never the answer key, labeled direction sheet, atlas,
+# prompts, or another reviewer's verdict.
+node scripts/verify-ted-bot-direction-evidence.mjs verify-attestations \
+  --atlas "$ATLAS" \
+  --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
+  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
+  --manifest "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json" \
+  --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" \
+  --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" \
+  --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" \
+  --output "$EVIDENCE_DIR/ted-bot-direction-attestation-verification.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" \
   --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" \
   --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" \
@@ -218,6 +235,31 @@ HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
   --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
   --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" \
   --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json"
+~~~
+
+`scripts/verify-ted-bot-direction-evidence.mjs` uses Node built-ins only and
+owns this provenance boundary. `create-manifest` hashes the exact atlas, blind
+sheet, and answer key and writes a redacted manifest with `schemaVersion`,
+`atlasSha256`, `blindSheetSha256`, `answerKeySha256`, and `manifestSha256`.
+`manifestSha256` is the SHA-256 of the canonical manifest payload with that
+self field omitted, so it can be recomputed without a recursive hash. This
+manifest is the only nonvisual metadata a blind reviewer receives.
+
+Each reviewer verdict JSON must have the same schema version, a unique
+`reviewerId`, `atlasSha256`, `blindSheetSha256`, `manifestSha256`, and complete
+pair votes. Before Hatch consensus can run, `verify-attestations` recomputes
+the actual atlas/sheet/key/manifest hashes, checks that the answer key's
+`atlas_sha256` names the actual atlas, verifies every reviewer attestation,
+rejects duplicate reviewer IDs, and writes
+`ted-bot-direction-attestation-verification.json`. It must fail closed on a
+missing or mismatched hash, malformed vote, missing reviewer, duplicated ID,
+or unverifiable manifest; only an `ok: true` verifier result permits the
+subsequent combine/validate commands. Create focused
+`scripts/verify-ted-bot-direction-evidence.test.mjs` fixtures proving normal
+attestations pass and a mismatched atlas/sheet/manifest hash is rejected. Run:
+
+~~~
+node --test scripts/verify-ted-bot-direction-evidence.test.mjs
 ~~~
 
 The Hatch validator's JSON is the deterministic alpha/transparency result: it
@@ -240,19 +282,21 @@ continuity warning from `ted-bot-direction-continuity.json` and the visual
 assessment that accepts or rejects it.
 
 This is a hard release gate: all generated artifacts and each reviewer verdict
-are SHA-bound to the pre/post-identical atlas SHA-256; no blind cardinal may be
-missing, failing, or ambiguous; no semantic verdict may fail; and every
+are SHA-bound to the pre/post-identical atlas SHA-256; the attestation verifier
+must pass before consensus; no blind cardinal may be missing, failing, or
+ambiguous; no semantic verdict may fail; and every
 continuity warning must be assessed and recorded. An ambiguous intermediate
 semantic verdict requires explicit labeled-loop rationale but never overrides a
 blind-cardinal gate. A missing bundled Hatch runtime, hash mismatch, absent
-evidence artifact, failed blind validation, semantic failure, or unassessed
+evidence artifact, failed attestation verifier, failed blind validation,
+semantic failure, or unassessed
 continuity warning leaves release acceptance **pending**; it must never be
 reported as a pass. This is independent of the Node structural validator. Do not stage user-owned
 `teddy-v2-upgrade/` QA or provenance, and do not stage the root
 `tide-bot-pet/` Cyborg package.
 
 ~~~
-git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json scripts/validate-ted-bot-pet.mjs scripts/validate-ted-bot-pet.test.mjs docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md docs/superpowers/evidence/2026-07-24-ted-bot-native-companion/
+git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json scripts/validate-ted-bot-pet.mjs scripts/validate-ted-bot-pet.test.mjs scripts/verify-ted-bot-direction-evidence.mjs scripts/verify-ted-bot-direction-evidence.test.mjs docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md docs/superpowers/evidence/2026-07-24-ted-bot-native-companion/
 git add package.json package-lock.json
 git commit -m 'feat: add ted-bot companion renderer'
 ~~~
@@ -1175,6 +1219,8 @@ npm run build
 git diff --check
 node --test scripts/validate-ted-bot-pet.test.mjs
 node scripts/validate-ted-bot-pet.mjs
+# Proves attestation/hash mismatches are rejected before blind consensus.
+node --test scripts/verify-ted-bot-direction-evidence.test.mjs
 # Release-only: call load_workspace_dependencies; set PYTHON to its exact bundled runtime.
 ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/superpowers/evidence/2026-07-24-ted-bot-native-companion"; shasum -a 256 "$ATLAS"
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
@@ -1183,7 +1229,9 @@ HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-qa-sheet.png"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/measure_direction_continuity.py" "$ATLAS" --json-out "$EVIDENCE_DIR/ted-bot-direction-continuity.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
-# Obtain three independent verdict JSON files from reviewers who saw only the blind sheet.
+node scripts/verify-ted-bot-direction-evidence.mjs create-manifest --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --output "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json"
+# Obtain three independent verdict JSON files from reviewers who saw only the blind sheet and redacted manifest.
+node scripts/verify-ted-bot-direction-evidence.mjs verify-attestations --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --manifest "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --output "$EVIDENCE_DIR/ted-bot-direction-attestation-verification.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json"
 shasum -a 256 "$ATLAS"
@@ -1199,8 +1247,9 @@ Expected: every focused local check passes. The Hatch commands use no bare
 Python, consume the exact SHA-256-bound tracked atlas, produce passing
 deterministic alpha/transparency JSON plus a rendered contact sheet, a labeled
 direction QA sheet, continuity JSON, a randomized blind sheet/answer key,
-three independent blind verdicts, consensus, and blind validation. Every item
-must carry the same pre/post atlas SHA-256. No blind cardinal may be missing,
+redacted provenance manifest, three attested independent blind verdicts,
+attestation-verifier result, consensus, and blind validation. Every item must
+carry the same pre/post atlas SHA-256. No blind cardinal may be missing,
 failing, or ambiguous; every one of the 16 semantic entries must record
 expected direction, observed behavior, pass/fail/ambiguous verdict, and reason;
 semantic failures and unassessed continuity warnings block release. The gate
@@ -1211,7 +1260,9 @@ it must never skip for missing user credentials or run against a live stack.
 Record the inherited global npm run check result separately if it remains
 non-clean.
 The release acceptance record must include a current visual atlas-inspection
-entry for the tracked black-goldendoodle asset and the exact successful
+entry for the tracked black-goldendoodle asset; the blind sheet, redacted
+manifest, its canonical self-hash, three reviewer IDs/verdict hashes, and
+passing attestation-verifier JSON; and the exact successful
 `RUN_ID=release-... node scripts/run-companion-presence-redis-integration.mjs`
 command, explicit isolated Compose project name, worker-a/worker-b endpoint
 evidence, direct-WebSocket shared ordered revisions, single-emitter expiry/

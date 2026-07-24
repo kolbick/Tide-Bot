@@ -41,6 +41,11 @@ implementation plan requires separate future gates that have not run here:
   and a 16-direction semantic record. Missing/failing/ambiguous blind
   cardinals, semantic failure, or unassessed continuity warnings keep release
   acceptance pending.
+- The three blind verdicts must be provenance-attested before Hatch consensus:
+  a tracked Node verifier writes the redacted atlas/sheet/key manifest, validates
+  each distinct reviewer ID and hashes against the actual artifacts/key, and
+  emits a passing result JSON. That verifier/test and release evidence have not
+  run, so they are pending rather than claimed.
 - Lifecycle acceptance must exercise the narrow binding that `Chat.svelte`
   itself uses for deferred load, completion, stop, and queue continuations.
   A standalone epoch test is not sufficient; reset/navigation/destruction must

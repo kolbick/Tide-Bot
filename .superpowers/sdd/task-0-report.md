@@ -248,3 +248,18 @@ release.
 - `git diff --check` is required before the single focused docs commit. No
   product, dependency, runtime configuration, secret, or user-owned file is in
   scope for this correction.
+
+## Final Task 0 review correction: blind-evidence provenance
+
+- Added the owned tracked-verifier contract for blind direction evidence.
+  `verify-ted-bot-direction-evidence.mjs` creates a redacted, self-hashed
+  atlas/sheet/key manifest; reviewers see only that manifest and the blind
+  sheet, and attest schema version, unique reviewer ID, artifact hashes, and
+  pair votes. Before Hatch consensus/validation, it recomputes actual hashes,
+  verifies the answer key's atlas hash and three distinct attestations, and
+  writes a hard-gate verifier result JSON.
+- Task 2 owns a Node-built-in fixture test that proves mismatched attested
+  hashes fail. The final acceptance record now requires the manifest, reviewer
+  IDs/verdict hashes, and passing verifier result alongside the existing blind
+  consensus/validation. This documents a future release gate only; it does not
+  claim the verifier or Hatch QA ran in this Task 0 docs correction.
