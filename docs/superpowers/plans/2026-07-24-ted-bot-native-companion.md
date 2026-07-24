@@ -376,6 +376,7 @@ git commit -m 'feat: publish tide-bot active chat presence'
 - Create: src/routes/(app)/companion/+page.svelte
 - Create: src/lib/components/chat/lifecycleGuard.ts
 - Create: src/lib/components/chat/lifecycleGuard.test.ts
+- Create: src/lib/components/chat/MessageInput.test.ts
 - Modify: src/lib/components/chat/Chat.svelte
 - Modify: src/lib/components/chat/MessageInput.svelte
 
@@ -418,13 +419,25 @@ test('reuses the canonical companion Chat surface without duplicate APIs', async
 // MessageInput.test.ts
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/svelte';
-import { expect, test } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { expect, test, vi } from 'vitest';
 import MessageInput from './MessageInput.svelte';
 
-test('companion input leaves typed send and stop available while hiding optional controls', () => {
-	render(MessageInput, { mode: 'companion' });
-	expect(screen.getByRole('textbox')).toBeVisible();
+test('companion input leaves typed send and stop available while hiding optional controls', async () => {
+	render(MessageInput, {
+		props: {
+			mode: 'companion',
+			history: { currentId: null, messages: {} },
+			selectedModels: [''],
+			createMessagePair: vi.fn(),
+			stopResponse: vi.fn()
+		},
+		context: new Map([['i18n', { t: (key: string) => key }]])
+	});
+
+	const input = screen.getByRole('textbox');
+	await fireEvent.input(input, { target: { value: 'Hello Ted-Bot' } });
+	expect(input).toHaveValue('Hello Ted-Bot');
 	expect(screen.queryByLabelText(/attach/i)).not.toBeInTheDocument();
 	expect(screen.queryByLabelText(/microphone/i)).not.toBeInTheDocument();
 });
@@ -509,7 +522,7 @@ controls, and lifecycleGuard evidence for stale load/completion/stop/queue,
 pending callback denial, and cleared chat ID reset.
 
 ~~~
-git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/lifecycleGuard.ts src/lib/components/chat/lifecycleGuard.test.ts
+git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.ts src/lib/components/chat/lifecycleGuard.test.ts
 git commit -m 'feat: add ted-bot typed companion chat'
 ~~~
 
@@ -576,8 +589,8 @@ git commit -m 'test: add companion smoke coverage'
 - Create: desktop/tide-bot/src-tauri/src/main.rs
 - Create: desktop/tide-bot/src-tauri/src/lib.rs
 - Create: desktop/tide-bot/src-tauri/src/placement.rs
-- Create: desktop/tide-bot/src-tauri/src/placement_test.rs
-- Create: desktop/tide-bot/src-tauri/src/capabilities_test.rs
+- Create: desktop/tide-bot/src-tauri/tests/placement_test.rs
+- Create: desktop/tide-bot/src-tauri/tests/capabilities_test.rs
 - Create: desktop/tide-bot/README.md
 
 **Interfaces:**
@@ -610,7 +623,7 @@ fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
 
 - [ ] **Step 2: Verify it fails**
 
-Run: cd desktop/tide-bot/src-tauri && cargo test placement_test && cargo test capabilities_test
+Run: cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test
 
 Expected: FAIL because the Tauri package does not exist.
 
@@ -647,6 +660,16 @@ arbitrary-navigation, eval, and `core:default` grants. It also checks the
 build registration/AppManifest contract exposes only `show_main_window` to the
 companion permission.
 
+Keep both checks as executable Cargo integration tests under
+`desktop/tide-bot/src-tauri/tests/`, not `src/` files that Cargo can compile
+without executing. Export the tested placement and capability helpers from the
+public library interface in `src/lib.rs` (for example, `pub use
+placement::{clamp_to_monitor, MonitorBounds};` plus the public parsed-config
+helper functions), then import them from the integration tests with the package
+crate name. The test files therefore use normal integration-test imports such
+as `use tide_bot::{clamp_to_monitor, configured_remote_urls_json, MonitorBounds};`
+rather than private `crate::` paths.
+
 `desktop/tide-bot/package.json` declares reproducible `tauri`, `build:debug`,
 and `build:windows` scripts plus pinned Tauri CLI/API dependencies. Set the app
 product name, bundle identifier, version, and build metadata in
@@ -676,7 +699,7 @@ position, and expanded state.
 Run:
 
 ~~~
-cd desktop/tide-bot/src-tauri && cargo test placement_test && cargo test capabilities_test && cargo build --verbose && cargo check
+cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo build --verbose && cargo check
 cd .. && npm run tauri build -- --debug
 ~~~
 
@@ -714,8 +737,11 @@ import { openMainWindow } from './openMainWindow';
 
 test('uses the native show-main command only inside Tauri', async () => {
 	const invoke = vi.fn();
-	const windowRef: TauriWindowRef = { __TAURI_INTERNALS__: {} } as TauriWindowRef;
-	await openMainWindow({ invoke, navigate: vi.fn(), windowRef });
+	await openMainWindow({
+		invoke,
+		navigate: vi.fn(),
+		windowRef: { __TAURI_INTERNALS__: {} } as unknown as Window
+	});
 	expect(invoke).toHaveBeenCalledWith('show_main_window');
 });
 
@@ -735,12 +761,10 @@ Expected: FAIL until the native-or-browser action exists.
 - [ ] **Step 3: Implement the action and acceptance record**
 
 ~~~ts
-type TauriWindowRef = Window & { __TAURI_INTERNALS__?: unknown };
-
 export async function openMainWindow({ invoke, navigate, windowRef = typeof window !== 'undefined' ? window : undefined }: {
 	invoke: (command: string) => Promise<unknown>;
 	navigate: (path: string) => void;
-	windowRef?: TauriWindowRef;
+	windowRef?: Window;
 }) {
 	if (windowRef && '__TAURI_INTERNALS__' in windowRef) return invoke('show_main_window');
 	navigate('/');
@@ -775,7 +799,7 @@ git diff --check
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
 npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.test.ts src/lib/ted-bot/openMainWindow.test.ts
 node --test scripts/run-companion-cypress.test.mjs
-cd desktop/tide-bot/src-tauri && cargo test && cargo check
+cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo check
 cd ../../.. && CYPRESS_COMPANION_E2E_REQUIRED=1 npm run test:companion:e2e
 ~~~
 
