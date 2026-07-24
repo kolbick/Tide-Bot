@@ -53,6 +53,7 @@
 	import { updateUserSettings } from '$lib/apis/users';
 	import { createNoteHandler } from '$lib/components/notes/utils';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { BRAND } from '$lib/branding';
 
 	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
@@ -829,7 +830,7 @@
 							class=" self-center flex size-[30px] items-center justify-center rounded-lg transition group-hover:bg-gray-50 dark:group-hover:bg-gray-900"
 						>
 							<img
-								src="{WEBUI_BASE_URL}/static/favicon.png"
+									src="{WEBUI_BASE_URL}{BRAND.faviconPath}"
 								class="sidebar-new-chat-icon size-5 rounded-full group-hover:hidden"
 								alt=""
 							/>
@@ -1005,7 +1006,7 @@
 				>
 					<img
 						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
+						src="{WEBUI_BASE_URL}{BRAND.faviconPath}"
 						class="sidebar-new-chat-icon size-5 rounded-full"
 						alt=""
 					/>

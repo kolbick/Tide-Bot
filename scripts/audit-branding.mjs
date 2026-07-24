@@ -25,7 +25,15 @@ const requiredIdentity = [
 	],
 	['src/app.html', '<title>Tide-Bot | Changing Tides Treatment Center</title>'],
 	['src/app.html', '/tide-bot/tide-bot-96.png'],
+	['src/lib/components/layout/Sidebar.svelte', 'BRAND.faviconPath'],
+	['backend/open_webui/routers/models.py', "/tide-bot/tide-bot-96.png"],
 	['static/static/site.webmanifest', 'Tide-Bot | Changing Tides Treatment Center']
+];
+
+const brandedFallbackAssets = [
+	['static/favicon.png', 'static/tide-bot/tide-bot-96.png'],
+	['static/static/favicon.png', 'static/tide-bot/tide-bot-96.png'],
+	['static/static/favicon-96x96.png', 'static/tide-bot/tide-bot-96.png']
 ];
 
 const productSurfaceFiles = [
@@ -86,6 +94,14 @@ for (const [file, expected] of requiredIdentity) {
 	const contents = await readFile(resolve(root, file), 'utf8');
 	if (!contents.includes(expected)) {
 		throw new Error(`Brand audit failed: expected ${JSON.stringify(expected)} in ${file}`);
+	}
+}
+
+for (const [alias, canonical] of brandedFallbackAssets) {
+	const aliasBytes = await readFile(resolve(root, alias));
+	const canonicalBytes = await readFile(resolve(root, canonical));
+	if (!aliasBytes.equals(canonicalBytes)) {
+		throw new Error(`Brand audit failed: ${alias} is not the Tide-Bot fallback asset`);
 	}
 }
 

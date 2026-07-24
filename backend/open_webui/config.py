@@ -2026,7 +2026,7 @@ DEFAULT_ARENA_MODEL = {
     'id': 'arena-model',
     'name': 'Arena Model',
     'meta': {
-        'profile_image_url': '/favicon.png',
+        'profile_image_url': '/tide-bot/tide-bot-96.png',
         'description': 'Submit your questions to anonymous AI chatbots and vote on the best response.',
         'model_ids': None,
     },
