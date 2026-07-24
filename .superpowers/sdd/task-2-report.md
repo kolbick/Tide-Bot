@@ -27,3 +27,7 @@ Live Hatch Pet v2 validation, contact/direction sheet generation, and independen
 - Added a private, atomic reviewer sealing operation. The combine operation now discovers and verifies exactly three sealed submissions and receipts, never consumes mutable external reviewer paths.
 - Strengthened outer publish checks for atlas validation, continuity/semantic assessment, blind evidence linkage, and artifact/run metadata before the final atomic rename.
 - Kept the DOM-only Svelte test resolution local to Vitest and removed the application-wide browser resolve condition.
+
+### Sealing CLI sequence
+
+After reviewers submit their three inbox JSON files, invoke `seal-reviewer-submission` once for each file with the same blind run ID and runs root. Only then invoke `verify-and-combine`; it no longer accepts `--verdict` inputs, so Hatch receives only sealed private copies.

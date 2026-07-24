@@ -244,7 +244,14 @@ export async function sealReviewerSubmission({ runId, runsRoot, verdict }) {
 	}
 }
 
-export async function verifyAndCombine({ python, combineScript, validateScript, runId, runsRoot }) {
+export async function verifyAndCombine({
+	python,
+	combineScript,
+	validateScript,
+	runId,
+	runsRoot,
+	commandRunner = command
+}) {
 	const paths = runPaths(runId, runsRoot);
 	if (!(await exists(paths.pending)) || (await exists(paths.final)))
 		fail('blind pending run must exist without a final run');
@@ -307,15 +314,16 @@ export async function verifyAndCombine({ python, combineScript, validateScript, 
 			});
 		}
 		const consensus = path.join(paths.pending, 'ted-bot-direction-blind-consensus.json');
-		await command(python, [
+		await commandRunner(python, [
 			combineScript,
 			...reviewers.flatMap(({ sealedPath }) => ['--verdicts', sealedPath]),
 			'--json-out',
 			consensus
 		]);
+		if (!(await exists(consensus))) fail('Hatch combine did not create consensus');
 		const consensusSha256 = await sha256(consensus);
 		const validation = path.join(paths.pending, 'ted-bot-direction-blind-validation.json');
-		await command(python, [
+		await commandRunner(python, [
 			validateScript,
 			'--answer-key',
 			keyPath,
@@ -324,6 +332,13 @@ export async function verifyAndCombine({ python, combineScript, validateScript, 
 			'--json-out',
 			validation
 		]);
+		const validationResult = await readJson(validation, 'Hatch blind validation');
+		if (
+			validationResult.ok !== true ||
+			validationResult.errors?.length ||
+			validationResult.unconfirmed?.length
+		)
+			fail('Hatch blind validation did not pass');
 		const envelope = {
 			schemaVersion: SCHEMA_VERSION,
 			atlasSha256: await sha256(atlasPath),
@@ -332,7 +347,8 @@ export async function verifyAndCombine({ python, combineScript, validateScript, 
 			manifestSha256: manifest.manifestSha256,
 			sourceVerdicts: reviewers.map(({ sealedPath: _sealedPath, ...reviewer }) => reviewer),
 			plainConsensusSha256: consensusSha256,
-			hatchValidationSha256: await sha256(validation)
+			hatchValidationSha256: await sha256(validation),
+			hatchCombineSha256: consensusSha256
 		};
 		await writeJson(
 			path.join(paths.pending, 'ted-bot-direction-blind-consensus-envelope.json'),

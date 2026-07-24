@@ -7,7 +7,8 @@ import { after, test } from 'node:test';
 import {
 	prepareBlindRun,
 	preparePetQaRun,
-	sealReviewerSubmission
+	sealReviewerSubmission,
+	verifyAndCombine
 } from './verify-ted-bot-direction-evidence.mjs';
 
 const fixtureRoot = await mkdtemp(join(tmpdir(), 'ted-bot-evidence-'));
@@ -121,4 +122,71 @@ test('seals a validated reviewer submission so later raw-file changes cannot alt
 		sealReviewerSubmission({ runId: 'release-3-blind', runsRoot, verdict: rawVerdict }),
 		/submission already sealed|invalid schema/i
 	);
+});
+
+test('combines only sealed submissions and finalizes an atomic blind run', async () => {
+	const { atlas, blindSheet, answerKey, dir } = await createFiles('combine');
+	const atlasSha256 = (await import('node:crypto'))
+		.createHash('sha256')
+		.update(await readFile(atlas))
+		.digest('hex');
+	await writeFile(
+		answerKey,
+		JSON.stringify({ atlas_sha256: atlasSha256, pairs: [{ pair: 'pair-1' }] })
+	);
+	const runsRoot = join(dir, 'blind-runs');
+	const pendingDir = await prepareBlindRun({
+		runId: 'release-4-blind',
+		runsRoot,
+		atlas,
+		blindSheet,
+		answerKey
+	});
+	const manifest = JSON.parse(
+		await readFile(join(pendingDir, 'blind-review-manifest.json'), 'utf8')
+	);
+	const rawFiles = [];
+	for (const reviewerId of ['reviewer-1', 'reviewer-2', 'reviewer-3']) {
+		const raw = join(dir, `${reviewerId}.json`);
+		await writeFile(
+			raw,
+			JSON.stringify({
+				schemaVersion: manifest.schemaVersion,
+				reviewerId,
+				atlasSha256: manifest.atlasSha256,
+				blindSheetSha256: manifest.blindSheetSha256,
+				manifestSha256: manifest.manifestSha256,
+				pairs: [{ pair: 'pair-1', A: 'screen-left', B: 'screen-right' }]
+			})
+		);
+		await sealReviewerSubmission({ runId: 'release-4-blind', runsRoot, verdict: raw });
+		rawFiles.push(raw);
+	}
+	await writeFile(rawFiles[0], '{"mutated":true}');
+	const calls = [];
+	const commandRunner = async (_program, args) => {
+		calls.push(args);
+		const output = args[args.indexOf('--json-out') + 1];
+		await writeFile(
+			output,
+			JSON.stringify(
+				args.includes('combine')
+					? { pairs: [{ pair: 'pair-1', A: 'screen-left', B: 'screen-right' }] }
+					: { ok: true, errors: [], unconfirmed: [] }
+			)
+		);
+	};
+	const finalDir = await verifyAndCombine({
+		python: 'fake-python',
+		combineScript: 'combine',
+		validateScript: 'validate',
+		runId: 'release-4-blind',
+		runsRoot,
+		commandRunner
+	});
+	assert.equal(finalDir, join(runsRoot, 'release-4-blind'));
+	assert.equal(calls.length, 2);
+	assert.ok(calls[0].filter((value) => String(value).includes('sealed-reviewer-')).length === 3);
+	assert.ok(!calls[0].some((value) => rawFiles.includes(value)));
+	await assert.rejects(stat(pendingDir), /ENOENT/);
 });
