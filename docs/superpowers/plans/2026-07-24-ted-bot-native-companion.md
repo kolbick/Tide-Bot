@@ -78,14 +78,28 @@ git commit -m 'docs: record ted-bot companion baseline'
 - Create: src/lib/components/ted-bot/TedBotPet.svelte
 - Create: src/lib/components/ted-bot/TedBotPet.test.ts
 - Modify: src/lib/components/branding/TedBotMascot.svelte
+- Modify: package.json
+- Modify: package-lock.json
 
 **Interfaces:**
 - Produces: TedBotPet props state: 'idle' | 'working' | 'offline', label: string, interactive: boolean.
 - Consumes: BRAND.tedBotSpritePath.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Add the narrow DOM test foundation and write the failing test**
+
+Keep Vitest's default Node environment. Add the required DOM-test-only
+development dependencies and lockfile entries; do not change the global Vitest
+environment:
+
+~~~
+npm install --save-dev @testing-library/svelte @testing-library/jest-dom jsdom
+~~~
+
+Start the new component test with the per-file environment and matcher setup:
 
 ~~~ts
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/svelte';
 import TedBotPet from './TedBotPet.svelte';
 
@@ -130,6 +144,7 @@ Expected: PASS.
 
 ~~~
 git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte
+git add package.json package-lock.json
 git commit -m 'feat: add ted-bot companion renderer'
 ~~~
 
@@ -309,7 +324,15 @@ git commit -m 'feat: publish tide-bot active chat presence'
 
 - [ ] **Step 1: Write the failing canonical-surface tests**
 
+Use the narrow jsdom foundation added in Task 2. Each component test file
+(`CompanionPanel.test.ts` and `MessageInput.test.ts`) begins with the same
+per-file environment and matcher setup; do not add a global jsdom setting.
+
 ~~~ts
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+import { render, screen } from '@testing-library/svelte';
+
 test('uses the canonical Chat surface for the companion route', async () => {
 	render(CompanionPanel, { chatId: 'chat-1' });
 	expect(Chat).toHaveBeenCalledWith(expect.objectContaining({
@@ -319,7 +342,7 @@ test('uses the canonical Chat surface for the companion route', async () => {
 });
 
 test('companion input leaves typed send and stop available while hiding optional controls', () => {
-	render(MessageInput, { surface: 'companion' });
+	render(MessageInput, { mode: 'companion' });
 	expect(screen.getByRole('textbox')).toBeVisible();
 	expect(screen.queryByLabelText(/attach/i)).not.toBeInTheDocument();
 	expect(screen.queryByLabelText(/microphone/i)).not.toBeInTheDocument();
@@ -347,7 +370,8 @@ The companion page obtains the active authorized chat ID from presence and
 renders `CompanionPanel`, which renders `<Chat chatIdProp={chatId}
 surface="companion" />`. Companion presentation retains the canonical
 transcript, typed send, stop, connection state, and confirmation UI. Pass
-`surface` to `MessageInput.svelte`; in companion mode hide attachments, audio,
+`mode="companion"` to `MessageInput.svelte` when Chat's surface is companion;
+in companion mode hide attachments, audio,
 web search, tools, terminal, and other optional controls while retaining only
 typed input, send, and stop. Do not alter server permissions or confirmation
 behavior, and do not add a second completion request, stream attachment, or
