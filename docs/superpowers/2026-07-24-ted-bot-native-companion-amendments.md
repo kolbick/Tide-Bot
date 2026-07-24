@@ -21,10 +21,17 @@ reviewing the approved native-companion plan against Tide-Bot at
   this exact package. They validate every required v2 manifest field and the
   exact `spritesheetPath`, require a 1536-by-2288 WebP, and enforce the 8-by-11,
   192-by-208 atlas contract while rejecting all mismatches. Both run at staging
-  and final release gates; Hatch is not a CI dependency. Before release,
-  separately record a current visual inspection of the verified tracked
-  black-goldendoodle atlas, including its hash, inspector/date, rendered
-  evidence, direction continuity, alignment, and unused-cell transparency.
+  and final release gates; Hatch is not a CI dependency. Release acceptance
+  additionally requires the established Hatch Pet `validate_atlas.py
+  --require-v2` invocation against the exact tracked static atlas, using only
+  the bundled runtime returned by `load_workspace_dependencies` (never bare
+  system Python), deterministic alpha/transparency JSON, and a rendered contact
+  sheet. Record a pre/post SHA-256 for that exact input path and require it to
+  match the inspected tracked file and evidence entry. Store the validator JSON,
+  contact sheet, command/runtime, inspector/date, and pass/fail rubric for
+  identity, cell alignment, direction continuity, and unused-cell transparency
+  in tracked acceptance evidence. A missing bundled runtime, hash mismatch, or
+  missing/failed evidence leaves release acceptance pending, not passed.
   Neither the root Cyborg package nor user-owned `teddy-v2-upgrade/` provenance
   may be staged for that evidence.
 
@@ -51,10 +58,20 @@ reviewing the approved native-companion plan against Tide-Bot at
   pending confirmation or input callback resolves `false` before reset or
   destroy; and an empty (`''`) or nullish `chatIdProp` transition is handled as
   a route-switch reset.
-- `MessageInput.svelte` receives a companion mode that exposes only typed
-  input, send, and stop. It removes attachment, audio, web-search, tool,
-  terminal, and other optional controls from the compact surface without
-  changing server-side permissions or confirmations.
+- `MessageInput.svelte` receives a companion mode that mounts the presentation-
+  only `MessageInput/CompanionTextComposer.svelte` as an early branch. That
+  child has only a textarea plus dispatched send/stop events; `MessageInput`
+  forwards those through its existing parent dispatch and `stopResponse`
+  wiring. Companion mode guards the full
+  input's `onMount` dictation/drop-zone setup and removes attachment, audio,
+  web-search, tool, terminal, and other optional controls without changing
+  server-side permissions or confirmations. Its DOM test renders only this
+  small child; a Node source/contract test proves `MessageInput` delegation and
+  guards rather than rendering the large component with fake context.
+- The companion surface hides only Chat's Navbar, side controls, and placeholder
+  while retaining canonical Messages, confirmation, and submit behavior.
+  `Chat.svelte` must not call its `history.replaceState` route change when the
+  surface is companion.
 - Active chat state comes from the existing `chatId` and `chatTitle` stores,
   not URL navigation. The main-window publisher mounts only outside
   `/companion`, so the compact route cannot publish a null focus state over
@@ -73,23 +90,35 @@ reviewing the approved native-companion plan against Tide-Bot at
   canonical chat title, device label, focus flag, and focus timestamp. It is
   never logged or persisted in Tide-Bot's application database.
 - A memory store is allowed only with exactly one worker and no Redis Socket.IO
-  manager. With `WEBSOCKET_MANAGER=redis`, use the existing async Redis
-  connection and atomic per-user updates with a shared revision. Startup fails
-  when multiple workers run without Redis rather than silently diverging.
-- Disconnect removes its socket before session cleanup. The TTL loop has a
-  stored FastAPI lifespan task that is cancelled and awaited on shutdown.
+  manager. Read `UVICORN_WORKERS` from `backend.open_webui.env`; with
+  `WEBSOCKET_MANAGER=redis`, use existing async `socket.main.REDIS` for atomic
+  per-user updates with a shared revision, while authorization reads synchronous
+  `SESSION_POOL` RedisDict. Startup fails when multiple workers run without
+  Redis rather than silently diverging. Cluster expiry uses a Redis leader lock
+  or atomic claim/delete so only one worker promotes/emits an expired state.
+- Keep only `companion:presence:update` and `companion:presence:subscribe`
+  handlers. Disconnect removes its socket before session cleanup. The TTL loop
+  has a stored FastAPI lifespan task that is cancelled and awaited on shutdown.
   Reconnect resets the browser revision before accepting a fresh snapshot.
 - Retain focused pytest unit tests and add a disposable Docker integration
   harness with real Redis and two independently started Tide-Bot workers. It
   must drive actual Socket.IO handlers and the Redis atomic path, not
-  `fake_redis` or injected revisions/counts; prove concurrent cross-worker
+  `fake_redis` or injected revisions/counts; clients force direct WebSocket
+  transport to the separate worker endpoints, prove concurrent cross-worker
   updates share revision ordering, disconnect cleanup promotes the remaining
   focused client, and user rooms are isolated. The wrapper requires a nonempty,
-  project-name-safe `RUN_ID` and derives the explicit Compose project
-  `tedbot-presence-it-${RUN_ID}`. Every Compose `up`, `ps`, `logs`, test, and
-  `down` command uses that exact project name; there is no default-project
-  invocation or generated fallback ID. The run owns isolated volumes/database,
-  an ephemeral Redis namespace, and a generated private test configuration
+  project-name-safe `RUN_ID`, exact test-only
+  `REDIS_KEY_PREFIX=tedbot-presence-it-${RUN_ID}:`, and
+  `WEBSOCKET_MANAGER=redis`, then derives the explicit Compose project
+  `tedbot-presence-it-${RUN_ID}`. Every Compose `up`, `ps`, `logs`, `run`, and
+  `down` command executes from a neutral temporary working directory with the
+  exact absolute `--file "$REPO_ROOT/deploy/tide-stack/docker-compose.presence-integration.yml"`,
+  generated private `--env-file`, and project name. It rejects all `COMPOSE_*`
+  source overrides and alternative compose/env/project inputs, so it cannot
+  discover root/live Compose config or `.env`; relative build contexts resolve
+  only from the explicit compose file. There is no default-project invocation
+  or generated fallback ID. The run owns isolated volumes/database, an
+  ephemeral Redis namespace, and a generated private test configuration
   including a fresh `WEBUI_SECRET_KEY`. It must not read root deployment `.env`
   files, production configuration, or production credentials.
 - The one-shot test service creates randomized disposable users and authorized
@@ -109,22 +138,36 @@ reviewing the approved native-companion plan against Tide-Bot at
 
 - Keep focused browser-independent Vitest coverage for lifecycle and
   presence. The current default test environment remains Node. Only
-  DOM-rendering tests (`TedBotPet.test.ts` and `MessageInput.test.ts`) are the
-  deliberate, narrow configured exception: add `@testing-library/svelte`,
+  DOM-rendering tests (`TedBotPet.test.ts` and
+  `MessageInput/CompanionTextComposer.test.ts`) are the deliberate, narrow
+  configured exception: add `@testing-library/svelte`,
   `@testing-library/jest-dom`, and `jsdom` as development dependencies, update
   `package-lock.json`, and put `// @vitest-environment jsdom` plus
   `import '@testing-library/jest-dom/vitest';` at the top of those files.
   `CompanionPanel.test.ts` remains a Node source/contract test that reads the
   Svelte source and verifies canonical Chat reuse without rendering it. Do not
   make jsdom the global Vitest environment.
-- Add environment-gated authenticated Cypress smoke coverage for companion
-  routing, chrome suppression, typed send/stop, confirmation denial, chat
-  synchronization, and no duplicate completion request. It must never log or
-  commit credentials; release evidence requires a required-mode green run.
+- Add Cypress UI smoke coverage only through a disposable isolated Compose
+  stack and loopback/test origin. The tracked wrapper creates its own private
+  env, volumes, randomized account through the supported signup/signin flow,
+  and `tedbot-companion-cypress-${RUN_ID}` project, rejects production/live or
+  user-supplied origins/credentials and `COMPOSE_*` overrides, suppresses
+  credential/token/request logging, and tears down only its labelled resources
+  and data. Cypress proves anonymous redirect, authenticated compact UI, typed
+  send/stop, confirmation denial, and one completion request. It does not prove
+  cross-client synchronization; the real Redis/two-worker integration gate owns
+  that evidence. Release evidence requires a green isolated run and safe
+  teardown verification.
 - The desktop shell permits only a companion-scoped `show_main_window` native
   command. It uses a release HTTPS Tide-Bot origin and an explicitly separate
   loopback development origin, with no filesystem, shell, credential bridge,
-  or arbitrary navigation capability. Browser detection is SSR-safe.
+  or arbitrary navigation capability. The Tauri 2 application permission TOML
+  uses `[[permission]]`; its capability test parses `permission["permission"]`
+  as exactly one entry and asserts that entry's identifier is
+  `allow-show-main-window` and its `commands.allow` is exactly
+  `["show_main_window"]`. The capability refers to that unprefixed identifier,
+  while the generated AppManifest registration and remote scope remain
+  explicitly tested. Browser detection is SSR-safe.
 - A macOS debug build does not establish Windows acceptance. Both platform
   builds and their manual sign-in/minimize/session checks remain required
   release evidence.

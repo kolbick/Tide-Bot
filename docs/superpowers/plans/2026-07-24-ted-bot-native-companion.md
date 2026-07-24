@@ -183,17 +183,41 @@ node scripts/validate-ted-bot-pet.mjs
 
 Expected: PASS.
 
-Before release, record a current visual atlas inspection of the verified
-black-goldendoodle asset in
-`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md`: command
-and SHA-256 of the tracked atlas, inspector/date, rendered-image evidence, and
-pass/fail for black-goldendoodle identity, 8-by-11 cell alignment, direction
-continuity, and unused-cell transparency. This is independent of the
-structural validator. Do not stage user-owned `teddy-v2-upgrade/` QA or
-provenance, and do not stage the root `tide-bot-pet/` Cyborg package.
+The Node validator is required in CI and at staging, but release acceptance has
+an additional, required Hatch Pet v2 QA invocation. Before that invocation,
+call Codex's `load_workspace_dependencies`, set `PYTHON` to the exact bundled
+runtime it returns, and never substitute bare system `python`. Validate the
+tracked file itself, not a copied or generated asset: set `ATLAS` to the
+absolute path of `static/tide-bot/ted-bot/spritesheet.webp`, record
+`shasum -a 256 "$ATLAS"` immediately before and after the checks, and require
+both hashes to match the SHA-256 recorded in acceptance evidence. The same
+absolute `ATLAS` path is the input to every release-only command:
 
 ~~~
-git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json scripts/validate-ted-bot-pet.mjs scripts/validate-ted-bot-pet.test.mjs
+SKILL_DIR="$HOME/.codex/skills/hatch-pet"
+"$PYTHON" "$SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" \
+  --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
+"$PYTHON" "$SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" \
+  --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
+~~~
+
+The Hatch validator's JSON is the deterministic alpha/transparency result: it
+must pass its alpha-channel, used-cell, unused-cell-fully-transparent,
+transparent-RGB-residue, and v2 geometry checks. Store both JSON and the
+rendered contact sheet under the tracked acceptance-evidence directory and
+visually inspect that contact sheet. The acceptance record must name the
+absolute tracked input path, pre/post SHA-256, bundled-runtime path, validator
+command/result, contact-sheet path, inspector/date, and a pass/fail rubric for
+black-goldendoodle identity, 8-by-11/cell alignment, all look-direction
+continuity, and unused-cell transparency. A missing bundled Hatch runtime,
+hash mismatch, absent evidence artifact, or failed rubric leaves release
+acceptance **pending**; it must never be reported as a pass. This is
+independent of the Node structural validator. Do not stage user-owned
+`teddy-v2-upgrade/` QA or provenance, and do not stage the root
+`tide-bot-pet/` Cyborg package.
+
+~~~
+git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json scripts/validate-ted-bot-pet.mjs scripts/validate-ted-bot-pet.test.mjs docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md docs/superpowers/evidence/2026-07-24-ted-bot-native-companion/
 git add package.json package-lock.json
 git commit -m 'feat: add ted-bot companion renderer'
 ~~~
@@ -297,11 +321,19 @@ the existing disconnect handler clears `SESSION_POOL[sid]`.
 Implement `MemoryPresenceStore` only when the configured worker count is
 exactly one and `WEBSOCKET_MANAGER != 'redis'`. When
 `WEBSOCKET_MANAGER == 'redis'`, implement `RedisPresenceStore` using the
-existing async Redis connection from `backend/open_webui/socket/main.py`; use
+existing async Redis connection `backend.open_webui.socket.main.REDIS`; use
 one Redis Lua script (or `WATCH`/transaction retry) per user to read, expire,
 arbitrate focus, write the state, and increment a shared revision atomically.
-At FastAPI startup in `backend/open_webui/main.py`, fail with a clear RuntimeError
-before accepting traffic if worker count is greater than one without Redis.
+Read worker count from `backend.open_webui.env.UVICORN_WORKERS`; at FastAPI
+startup in `backend/open_webui/main.py`, fail with a clear RuntimeError before
+accepting traffic if worker count is greater than one without Redis. With
+multiple Redis-backed workers, expiry uses a Redis leader lock or atomic
+claim-and-delete so exactly one worker can promote/emit after an expiry; no
+competing TTL loop may emit conflicting promotions. Authorization still reads
+the synchronous `SESSION_POOL` RedisDict, while the presence store uses the
+existing async `socket.main.REDIS` connection. Keep the handler surface exactly
+`companion:presence:update` and `companion:presence:subscribe`, and remove a
+socket from presence before its session is deleted on disconnect.
 Store the expiry task as `app.state.companion_presence_expiry_task`; cancel and
 await it during lifespan shutdown. Tests must cover malformed/unauthorized/
 cross-user/rate-limit/expiry/disconnect promotion, the one-worker memory
@@ -319,7 +351,8 @@ service, two independently started Tide-Bot worker services
 `WEBSOCKET_MANAGER=redis`, and a one-shot `presence-integration` test service.
 The workers expose separate Socket.IO endpoints to the test service while
 sharing one real Redis instance; they use a generated ephemeral Redis key
-namespace (for example `tedbot-presence-it-${RUN_ID}:`), never default
+namespace via exact test-only `REDIS_KEY_PREFIX=tedbot-presence-it-${RUN_ID}:`
+and `WEBSOCKET_MANAGER=redis`, never default
 application presence data. All database bind mounts and named volumes are
 unique to this Compose project/run. The configuration uses only local test
 values: it generates an ephemeral `WEBUI_SECRET_KEY` and test-only database,
@@ -330,10 +363,31 @@ production credentials, and it must never print credentials or secrets.
 Create `scripts/run-companion-presence-redis-integration.mjs` as the only
 wrapper for this harness. It requires `RUN_ID`; reject an empty value or one
 that fails a documented conservative project-name-safe validation (lowercase
-letters, digits, and hyphens, beginning and ending alphanumeric). Derive and
-use exactly `--project-name tedbot-presence-it-${RUN_ID}` for **every** Compose
-`up`, `ps`, `logs`, test-exec, and `down` invocation. Do not generate a
-fallback RUN_ID and never invoke Compose without that explicit project name.
+letters, digits, and hyphens, beginning and ending alphanumeric). Resolve the
+repository root once, set `COMPOSE_FILE_PATH` to the exact absolute
+`$REPO_ROOT/deploy/tide-stack/docker-compose.presence-integration.yml`, create
+a private mode-0600 `RUN_ENV_FILE`, and derive exactly
+`--project-name tedbot-presence-it-${RUN_ID}`. The wrapper must make every
+Compose invocation through one `compose()` function that first changes to a
+neutral temporary working directory (not the repository or any deployment
+directory) and then runs only:
+
+~~~
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUN_TMPDIR" \
+  docker compose --file "$COMPOSE_FILE_PATH" --env-file "$RUN_ENV_FILE" \
+  --project-name "tedbot-presence-it-${RUN_ID}" <up|ps|logs|run|down arguments>
+~~~
+
+Reject, before creating any resources, a caller environment containing
+`COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, `COMPOSE_ENV_FILES`,
+`COMPOSE_PATH_SEPARATOR`, or any other `COMPOSE_*` source-selection setting;
+the wrapper does not forward any of them. Reject wrapper arguments that supply
+another compose file, env file, project name, or source configuration. Thus
+the harness cannot discover a root/live Compose file or `.env`; relative build
+contexts remain intentionally resolved from the explicit absolute compose file.
+Use the exact flags for **every** `up`, `ps`, `logs`, `run` (the one-shot test
+service), and `down` invocation. Do not generate a fallback RUN_ID and never
+invoke Compose outside this function or without all three explicit flags.
 Before `up`, generate the private ephemeral env/config file and retain its path
 only in process memory or a mode-0600 temporary directory. Start the composed
 stack, wait for both worker health endpoints, run the test service, and collect
@@ -353,16 +407,17 @@ monotonically ordered revision stream for concurrent cross-worker updates,
 disconnect promotion of the remaining focused client, and no user-room state
 or event crossing.
 
-In an unconditional `finally`/trap, cleanup runs only
-`docker compose --project-name tedbot-presence-it-${RUN_ID} ... down --volumes
---remove-orphans`, deletes that run's private temporary config, and verifies
-that only resources bearing this exact project label/name were removed (the
-project containers, networks, and volumes). It must inspect, but never stop,
-restart, recreate, or remove any pre-existing Tide-Bot container, network, or
-volume; a live Tide-Bot Compose stack is explicitly out of scope. Create
+In an unconditional `finally`/trap, cleanup calls that same isolated
+`compose()` function only with `down --volumes --remove-orphans`, deletes that
+run's private temporary config, and verifies that only resources bearing this
+exact project label/name were removed (the project containers, networks, and
+volumes). It must inspect, but never stop, restart, recreate, or remove any
+pre-existing Tide-Bot container, network, or volume; a live Tide-Bot Compose
+stack is explicitly out of scope. Create
 `backend/open_webui/socket/test_companion_presence_redis_integration.py` as
-the test-service entrypoint. It connects authenticated test clients to both
-independently started workers and exercises the actual Socket.IO handler and
+the test-service entrypoint. It connects authenticated test clients using
+direct WebSocket transport (not polling/fallback or a load balancer) to both
+independently started worker endpoints and exercises the actual Socket.IO handler and
 `RedisPresenceStore` atomic update path. It proves concurrent updates from the
 two workers result in one shared monotonically ordered revision stream,
 disconnect cleanup promotes the remaining focused client, and no state/event
@@ -488,7 +543,9 @@ git commit -m 'feat: publish tide-bot active chat presence'
 - Create: src/routes/(app)/companion/+page.svelte
 - Create: src/lib/components/chat/lifecycleGuard.ts
 - Create: src/lib/components/chat/lifecycleGuard.test.ts
-- Create: src/lib/components/chat/MessageInput.test.ts
+- Create: src/lib/components/chat/MessageInput/CompanionTextComposer.svelte
+- Create: src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts
+- Create: src/lib/components/chat/MessageInput.companion-contract.test.ts
 - Modify: src/lib/components/chat/Chat.svelte
 - Modify: src/lib/components/chat/MessageInput.svelte
 
@@ -505,10 +562,12 @@ git commit -m 'feat: publish tide-bot active chat presence'
 
 Keep `CompanionPanel.test.ts` in Vitest's default Node environment. It is a
 source/contract test, so it reads `CompanionPanel.svelte` and proves canonical
-reuse without attempting to render or mock the canonical component. Only
-`MessageInput.test.ts` is a Task 5 DOM test; it uses the narrow jsdom foundation
-from Task 2 with the per-file directive and matcher setup. Do not add a global
-jsdom setting.
+reuse without attempting to render or mock the canonical component. Do not
+render the current large `MessageInput` with partial fake context: that test
+would be brittle and unrepresentative. Instead, create the small dedicated
+`MessageInput/CompanionTextComposer.svelte` child and give it the only DOM-rendering test
+in this task; it uses the narrow jsdom foundation from Task 2 with the per-file
+directive and matcher setup. Do not add a global jsdom setting.
 
 ~~~ts
 // CompanionPanel.test.ts: default Node environment
@@ -528,32 +587,44 @@ test('reuses the canonical companion Chat surface without duplicate APIs', async
 ~~~
 
 ~~~ts
-// MessageInput.test.ts
+// MessageInput/CompanionTextComposer.test.ts
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { expect, test, vi } from 'vitest';
-import MessageInput from './MessageInput.svelte';
+import CompanionTextComposer from './CompanionTextComposer.svelte';
 
-test('companion input leaves typed send and stop available while hiding optional controls', async () => {
-	render(MessageInput, {
-		props: {
-			mode: 'companion',
-			history: { currentId: null, messages: {} },
-			selectedModels: [''],
-			createMessagePair: vi.fn(),
-			stopResponse: vi.fn()
-		},
-		context: new Map([['i18n', { t: (key: string) => key }]])
-	});
+test('typed composer sends entered text and exposes stop without optional controls', async () => {
+	const send = vi.fn();
+	const stop = vi.fn();
+	const { component } = render(CompanionTextComposer, { props: { isGenerating: true } });
+	component.$on('send', (event) => send(event.detail));
+	component.$on('stop', stop);
 
 	const input = screen.getByRole('textbox');
 	await fireEvent.input(input, { target: { value: 'Hello Ted-Bot' } });
 	expect(input).toHaveValue('Hello Ted-Bot');
+	await fireEvent.click(screen.getByRole('button', { name: /send/i }));
+	expect(send).toHaveBeenCalledWith('Hello Ted-Bot');
+	await fireEvent.click(screen.getByRole('button', { name: /stop/i }));
+	expect(stop).toHaveBeenCalledTimes(1);
 	expect(screen.queryByLabelText(/attach/i)).not.toBeInTheDocument();
 	expect(screen.queryByLabelText(/microphone/i)).not.toBeInTheDocument();
 });
 ~~~
+
+`CompanionTextComposer.svelte` is presentation-only: it owns only local
+textarea text entry plus labelled send and stop controls. Its minimal typed API
+is `isGenerating` plus dispatched `send(text)` and `stop()` events; it imports
+no app stores, contexts, APIs, attachment,
+audio, web-search, tool, or terminal control. Create the default-Node
+`MessageInput.companion-contract.test.ts` to read `MessageInput.svelte` and
+assert that it declares/receives `mode="companion"`, imports and delegates to
+`CompanionTextComposer` only in that mode, passes the existing canonical send
+event through its existing parent dispatch and stop event to `stopResponse`,
+and gates attachment, audio, web-search, tool, terminal,
+and other optional controls out of companion mode. This contract test is the
+parent-delegation proof; it must not render `MessageInput` with fake context.
 
 ~~~ts
 // lifecycleGuard.test.ts: default Node environment
@@ -592,7 +663,7 @@ test('resets when chatIdProp becomes empty or nullish', () => {
 
 - [ ] **Step 2: Verify the tests fail**
 
-Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.test.ts
+Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts
 
 Expected: FAIL because the canonical companion surface, compact input mode, and
 their test contracts do not exist.
@@ -617,24 +688,32 @@ The companion page obtains the active authorized chat ID from presence and
 renders `CompanionPanel`, which renders `<Chat chatIdProp={chatId}
 surface="companion" />`. Companion presentation retains the canonical
 transcript, typed send, stop, connection state, and confirmation UI. Pass
-`mode="companion"` to `MessageInput.svelte` when Chat's surface is companion;
-in companion mode hide attachments, audio,
-web search, tools, terminal, and other optional controls while retaining only
-typed input, send, and stop. Do not alter server permissions or confirmation
-behavior, and do not add a second completion request, stream attachment, or
-event handler.
+`mode="companion"` to `MessageInput.svelte` when Chat's surface is companion.
+`MessageInput` mounts `CompanionTextComposer` as its early companion-mode
+branch, forwarding its send event through the existing parent dispatch and its
+stop event to `stopResponse`. In companion
+mode it guards the current full-mode `onMount` global dictation/drop-zone setup
+and every attachment, audio, web search, tool, terminal, and other optional
+control; the child has only typed input, send, and stop. The full-mode branch
+continues to own its established controls. Do not alter server
+permissions or confirmation behavior, and do not add a second completion
+request, stream attachment, or event handler. In `Chat.svelte`, companion
+surface hides only the Navbar, side controls, and placeholder while retaining
+canonical Messages, confirmation, and submit behavior; it also must guard its
+`history.replaceState` route change when `surface === 'companion'`.
 
 - [ ] **Step 4: Verify and commit**
 
-Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.test.ts
+Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts
 
 Expected: PASS with Node source/contract evidence of canonical-surface reuse
-and no duplicate completion/tool API import, jsdom evidence of typed-only
-controls, and lifecycleGuard evidence for stale load/completion/stop/queue,
-pending callback denial, and cleared chat ID reset.
+and no duplicate completion/tool API import, Node parent-delegation evidence
+that companion mode hides every optional control, jsdom evidence of the small
+typed-only child, and lifecycleGuard evidence for stale load/completion/stop/
+queue, pending callback denial, and cleared chat ID reset.
 
 ~~~
-git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.ts src/lib/components/chat/lifecycleGuard.test.ts
+git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.ts src/lib/components/chat/lifecycleGuard.test.ts
 git commit -m 'feat: add ted-bot typed companion chat'
 ~~~
 
@@ -642,34 +721,52 @@ git commit -m 'feat: add ted-bot typed companion chat'
 
 **Files:**
 - Create: cypress/e2e/ted-bot-companion.cy.ts
+- Create: deploy/tide-stack/docker-compose.cypress-companion.yml
 - Create: scripts/run-companion-cypress.mjs
 - Create: scripts/run-companion-cypress.test.mjs
 - Modify: package.json
 
-- [ ] **Step 1: Implement the credential-safe, environment-gated smoke**
+- [ ] **Step 1: Implement the disposable isolated UI smoke**
 
 Add `test:companion:e2e` as `node scripts/run-companion-cypress.mjs`.
-`run-companion-cypress.mjs` is the tracked preflight wrapper: it requires
-`CYPRESS_TIDE_BOT_BASE_URL`, `CYPRESS_TIDE_BOT_USERNAME`, and
-`CYPRESS_TIDE_BOT_PASSWORD`, passes them to Cypress without echoing values,
-and runs only `cypress/e2e/ted-bot-companion.cy.ts`. It must not write
-screenshots, videos, or a committed `.env` file. With
-`CYPRESS_COMPANION_E2E_REQUIRED=1`, missing variables must exit 2 before
-Cypress starts. Without that flag, the wrapper prints exactly
-`SKIPPED: companion E2E credentials/config missing` and exits 0 for local
-development. The release gate always sets the required flag and therefore
-cannot skip. `run-companion-cypress.test.mjs` uses injected environment/spawn
-dependencies to assert required-mode exit 2, optional-mode skip 0, and the
-configured redacted Cypress invocation without starting a browser.
+`run-companion-cypress.mjs` is the tracked, mandatory isolation wrapper, not a
+preflight for a normal stack. It requires a nonempty conservative
+project-name-safe `RUN_ID`, creates a private mode-0600 env file and test-only
+database/volumes, and starts only
+`deploy/tide-stack/docker-compose.cypress-companion.yml` under
+`tedbot-companion-cypress-${RUN_ID}`. Every Compose `up`, `ps`, `logs`, and
+`down` uses that exact absolute compose file, generated `--env-file`, and
+explicit project name from a neutral temporary working directory. Reject
+`COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, any other source-selecting
+`COMPOSE_*` variable, alternate compose/env/project arguments, and every base
+URL except an explicitly configured `http://127.0.0.1:<test-port>` or
+`http://localhost:<test-port>` loopback origin. The wrapper must not run
+against a production, live, or user-managed Tide-Bot stack and must not accept
+user-supplied application credentials. It passes only the isolated loopback
+origin to Cypress, disables screenshots/videos, and redacts process output.
+
+The Cypress spec creates a randomized disposable account through Tide-Bot's
+supported sign-up UI against that isolated stack, then signs in through the
+normal UI. Account data and any test session remain in Cypress memory and the
+isolated database only; never log credentials, tokens, request bodies, or auth
+headers. The wrapper waits for the isolated health endpoint, runs only
+`cypress/e2e/ted-bot-companion.cy.ts`, and uses an unconditional trap/finally
+to run its exact isolated `down --volumes --remove-orphans`, remove the private
+env directory, and verify only resources carrying the exact test project label
+were removed. It must inspect but never stop, restart, recreate, or remove a
+pre-existing Tide-Bot resource. `run-companion-cypress.test.mjs` injects
+environment/spawn dependencies to prove rejection of live/external origins and
+source Compose overrides, exact isolated invocation, redacted Cypress launch,
+and safe-teardown path without starting Docker or a browser.
 
 The spec uses separate cases and clears cookies, local storage, session storage,
 and Cypress session cache in `beforeEach`. The anonymous case visits
 `/companion` before any login and asserts redirect to `/auth`. The authenticated
-cases then sign in through the normal UI with the injected disposable account
-and verify companion chrome/shortcuts are suppressed, typed send/stop,
-confirmation denial, active-chat switching in the main session with companion
-synchronization, and an intercepted completion count of exactly one. Redact
-request bodies and auth headers in Cypress logging.
+cases verify compact companion chrome/shortcut suppression, typed send/stop,
+confirmation denial, and an intercepted completion count of exactly one. Do
+not assert cross-client active-chat or presence synchronization here: the
+real-Redis/two-worker Socket.IO integration harness is the sole gate for that
+proof. Redact request bodies and auth headers in Cypress logging.
 
 - [ ] **Step 2: Verify and commit**
 
@@ -677,15 +774,17 @@ Run:
 
 ~~~
 node --test scripts/run-companion-cypress.test.mjs
-CYPRESS_COMPANION_E2E_REQUIRED=1 npm run test:companion:e2e
+RUN_ID=cypress-local-$(date +%s) npm run test:companion:e2e
 ~~~
 
-Expected: PASS only against a configured disposable authenticated test account;
-otherwise exit 2 without credentials in output. Attach the required-mode run
-URL/artifact and redacted result to acceptance evidence.
+Expected: PASS only against the wrapper-created disposable loopback stack and
+account. Attach the isolated project name, loopback origin, redacted result,
+and safe-teardown verification to acceptance evidence. Missing isolation,
+runtime, or test prerequisites are a failed/pending release gate, never an
+optional credential skip.
 
 ~~~
-git add cypress/e2e/ted-bot-companion.cy.ts scripts/run-companion-cypress.mjs scripts/run-companion-cypress.test.mjs package.json
+git add cypress/e2e/ted-bot-companion.cy.ts deploy/tide-stack/docker-compose.cypress-companion.yml scripts/run-companion-cypress.mjs scripts/run-companion-cypress.test.mjs package.json
 git commit -m 'test: add companion smoke coverage'
 ~~~
 
@@ -725,10 +824,13 @@ fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
 	assert_eq!(capability["windows"], serde_json::json!(["companion"]));
 	assert_eq!(capability["permissions"], serde_json::json!(["allow-show-main-window"]));
 	assert_eq!(capability["remote"]["urls"], configured_remote_urls_json());
-	assert_eq!(permission["identifier"].as_str(), Some("allow-show-main-window"));
-	let allowed = permission["commands"]["allow"].as_array().expect("command allow-list");
+	let entries = permission["permission"].as_array().expect("[[permission]] array");
+	assert_eq!(entries.len(), 1);
+	let entry = &entries[0];
+	assert_eq!(entry["identifier"].as_str(), Some("allow-show-main-window"));
+	let allowed = entry["commands"]["allow"].as_array().expect("command allow-list");
 	assert_eq!(allowed.iter().map(toml::Value::as_str).collect::<Vec<_>>(), vec![Some("show_main_window")]);
-	assert_no_forbidden_capabilities(&capability, &permission);
+	assert_no_forbidden_capabilities(&capability, entry);
 	assert_build_rs_registers_only_show_main_window();
 }
 ~~~
@@ -762,10 +864,13 @@ fn show_main_window(app: AppHandle) -> tauri::Result<()> {
 
 Add `serde_json` and `toml` to `desktop/tide-bot/src-tauri/Cargo.toml`
 `[dev-dependencies]`; `capabilities_test.rs` parses JSON and TOML into values,
-then asserts exact arrays rather than matching source formatting. It asserts
-`windows == ["companion"]`, the sole capability permission is
-`allow-show-main-window`, the permission's sole allowed command is
-`show_main_window`, and `remote.urls` equals the two configured origins only:
+then asserts exact arrays rather than matching source formatting. Tauri 2
+application permissions use `[[permission]]`, so the test must parse
+`permission["permission"]` as exactly one array entry, then assert that entry
+has identifier `allow-show-main-window` and `commands.allow` exactly
+`["show_main_window"]`. It also asserts `windows == ["companion"]`, the sole
+capability permission reference is the unprefixed
+`allow-show-main-window`, and `remote.urls` equals the two configured origins only:
 the production HTTPS origin and exact configured loopback development origin.
 The parsed-value traversal rejects filesystem, shell, process, credential,
 arbitrary-navigation, eval, and `core:default` grants. It also checks the
@@ -790,8 +895,9 @@ product name, bundle identifier, version, and build metadata in
 origin; reject arbitrary origins and never embed credentials.
 
 Use `build.rs` with the generated AppManifest/permission registration and add
-only `permissions/companion.toml`, defining the single application permission
-identifier `allow-show-main-window` with `commands.allow` exactly
+only `permissions/companion.toml`, using one `[[permission]]` entry that
+defines the single application permission identifier
+`allow-show-main-window` with `commands.allow` exactly
 `["show_main_window"]`. `capabilities/companion.json` binds only
 `windows: ["companion"]`, references exactly `allow-show-main-window`, and explicitly scopes
 `remote.urls` to the exact production HTTPS origin and configured loopback dev
@@ -910,26 +1016,39 @@ npm run build
 git diff --check
 node --test scripts/validate-ted-bot-pet.test.mjs
 node scripts/validate-ted-bot-pet.mjs
+# Release-only: call load_workspace_dependencies; set PYTHON to its exact bundled runtime.
+ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/superpowers/evidence/2026-07-24-ted-bot-native-companion"; shasum -a 256 "$ATLAS"
+"$PYTHON" "$HOME/.codex/skills/hatch-pet/scripts/validate_atlas.py" "$ATLAS" --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
+"$PYTHON" "$HOME/.codex/skills/hatch-pet/scripts/make_contact_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
+shasum -a 256 "$ATLAS"
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
-npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.test.ts src/lib/ted-bot/openMainWindow.test.ts
+npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts src/lib/ted-bot/openMainWindow.test.ts
 node --test scripts/run-companion-cypress.test.mjs
 cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo check
 cd ../../.. && RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs
-CYPRESS_COMPANION_E2E_REQUIRED=1 npm run test:companion:e2e
+RUN_ID=cypress-release-$(date +%s) npm run test:companion:e2e
 ~~~
 
-Expected: every focused local check passes; the required Cypress command exits
-2 rather than skipping if its credentials/config are missing. Record the
-inherited global npm run check result separately if it remains non-clean.
+Expected: every focused local check passes. The Hatch commands use no bare
+Python, consume the exact SHA-256-bound tracked atlas, produce passing
+deterministic alpha/transparency JSON plus a rendered contact sheet, and leave
+release acceptance pending if the bundled runtime or evidence is absent. The
+required Cypress command provisions and tears down its own loopback-only stack;
+it must never skip for missing user credentials or run against a live stack.
+Record the inherited global npm run check result separately if it remains
+non-clean.
 The release acceptance record must include a current visual atlas-inspection
 entry for the tracked black-goldendoodle asset and the exact successful
 `RUN_ID=release-... node scripts/run-companion-presence-redis-integration.mjs`
 command, explicit isolated Compose project name, worker-a/worker-b endpoint
-evidence, shared ordered revisions, disconnect-promotion result,
-user-room-isolation result, namespace-empty result, and confirmation that only
-the namespaced test resources were removed without stopping or restarting an
-existing Tide-Bot service. A structural package check or single-worker/fake-Redis pytest
-does not replace either gate.
+evidence, direct-WebSocket shared ordered revisions, single-emitter expiry/
+disconnect-promotion result, user-room-isolation result, namespace-empty
+result, and confirmation that only the namespaced test resources were removed
+without stopping or restarting an existing Tide-Bot service. Cypress evidence
+must separately name its loopback origin, randomized supported-auth account
+flow, one completion request, and safe teardown; it is not a cross-client sync
+claim. A structural package check or single-worker/fake-Redis pytest does not
+replace either gate.
 Final release evidence additionally requires the green GitHub Windows artifact
 build and the completed manual Windows procedure; neither is replaced by the
 local macOS debug bundle.
@@ -937,7 +1056,7 @@ local macOS debug bundle.
 - [ ] **Step 5: Commit acceptance documentation**
 
 ~~~
-git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/ted-bot/openMainWindow.ts src/lib/ted-bot/openMainWindow.test.ts .github/workflows/ted-bot-windows.yml docs/TIDE_BOT_HANDOFF.md docs/IMPLEMENTATION_PLAN.md docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md desktop/tide-bot/README.md
+git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/ted-bot/openMainWindow.ts src/lib/ted-bot/openMainWindow.test.ts .github/workflows/ted-bot-windows.yml docs/TIDE_BOT_HANDOFF.md docs/IMPLEMENTATION_PLAN.md docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md docs/superpowers/evidence/2026-07-24-ted-bot-native-companion/ desktop/tide-bot/README.md
 git commit -m 'docs: record ted-bot companion acceptance'
 ~~~
 

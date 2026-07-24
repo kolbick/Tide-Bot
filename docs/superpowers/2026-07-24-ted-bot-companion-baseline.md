@@ -21,6 +21,28 @@ The three `npm` commands above were executed through the Node 22.18.0 and npm
 10.9.3 wrapper: `npx -y -p node@22.18.0 -p npm@10.9.3 npm`. The table retains
 the required project command names rather than substituting that wrapper.
 
+## Native-companion plan correction status
+
+This is baseline evidence only, not native-companion acceptance. The corrected
+implementation plan requires separate future gates that have not run here:
+
+- Tauri 2 capability parsing must read exactly one `[[permission]]` entry and
+  preserve the unprefixed `allow-show-main-window` AppManifest/remote scope.
+- The real Redis proof must run an isolated two-worker project from a neutral
+  directory with the exact absolute presence compose file, generated private
+  env file, explicit `tedbot-presence-it-${RUN_ID}` project name, test-only
+  `REDIS_KEY_PREFIX`, and no discoverable live Compose or `.env` source.
+- UI smoke must use its own disposable loopback-only Cypress stack and
+  randomized supported-auth account. Cross-client/presence synchronization is
+  proved only by the real Redis/two-worker gate, not Cypress.
+- The tracked static atlas needs a release-only bundled-runtime Hatch Pet v2
+  validator run, deterministic alpha/transparency JSON, SHA-256-bound contact
+  sheet, and saved pass/fail rubric. If that runtime or evidence is missing,
+  release acceptance remains pending.
+
+No live Compose, authenticated browser, Cypress, Redis, native desktop, or
+Hatch release acceptance is claimed by this baseline.
+
 ## Recovery boundary
 
 The previous companion detour remains reference-only. Compared with
