@@ -724,6 +724,8 @@ git commit -m 'feat: add ted-bot typed companion chat'
 **Files:**
 - Create: cypress/e2e/ted-bot-companion.cy.ts
 - Create: deploy/tide-stack/docker-compose.cypress-companion.yml
+- Create: deploy/tide-stack/cypress-fake-openai/Dockerfile
+- Create: deploy/tide-stack/cypress-fake-openai/server.mjs
 - Create: scripts/run-companion-cypress.mjs
 - Create: scripts/run-companion-cypress.test.mjs
 - Modify: package.json
@@ -747,6 +749,35 @@ against a production, live, or user-managed Tide-Bot stack and must not accept
 user-supplied application credentials. It passes only the isolated loopback
 origin to Cypress, disables screenshots/videos, and redacts process output.
 
+The Compose file owns a `fake-openai` service built only from
+`deploy/tide-stack/cypress-fake-openai/Dockerfile` and `server.mjs`; it has a
+health check for its local health route. Tide-Bot can reach its model API only
+on the isolated Compose network. The wrapper may publish the fixture's status
+route on one generated `127.0.0.1` port for Cypress `cy.request`; that port is
+never caller-configurable, is not an application origin, and is torn down with
+the named project. The service never mounts a host credential/configuration
+file, does not log request bodies or headers, and is removed with the named
+test project. Its deterministic OpenAI-compatible API returns exactly one model,
+`tedbot-cypress-model`, from `GET /v1/models`. `POST /v1/chat/completions`
+returns a fixed successful non-stream completion, and when `stream: true`, a
+fixed valid SSE delta/finish sequence followed by `[DONE]`. It keeps an
+in-memory, redacted completion counter available to Cypress at that
+fixture-only status route so the test can prove what the proxy actually sent;
+the status response exposes only the count, never a prompt, header, token, or
+other request data. It must also offer its health route before Tide-Bot starts.
+
+Only the Tide-Bot service in this Cypress Compose file receives the supported
+fixture settings: `OPENAI_API_BASE_URLS=http://fake-openai:8081/v1`, a fixed
+inert `OPENAI_API_KEYS` fixture value that is not a credential,
+`ENABLE_SIGNUP=true`, `DEFAULT_USER_ROLE=user`, and
+`DEFAULT_MODELS=tedbot-cypress-model`. It also receives
+`ENABLE_WEB_SEARCH=true` and `ENABLE_WEB_SEARCH_CONFIRMATION=true` solely to
+exercise Tide-Bot's existing confirmation UI. The Compose file must explicitly
+clear/omit every external model, search, OAuth, terminal, and CPTR integration
+instead of inheriting root or host environment settings. Tide-Bot depends on
+the healthy fake-model service; Cypress starts only after Tide-Bot is healthy.
+No service has an external API, credential, or host-network path.
+
 The Cypress spec creates a randomized disposable account through Tide-Bot's
 supported sign-up UI against that isolated stack, then signs in through the
 normal UI. Account data and any test session remain in Cypress memory and the
@@ -764,11 +795,22 @@ and safe-teardown path without starting Docker or a browser.
 The spec uses separate cases and clears cookies, local storage, session storage,
 and Cypress session cache in `beforeEach`. The anonymous case visits
 `/companion` before any login and asserts redirect to `/auth`. The authenticated
-cases verify compact companion chrome/shortcut suppression, typed send/stop,
-confirmation denial, and an intercepted completion count of exactly one. Do
-not assert cross-client active-chat or presence synchronization here: the
-real-Redis/two-worker Socket.IO integration harness is the sole gate for that
-proof. Redact request bodies and auth headers in Cypress logging.
+companion case verifies compact chrome/shortcut suppression and typed send/stop.
+It uses a Cypress intercept for exactly one Tide-Bot completion-proxy request,
+then queries the generated-loopback fixture-only status route and asserts
+that the fake model received exactly one completion. The full canonical chat
+case, not `/companion`, opens the existing integrations control, toggles its
+existing Web Search control, submits a typed prompt, and denies the existing
+Web Search confirmation dialog. It asserts the denial closes the dialog and
+does not create a fake-model completion. It does not add or pretend that the
+companion exposes a hidden optional control. `CompanionPanel.test.ts` remains a
+separate source/route contract: it must prove the panel renders canonical
+`Chat.svelte` with `surface="companion"` and that canonical Chat retains its
+existing confirmation dialog, rather than attempting to expose the full-chat
+web-search toggle in companion mode. Do not assert cross-client active-chat or
+presence synchronization here: the real-Redis/two-worker Socket.IO integration
+harness is the sole gate for that proof. Redact request bodies and auth headers
+in Cypress logging.
 
 - [ ] **Step 2: Verify and commit**
 
@@ -777,16 +819,21 @@ Run:
 ~~~
 node --test scripts/run-companion-cypress.test.mjs
 RUN_ID=cypress-local-$(date +%s) npm run test:companion:e2e
+git diff --check
 ~~~
 
 Expected: PASS only against the wrapper-created disposable loopback stack and
-account. Attach the isolated project name, loopback origin, redacted result,
-and safe-teardown verification to acceptance evidence. Missing isolation,
-runtime, or test prerequisites are a failed/pending release gate, never an
-optional credential skip.
+account. The runner test must cover the fixture build/configuration, generated
+loopback-only status port, explicit service dependency/health conditions,
+fixture-only Tide-Bot env, and rejection of external configuration in addition
+to the existing isolation checks. Attach the isolated project name, loopback
+origins, redacted result, fixture model/count assertions, canonical confirmation
+denial, and safe-teardown verification to acceptance evidence. Missing
+isolation, runtime, or test prerequisites are a failed/pending release gate,
+never an optional credential skip.
 
 ~~~
-git add cypress/e2e/ted-bot-companion.cy.ts deploy/tide-stack/docker-compose.cypress-companion.yml scripts/run-companion-cypress.mjs scripts/run-companion-cypress.test.mjs package.json
+git add cypress/e2e/ted-bot-companion.cy.ts deploy/tide-stack/docker-compose.cypress-companion.yml deploy/tide-stack/cypress-fake-openai/Dockerfile deploy/tide-stack/cypress-fake-openai/server.mjs scripts/run-companion-cypress.mjs scripts/run-companion-cypress.test.mjs src/lib/components/ted-bot/CompanionPanel.test.ts package.json
 git commit -m 'test: add companion smoke coverage'
 ~~~
 
@@ -1049,9 +1096,13 @@ disconnect-promotion result, user-room-isolation result, namespace-empty
 result, and confirmation that only the namespaced test resources were removed
 without stopping or restarting an existing Tide-Bot service. Cypress evidence
 must separately name its loopback origin, randomized supported-auth account
-flow, one completion request, and safe teardown; it is not a cross-client sync
-claim. A structural package check or single-worker/fake-Redis pytest does not
-replace either gate.
+flow, fixed fixture model ID, fake-model health/dependency result, the one
+intercepted Tide-Bot completion-proxy request and one fake-model completion
+counter result, the full-chat Web Search confirmation denial result, and safe
+teardown. It must confirm no fixture emitted secrets and that the fixture was
+removed with the isolated stack; it is not a cross-client sync claim. A
+structural package check or single-worker/fake-Redis pytest does not replace
+either gate.
 Final release evidence additionally requires the green GitHub Windows artifact
 build and the completed manual Windows procedure; neither is replaced by the
 local macOS debug bundle.

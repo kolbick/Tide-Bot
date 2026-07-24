@@ -153,11 +153,29 @@ reviewing the approved native-companion plan against Tide-Bot at
   and `tedbot-companion-cypress-${RUN_ID}` project, rejects production/live or
   user-supplied origins/credentials and `COMPOSE_*` overrides, suppresses
   credential/token/request logging, and tears down only its labelled resources
-  and data. Cypress proves anonymous redirect, authenticated compact UI, typed
-  send/stop, confirmation denial, and one completion request. It does not prove
-  cross-client synchronization; the real Redis/two-worker integration gate owns
-  that evidence. Release evidence requires a green isolated run and safe
-  teardown verification.
+  and data. The Compose file adds a tracked, Compose-owned local fake
+  OpenAI-compatible service that returns exactly `tedbot-cypress-model` from
+  `/v1/models` and fixed valid stream/non-stream responses from
+  `/v1/chat/completions`; it exposes only an in-memory redacted completion
+  count to Cypress through a generated loopback-only status port, emits no
+  secrets, has a health check, accepts no external credentials, and disappears
+  with the stack. Only the isolated
+  Tide-Bot service is configured with the supported fixture OpenAI base URL/key
+  env, `ENABLE_SIGNUP=true`, `DEFAULT_USER_ROLE=user`, and
+  `DEFAULT_MODELS=tedbot-cypress-model`; it also has
+  `ENABLE_WEB_SEARCH=true` and `ENABLE_WEB_SEARCH_CONFIRMATION=true`. No
+  external model, search, OAuth, terminal, or CPTR service may be inherited or
+  reachable. Cypress proves anonymous redirect, authenticated compact UI,
+  typed send/stop, one intercepted Tide-Bot completion-proxy request plus one
+  fake-model completion, and safe teardown. Confirmation denial is tested
+  separately on the full canonical chat UI by toggling its existing Web Search
+  control, submitting, and denying the existing dialog; the test must not claim
+  that companion exposes this intentionally omitted optional control.
+  `CompanionPanel` source/route coverage separately proves canonical Chat and
+  its confirmation UI remain in use. Cypress does not prove cross-client
+  synchronization; the real Redis/two-worker integration gate owns that
+  evidence. Release evidence requires a green isolated run and safe teardown
+  verification.
 - The desktop shell permits only a companion-scoped `show_main_window` native
   command. It uses a release HTTPS Tide-Bot origin and an explicitly separate
   loopback development origin, with no filesystem, shell, credential bridge,

@@ -183,3 +183,29 @@ release.
 - Task 3's isolated Compose example now uses only `PATH`, `TMPDIR`, and the
   run-specific `DOCKER_CONFIG` under `RUN_TMPDIR`; it does not preserve or
   reset a home-directory environment variable.
+
+## Final Task 0 review correction: deterministic Cypress model and confirmation fixtures
+
+- Task 5a now tracks a Compose-owned fake OpenAI fixture image and server
+  (`deploy/tide-stack/cypress-fake-openai/Dockerfile` and `server.mjs`) beside
+  the Cypress compose file, runner, runner test, Cypress spec, and package
+  command. The fixture returns one fixed model and deterministic stream and
+  non-stream completions, has a health check, exposes only a redacted in-memory
+  completion count to Cypress, emits no secrets, and is removed with the
+  isolated project.
+- The isolated Tide-Bot service alone receives supported fixture model base
+  URL/key configuration, enabled sign-up, user default role, and the selected
+  fixture default model. It explicitly has no external model/search/OAuth/
+  terminal/CPTR path. Compose dependency and health requirements prevent
+  Cypress from racing model discovery or completion.
+- Companion Cypress coverage now proves exactly one Tide-Bot completion proxy
+  interception and exactly one fake-model receipt after a typed send/stop.
+  Confirmation denial is deterministic but correctly scoped: the authenticated
+  full canonical chat test toggles existing Web Search, submits, and denies its
+  existing confirmation dialog under isolated web-search confirmation config.
+  `CompanionPanel` source/route coverage separately proves it retains canonical
+  Chat confirmation UI while not exposing the optional Web Search control.
+- The Task 5a staging command and final gate evidence now list the fixture
+  files, fixture health/dependency state, fixture model ID, exactly-one request
+  assertions, canonical confirmation denial, no-secret fixture guarantee, and
+  safe named-stack teardown.
