@@ -40,8 +40,9 @@ reviewing the approved native-companion plan against Tide-Bot at
   `make_direction_qa_sheet.py`, `measure_direction_continuity.py --json-out`,
   and `make_direction_blind_qa_sheet.py --answer-key`. Three independent blind
   reviewers receive only the randomized blind sheet, then their three verdict
-  files are combined with `combine_direction_blind_verdicts.py` and checked by
-  `validate_direction_blind_verdicts.py`. Save a per-direction semantic record
+  files are atomically verified-and-combined by the owned verifier using the
+  required Hatch `combine_direction_blind_verdicts.py` on sealed verified copies
+  and checked by `validate_direction_blind_verdicts.py`. Save a per-direction semantic record
   for all 16 directions with expected direction, observed behavior,
   `pass`/`fail`/`ambiguous`, and reason (including horizontal/vertical landmark
   evidence for diagonals). The hard gate rejects a missing/failing/ambiguous
@@ -56,11 +57,17 @@ reviewing the approved native-companion plan against Tide-Bot at
   atlas SHA, blind-sheet SHA, answer-key SHA, and a canonical self-hash. Blind
   reviewers receive only that manifest plus the blind sheet. Every verdict must
   attest schema version, distinct reviewer ID, atlas/sheet/manifest hashes, and
-  pair votes. Before combine/validate, the verifier recomputes atlas, sheet,
-  key, and manifest hashes; checks the key's `atlas_sha256`; validates all
-  three attestations and reviewer-ID uniqueness; and writes a passing verifier
-  result JSON. Any mismatch is a hard pending release gate. The focused fixture
-  test must reject a mismatched hash; this evidence has not run.
+  pair votes. Release evidence invokes only its atomic `verify-and-combine`
+  command, never raw Hatch combine/validation: it re-reads/re-hashes atlas, sheet, key,
+  manifest, and all verdicts immediately; checks the key's `atlas_sha256`; then
+  passes sealed parsed verified votes to the required Hatch combine script and
+  invokes the required Hatch validation script in the same invocation using
+  explicit bundled-Python/script paths. Its envelope links every source-verdict
+  hash plus atlas/sheet/key/manifest and both Hatch results to the plain
+  consensus. Any mismatch is a hard pending release gate. The focused
+  fixture test must mutate each of atlas/sheet/key/manifest/verdicts after
+  manifest creation and prove every run fails with no accepted consensus; this
+  evidence has not run.
 
 ## Companion surface and canonical chat flow
 
@@ -92,10 +99,14 @@ reviewing the approved native-companion plan against Tide-Bot at
   empty (`''`) and nullish `chatIdProp` transitions are navigation resets.
   Deferred-operation tests must reset/navigate/destroy through that same
   binding before load/completion/stop/queue resolution and prove no stale real
-  mutation plus `eventCallback(false)`. A `Chat.lifecycle-contract.test.ts`
-  source test verifies every listed real continuation uses capture/check and
-  reset on navigation/destroy. Preserve canonical submit/stop/confirmation
-  semantics.
+  mutation plus `eventCallback(false)`. Its one-shot
+  `registerPendingEventCallback`/`settle` API clears registration before
+  invoking the real callback. All five assignment sites (confirmation, input,
+  execute, and two embedded confirm-prompts) use that wrapper, while dialog
+  confirm/cancel and normal execute settlement use `settle`. Tests cover normal
+  settlement followed by reset/destroy for each path; the source contract
+  asserts all five sites plus dialog use/cleanup. Preserve canonical
+  submit/stop/confirmation semantics.
 - `MessageInput.svelte` receives a companion mode that mounts the presentation-
   only `MessageInput/CompanionTextComposer.svelte` as an early branch. That
   child has only a textarea plus dispatched send/stop events; `MessageInput`
@@ -239,7 +250,14 @@ reviewing the approved native-companion plan against Tide-Bot at
   variable only where intentional) into this resolver; release evidence records
   resolved origin, generated-config SHA, capability result, and actual Windows
   artifact/manual proof. No actual production origin is currently known, so the
-  final release gate is external/pending. Browser detection is SSR-safe.
+  final release gate is external/pending. `configured_companion_url()` is the
+  only companion URL authority: it reads that generated capability file,
+  selects its production `remote.urls` entry, appends `/companion`, and rejects
+  missing/stale/invalid source or any runtime environment override.
+  `companion_window` calls it. A Cargo integration test proves the returned
+  external URL is approved/generated and `/companion`, cannot diverge from
+  `remote.urls`, and rejects fixture invalid/missing/stale generated sources.
+  Browser detection is SSR-safe.
 - A macOS debug build does not establish Windows acceptance. Both platform
   builds and their manual sign-in/minimize/session checks remain required
   release evidence.

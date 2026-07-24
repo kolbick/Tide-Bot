@@ -44,12 +44,18 @@ implementation plan requires separate future gates that have not run here:
 - The three blind verdicts must be provenance-attested before Hatch consensus:
   a tracked Node verifier writes the redacted atlas/sheet/key manifest, validates
   each distinct reviewer ID and hashes against the actual artifacts/key, and
-  emits a passing result JSON. That verifier/test and release evidence have not
-  run, so they are pending rather than claimed.
+  atomically invokes Hatch combine and validation on sealed verified votes. Its envelope must
+  link every source verdict and artifact hash to consensus; mutation after
+  manifest generation must fail without an accepted consensus. That verifier/test
+  and release evidence have not run, so they are pending rather than claimed.
 - Lifecycle acceptance must exercise the narrow binding that `Chat.svelte`
   itself uses for deferred load, completion, stop, and queue continuations.
   A standalone epoch test is not sufficient; reset/navigation/destruction must
   suppress stale real mutations and resolve the actual pending callback false.
+- Lifecycle settlement also needs normal-path proof: all five Chat callback
+  assignments register the one-shot binding wrapper, which clears before normal
+  dialog/execute callback invocation. Reset/destroy then only resolve callbacks
+  that remain pending; no normally settled callback may be invoked again.
 - Cypress acceptance needs the fixture slow-stream barrier and server-observed
   abort proof, not a normal stream completion. Its full-chat confirmation test
   must type prompt, toggle Web Search, see the dialog, deny, and retain zero
@@ -59,6 +65,10 @@ implementation plan requires separate future gates that have not run here:
   capability-test result, and actual Windows artifact/manual proof. The real
   production origin is not recorded here; this external release gate remains
   pending.
+- The desktop companion URL must be derived only from the resolver-generated
+  capability `remote.urls` through `configured_companion_url()`, not an app or
+  runtime environment URL. Missing/stale/invalid generated source and any
+  origin divergence must be rejected by the Cargo integration test.
 
 No live Compose, authenticated browser, Cypress, Redis, native desktop, or
 Hatch release acceptance is claimed by this baseline.

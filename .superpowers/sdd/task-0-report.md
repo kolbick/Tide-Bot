@@ -263,3 +263,24 @@ release.
   IDs/verdict hashes, and passing verifier result alongside the existing blind
   consensus/validation. This documents a future release gate only; it does not
   claim the verifier or Hatch QA ran in this Task 0 docs correction.
+
+## Final Task 0 review correction: atomic evidence and settlement authority
+
+- Replaced the vulnerable verify-then-raw-combine sequence with owned atomic
+  `verify-and-combine`. It re-hashes and validates every attested input, seals
+  verified votes, invokes the required Hatch combine and validation scripts in
+  the same call, and writes a source-hash-linked consensus envelope. The test matrix mutates
+  atlas, blind sheet, key, manifest, and each verdict after manifest creation;
+  every mutation must fail without accepted consensus. Direct raw Hatch combine
+  is prohibited for release evidence.
+- The lifecycle binding now has a one-shot normal settlement contract. All five
+  real `eventCallback` assignments register its wrapper; dialog confirm/cancel
+  and normal execute call `settle`, which clears before invoking. Tests cover
+  normal confirmation/input/execute/both embedded settlements followed by reset
+  or destroy, and the Chat source contract checks every assignment and cleanup.
+- Task 6 now makes `configured_companion_url()` the sole Webview URL authority.
+  It reads only resolver-generated `companion.json`, returns the approved
+  production origin plus `/companion`, and rejects missing/stale/invalid source
+  and runtime overrides. The new Cargo integration target proves that linkage
+  and is included in task/final acceptance commands. Production provisioning
+  remains external/pending; no host was invented.

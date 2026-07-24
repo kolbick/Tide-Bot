@@ -217,7 +217,10 @@ node scripts/verify-ted-bot-direction-evidence.mjs create-manifest \
 # Each of three independent reviewers receives only the blind sheet and this
 # redacted manifest, never the answer key, labeled direction sheet, atlas,
 # prompts, or another reviewer's verdict.
-node scripts/verify-ted-bot-direction-evidence.mjs verify-attestations \
+node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine \
+  --python "$PYTHON" \
+  --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" \
+  --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" \
   --atlas "$ATLAS" \
   --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
   --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
@@ -225,16 +228,9 @@ node scripts/verify-ted-bot-direction-evidence.mjs verify-attestations \
   --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" \
   --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" \
   --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" \
-  --output "$EVIDENCE_DIR/ted-bot-direction-attestation-verification.json"
-"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" \
-  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" \
-  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" \
-  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" \
-  --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json"
-"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" \
-  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
-  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" \
-  --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json"
+  --consensus-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" \
+  --validation-output "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json" \
+  --envelope-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus-envelope.json"
 ~~~
 
 `scripts/verify-ted-bot-direction-evidence.mjs` uses Node built-ins only and
@@ -247,16 +243,34 @@ manifest is the only nonvisual metadata a blind reviewer receives.
 
 Each reviewer verdict JSON must have the same schema version, a unique
 `reviewerId`, `atlasSha256`, `blindSheetSha256`, `manifestSha256`, and complete
-pair votes. Before Hatch consensus can run, `verify-attestations` recomputes
-the actual atlas/sheet/key/manifest hashes, checks that the answer key's
-`atlas_sha256` names the actual atlas, verifies every reviewer attestation,
-rejects duplicate reviewer IDs, and writes
-`ted-bot-direction-attestation-verification.json`. It must fail closed on a
-missing or mismatched hash, malformed vote, missing reviewer, duplicated ID,
-or unverifiable manifest; only an `ok: true` verifier result permits the
-subsequent combine/validate commands. Create focused
-`scripts/verify-ted-bot-direction-evidence.test.mjs` fixtures proving normal
-attestations pass and a mismatched atlas/sheet/manifest hash is rejected. Run:
+pair votes. Release evidence must invoke only the owned atomic
+`verify-and-combine` command, never a raw external
+`combine_direction_blind_verdicts.py` call. In one invocation it re-reads and
+hashes the actual atlas, blind sheet, answer key, manifest, and all three source
+verdicts; checks that the answer key's `atlas_sha256` names the actual atlas;
+validates every attestation and reviewer-ID uniqueness; parses the verified
+votes; writes sealed private verified-vote copies; and calls the required Hatch
+combine script with the explicit bundled `PYTHON` and script path on those
+sealed copies only. It must not pass mutable reviewer files to Hatch after
+verification.
+
+The wrapper writes both the plain Hatch-compatible consensus (for the required
+Hatch validator) and `ted-bot-direction-blind-consensus-envelope.json`. Before
+calling the required Hatch validator in that same wrapper invocation, it
+re-hashes the generated plain consensus and checks its linkage to the envelope;
+it passes explicit bundled `PYTHON`, validator-script, answer-key, and
+consensus paths. The envelope contains the atlas/sheet/key/manifest SHA-256s,
+exact SHA-256 of every source verdict, the sealed-copy hashes, the Hatch combine
+result/hash, plain-consensus hash, and Hatch validation result/hash. It fails closed on a
+missing or mismatched input/hash, malformed vote, missing reviewer, duplicate
+ID, unverifiable manifest, replaced verdict, failed Hatch combine, or envelope
+mismatch. Direct raw Hatch combine is prohibited for release evidence.
+
+Create focused `scripts/verify-ted-bot-direction-evidence.test.mjs` fixtures
+for a passing atomic run plus a mutation-after-manifest matrix: mutate the
+atlas, blind sheet, answer key, manifest, and each of the three individual
+verdict files in turn. Every mutation must fail and leave no accepted consensus
+or success envelope. Run:
 
 ~~~
 node --test scripts/verify-ted-bot-direction-evidence.test.mjs
@@ -283,7 +297,7 @@ assessment that accepts or rejects it.
 
 This is a hard release gate: all generated artifacts and each reviewer verdict
 are SHA-bound to the pre/post-identical atlas SHA-256; the attestation verifier
-must pass before consensus; no blind cardinal may be missing, failing, or
+must produce a linked atomic-consensus envelope; no blind cardinal may be missing, failing, or
 ambiguous; no semantic verdict may fail; and every
 continuity warning must be assessed and recorded. An ambiguous intermediate
 semantic verdict requires explicit labeled-loop rationale but never overrides a
@@ -717,6 +731,9 @@ the binding before the reset/destroy and assert it is invoked once with
 `false`. `Chat.lifecycle-contract.test.ts` must read `Chat.svelte` and reject a
 change that leaves any of `navigateHandler`/`loadChat`, completion settlement,
 `stopResponse`, or `processNextInQueue` outside the capture/check seam.
+It must also cover normal settlement: confirmation, input, execute, and both
+embedded confirm-prompt callback paths settle normally once, then a later reset
+or destroy cannot call them again.
 
 - [ ] **Step 2: Verify the tests fail**
 
@@ -750,9 +767,16 @@ continuation may run after an await.
 `navigateHandler`/`loadChat`, completion submission and stream settlement,
 `stopResponse`, and `processNextInQueue`. Capture before each relevant await
 and route the existing post-await mutation through `continueIfCurrent()`.
-Register the real pending confirmation/input callback with the binding when
-`eventCallback` is assigned; `resetForNavigation()` and `destroy()` increment
-the epoch and resolve each still-pending callback with `false` exactly once.
+Expose `registerPendingEventCallback(callback)` and one-shot `settle(value)` on
+the binding. Registration returns the wrapper assigned to `eventCallback`; its
+first normal dialog/async settlement clears the binding registration **before**
+calling the underlying callback, so reset/destroy can only resolve callbacks
+that remain pending. Every real assignment site must use that wrapper:
+confirmation, input, execute, and both embedded confirm-prompt paths (the five
+current `eventCallback = ...` sites). Both dialog confirm/cancel paths and the
+normal async execute resolution call `settle`, never the raw callback.
+`resetForNavigation()` and `destroy()` increment the epoch and resolve each
+still-pending callback with `false` exactly once.
 Call `resetForNavigation()` on every chat-ID transition, including `''`,
 `null`, and `undefined`, and call `destroy()` from `onDestroy`. Preserve the
 canonical submit, stop, confirmation, event, and queue semantics; no
@@ -764,10 +788,14 @@ creates real deferred promises for load, completion, stop, and queue, starts
 each through the same `capture(..., continuation)` shape used by `Chat.svelte`,
 then resets for navigation and destroys before resolving. It proves none of the
 real mutation callbacks run and that the actual registered `eventCallback`
-receives `false`. The source/contract test reads `Chat.svelte` and asserts all
-four real continuation entry points import/use the binding, capture/check their
-post-await continuation, register `eventCallback`, and reset on both
-navigation and `onDestroy`. Run them with:
+receives `false`. It separately tests normal resolution followed by reset and
+destroy for confirmation, input, execute, and both embedded paths, proving the
+underlying callback receives only its normal value. The source/contract test
+reads `Chat.svelte` and asserts all four real continuation entry points
+import/use the binding, capture/check their post-await continuation, every one
+of the five real `eventCallback` registration sites uses the wrapper, dialog
+confirm/cancel and normal execute settlement use `settle`, and reset occurs on
+both navigation and `onDestroy`. Run them with:
 
 ~~~
 npx vitest run src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts
@@ -803,7 +831,8 @@ and no duplicate completion/tool API import, Node parent-delegation evidence
 that companion mode hides every optional control, jsdom evidence of the small
 typed-only child, and lifecycle-binding evidence for stale load/completion/stop/
 queue, pending callback denial, cleared chat ID reset, destruction, and source
-coverage of the actual `Chat.svelte` deferred continuations.
+coverage of the actual `Chat.svelte` deferred continuations, plus one-shot
+normal callback settlement across confirmation/input/execute/embedded paths.
 
 ~~~
 git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts
@@ -954,9 +983,11 @@ git commit -m 'test: add companion smoke coverage'
 - Create: desktop/tide-bot/src-tauri/permissions/companion.toml
 - Create: desktop/tide-bot/src-tauri/src/main.rs
 - Create: desktop/tide-bot/src-tauri/src/lib.rs
+- Create: desktop/tide-bot/src-tauri/src/origin.rs
 - Create: desktop/tide-bot/src-tauri/src/placement.rs
 - Create: desktop/tide-bot/src-tauri/tests/placement_test.rs
 - Create: desktop/tide-bot/src-tauri/tests/capabilities_test.rs
+- Create: desktop/tide-bot/src-tauri/tests/companion_url_test.rs
 - Create: desktop/tide-bot/scripts/desktop-origins.mjs
 - Create: desktop/tide-bot/README.md
 
@@ -1000,7 +1031,7 @@ Run:
 ~~~
 cd desktop/tide-bot
 npm run prepare:origins
-cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test
+cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo test --test companion_url_test
 ~~~
 
 Expected: FAIL because the Tauri package does not exist.
@@ -1009,7 +1040,7 @@ Expected: FAIL because the Tauri package does not exist.
 
 ~~~rust
 fn companion_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-	WebviewWindowBuilder::new(app, "companion", WebviewUrl::External(app_url("/companion")))
+	WebviewWindowBuilder::new(app, "companion", WebviewUrl::External(configured_companion_url()?))
 		.decorations(false)
 		.always_on_top(true)
 		.resizable(false)
@@ -1038,6 +1069,9 @@ capability permission reference is the unprefixed
 origin plus the optional resolved development origin only when development was
 configured. The test reads the exact generated capability file that the Tauri
 build consumes; it must not reconstruct expected origins independently.
+`companion_url_test.rs` additionally exercises the exported generated-source
+reader and `companion_window` URL construction, so a capability test cannot
+pass while the actual companion Webview URL uses another authority.
 The parsed-value traversal rejects filesystem, shell, process, credential,
 arbitrary-navigation, eval, and `core:default` grants. It also checks the
 build registration/AppManifest contract exposes only `show_main_window` to the
@@ -1077,6 +1111,25 @@ required production input fails before Cargo/Tauri work begins. The generated
 JSON records the resolved non-secret origins and uses them as its `remote.urls`
 array: production first and optional development second.
 
+`src-tauri/src/origin.rs` defines `configured_companion_url()`. It reads **only**
+the resolver-generated `src-tauri/capabilities/companion.json`, parses its
+`remote.urls`, selects the required first resolved production origin, and safely
+appends exactly `/companion`. It must never read an arbitrary runtime URL or
+origin environment variable, and it rejects a missing/unreadable generated
+file, an invalid/stale generated origin, an empty/malformed remote list, any
+noncanonical external origin, or a result not exactly equal to one approved
+generated `remote.urls` origin plus `/companion`. `companion_window` must call
+this helper; no `app_url`, duplicate origin resolver, or fallback host is
+permitted.
+
+Export the read-only URL/config helper from `src/lib.rs` solely for executable
+integration tests. `companion_url_test.rs` proves the returned external
+`WebviewUrl` has the generated approved production origin and `/companion`,
+cannot diverge from `remote.urls`, and rejects missing, stale, or invalid
+generated capability sources via controlled fixture paths. It also proves an
+environment URL cannot affect the result. Run it with the placement and
+capability tests after `npm run prepare:origins`.
+
 There is currently no confirmed canonical production deployment origin. Do not
 invent one or hardcode a plausible domain. Until a deployment owner provisions
 the required production input, production desktop release acceptance is
@@ -1106,7 +1159,7 @@ Run:
 
 ~~~
 cd desktop/tide-bot && npm run prepare:origins
-cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo build --verbose && cargo check
+cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo test --test companion_url_test && cargo build --verbose && cargo check
 cd .. && npm run tauri build -- --debug
 ~~~
 
@@ -1231,14 +1284,13 @@ HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
 node scripts/verify-ted-bot-direction-evidence.mjs create-manifest --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --output "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json"
 # Obtain three independent verdict JSON files from reviewers who saw only the blind sheet and redacted manifest.
-node scripts/verify-ted-bot-direction-evidence.mjs verify-attestations --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --manifest "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --output "$EVIDENCE_DIR/ted-bot-direction-attestation-verification.json"
-"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json"
-"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json"
+# Release evidence must not invoke raw Hatch combine outside this atomic wrapper.
+node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine --python "$PYTHON" --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --manifest "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --consensus-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" --validation-output "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json" --envelope-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus-envelope.json"
 shasum -a 256 "$ATLAS"
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
 npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts src/lib/ted-bot/openMainWindow.test.ts
 node --test scripts/run-companion-cypress.test.mjs
-cd desktop/tide-bot && npm run prepare:origins && cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo check
+cd desktop/tide-bot && npm run prepare:origins && cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo test --test companion_url_test && cargo check
 cd ../../.. && RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs
 RUN_ID=cypress-release-$(date +%s) npm run test:companion:e2e
 ~~~
@@ -1248,7 +1300,7 @@ Python, consume the exact SHA-256-bound tracked atlas, produce passing
 deterministic alpha/transparency JSON plus a rendered contact sheet, a labeled
 direction QA sheet, continuity JSON, a randomized blind sheet/answer key,
 redacted provenance manifest, three attested independent blind verdicts,
-attestation-verifier result, consensus, and blind validation. Every item must
+atomic source-hash-linked consensus envelope, consensus, and blind validation. Every item must
 carry the same pre/post atlas SHA-256. No blind cardinal may be missing,
 failing, or ambiguous; every one of the 16 semantic entries must record
 expected direction, observed behavior, pass/fail/ambiguous verdict, and reason;
@@ -1262,7 +1314,8 @@ non-clean.
 The release acceptance record must include a current visual atlas-inspection
 entry for the tracked black-goldendoodle asset; the blind sheet, redacted
 manifest, its canonical self-hash, three reviewer IDs/verdict hashes, and
-passing attestation-verifier JSON; and the exact successful
+passing atomic consensus envelope linking the required Hatch combine result to
+the plain consensus; and the exact successful
 `RUN_ID=release-... node scripts/run-companion-presence-redis-integration.mjs`
 command, explicit isolated Compose project name, worker-a/worker-b endpoint
 evidence, direct-WebSocket shared ordered revisions, single-emitter expiry/
@@ -1280,7 +1333,9 @@ removed with the isolated stack; it is not a cross-client sync claim. A
 structural package check or single-worker/fake-Redis pytest does not replace
 either gate.
 Final release evidence additionally requires the resolved non-secret desktop
-origin, generated capability JSON SHA-256, parsed capability-test result,
+origin, generated capability JSON SHA-256, parsed capability-test and
+`companion_url_test` result proving the actual Webview URL is the generated
+approved origin plus `/companion`,
 green GitHub Windows artifact build, and completed manual Windows procedure;
 neither is replaced by the local macOS debug bundle. The unprovisioned real
 production origin remains external/pending rather than being invented.
