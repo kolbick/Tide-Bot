@@ -8,6 +8,11 @@
 
 **Tech Stack:** SvelteKit 2, Svelte 5, TypeScript, Vitest, FastAPI, python-socketio, pytest, Tauri 2, Rust, Node 22.18.0, npm 10.9.3.
 
+> **Implementation amendments:** The current-code compatibility and security
+> decisions in
+> [`2026-07-24-ted-bot-native-companion-amendments.md`](../2026-07-24-ted-bot-native-companion-amendments.md)
+> are binding for this plan.
+
 ## Global Constraints
 
 - Tide-Bot is the product; Ted-Bot is its black-goldendoodle companion.
