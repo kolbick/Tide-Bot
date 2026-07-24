@@ -1,21 +1,16 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import * as nodeFs from 'node:fs/promises';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as nodePath from 'node:path';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { after, test } from 'node:test';
 
 import {
 	EXPECTED_DIRECTIONS,
-	createEvidenceVerifier,
-	prepareBlindRun,
-	preparePetQaRun,
-	publishPetQaRun,
-	sealPetQaArtifacts,
-	sealReviewerSubmission,
-	verifyAndCombine
+	createEvidenceVerifier
 } from './verify-ted-bot-direction-evidence.mjs';
 
 const fixtureRoot = await mkdtemp(join(tmpdir(), 'ted-bot-evidence-'));
@@ -38,6 +33,19 @@ const BLIND_PAIR_SPECS = [
 	['vertical', '315', 'up', '225', 'down'],
 	['vertical', '292.5', 'up', '247.5', 'down']
 ];
+const HATCH_ROWS = [
+	['idle', 6],
+	['running-right', 8],
+	['running-left', 8],
+	['waving', 4],
+	['jumping', 5],
+	['failed', 8],
+	['waiting', 6],
+	['running', 6],
+	['review', 6],
+	['look-000-to-157.5', 8],
+	['look-180-to-337.5', 8]
+];
 
 function digest(value) {
 	return createHash('sha256').update(value).digest('hex');
@@ -47,26 +55,82 @@ async function hash(file) {
 	return digest(await readFile(file));
 }
 
+const fixtureHatchPetDir = join(fixtureRoot, 'hatch-pet');
+const fixtureHatchRuntime = join(fixtureRoot, 'workspace-runtime', 'python');
+const fixtureHatchScripts = [
+	'scripts/validate_atlas.py',
+	'scripts/make_contact_sheet.py',
+	'scripts/make_direction_qa_sheet.py',
+	'scripts/measure_direction_continuity.py',
+	'scripts/make_direction_blind_qa_sheet.py',
+	'scripts/combine_direction_blind_verdicts.py',
+	'scripts/validate_direction_blind_verdicts.py'
+];
+await mkdir(join(fixtureHatchPetDir, 'scripts'), { recursive: true });
+await mkdir(nodePath.dirname(fixtureHatchRuntime), { recursive: true });
+await writeFile(fixtureHatchRuntime, 'fixture bundled Python runtime', { mode: 0o700 });
+const fixtureHatchRuntimeRealPath = await nodeFs.realpath(fixtureHatchRuntime);
+await writeFile(join(fixtureHatchPetDir, 'SKILL.md'), 'fixture Hatch Pet skill');
+for (const script of fixtureHatchScripts) {
+	await writeFile(join(fixtureHatchPetDir, script), `fixture ${script}`);
+}
+const fixtureHatchPetRealDir = await nodeFs.realpath(fixtureHatchPetDir);
+const fixtureHatchPolicy = {
+	skill: {
+		relativePath: 'SKILL.md',
+		sha256: await hash(join(fixtureHatchPetDir, 'SKILL.md'))
+	},
+	files: Object.fromEntries(
+		await Promise.all(
+			fixtureHatchScripts.map(async (script) => [
+				script,
+				await hash(join(fixtureHatchPetDir, script))
+			])
+		)
+	)
+};
+const fixtureVerifier = createEvidenceVerifier({ hatchPetReleasePolicy: fixtureHatchPolicy });
+const {
+	attestHatchRuntime,
+	prepareBlindRun,
+	preparePetQaRun,
+	publishPetQaRun,
+	sealPetQaArtifacts,
+	sealReviewerSubmission,
+	verifyAndCombine
+} = fixtureVerifier;
+
+async function attestFixtureHatchRuntime(output) {
+	await attestHatchRuntime({
+		runtime: fixtureHatchRuntime,
+		hatchPetSkillDir: fixtureHatchPetDir,
+		output
+	});
+	return { path: output, sha256: await hash(output) };
+}
+
 async function writePng(file) {
 	await writeFile(file, PNG_SIGNATURE);
 }
 
 function answerKeyPairs() {
 	const axisIndexes = { horizontal: 0, vertical: 0 };
-	return BLIND_PAIR_SPECS.map(([axis, firstSource, firstDirection, secondSource, secondDirection]) => {
-		axisIndexes[axis] += 1;
-		return {
-			pair: `${axis}-${axisIndexes[axis]}`,
-			axis,
-			gate:
-				(firstSource === '090' && secondSource === '270') ||
-				(firstSource === '000' && secondSource === '180')
-					? 'hard'
-					: 'review',
-			A: { source_direction: firstSource, expected_direction: firstDirection },
-			B: { source_direction: secondSource, expected_direction: secondDirection }
-		};
-	});
+	return BLIND_PAIR_SPECS.map(
+		([axis, firstSource, firstDirection, secondSource, secondDirection]) => {
+			axisIndexes[axis] += 1;
+			return {
+				pair: `${axis}-${axisIndexes[axis]}`,
+				axis,
+				gate:
+					(firstSource === '090' && secondSource === '270') ||
+					(firstSource === '000' && secondSource === '180')
+						? 'hard'
+						: 'review',
+				A: { source_direction: firstSource, expected_direction: firstDirection },
+				B: { source_direction: secondSource, expected_direction: secondDirection }
+			};
+		}
+	);
 }
 
 function reviewerPairs(answerKey) {
@@ -91,15 +155,20 @@ function atlasValidation(atlas) {
 		rows: 11,
 		sprite_version_number: 2,
 		transparent_rgb_residue_pixels: 0,
-		cells: Array.from({ length: 88 }, (_, index) => ({
-			state: 'fixture',
-			row: Math.floor(index / 8),
-			column: index % 8,
-			used: true,
-			nontransparent_pixels: 1,
-			opaque_chroma_key_pixels: 0,
-			chroma_fringe_pixels: 0
-		}))
+		cells: HATCH_ROWS.flatMap(([state, frameCount], row) =>
+			Array.from({ length: 8 }, (_, column) => {
+				const used = column < frameCount || (row === 0 && column === 6);
+				return {
+					state,
+					row,
+					column,
+					used,
+					nontransparent_pixels: used ? 50 : 0,
+					opaque_chroma_key_pixels: 0,
+					chroma_fringe_pixels: 0
+				};
+			})
+		)
 	};
 }
 
@@ -122,17 +191,19 @@ function continuityResult(warnings = ['review continuity transition']) {
 	};
 }
 
-function inspectionResult({ atlas, atlasSha256, pending }) {
+async function inspectionResult({ atlas, atlasSha256, pending, hatchRuntimeAttestationSha256 }) {
 	const validationPath = join(pending, 'ted-bot-atlas-validation.json');
 	return {
 		schemaVersion: 'ted-bot-pet-qa-inspection/v1',
 		atlasPath: atlas,
 		preAtlasSha256: atlasSha256,
 		postAtlasSha256: atlasSha256,
-		runtimePath: '/bundled/runtime/python',
+		runtimePath: fixtureHatchRuntime,
+		runtimeSha256: await hash(fixtureHatchRuntime),
+		hatchRuntimeAttestationSha256,
 		validatorCommand: [
-			'/bundled/runtime/python',
-			'/Users/kolbyunderwood/.codex/skills/hatch-pet/scripts/validate_atlas.py',
+			fixtureHatchRuntime,
+			join(fixtureHatchPetRealDir, 'scripts/validate_atlas.py'),
 			atlas,
 			'--require-v2',
 			'--json-out',
@@ -179,18 +250,19 @@ async function createFiles(name) {
 	return { dir, atlas, blindSheet, answerKey };
 }
 
-function fakeHatchRunner(calls = []) {
-	return async (_program, args) => {
-		calls.push(args);
+function fakeHatchRunner(calls = [], { beforeValidate } = {}) {
+	return async (program, args) => {
+		calls.push({ program, args });
 		const output = args[args.indexOf('--json-out') + 1];
-	if (args[0] === 'combine') {
-		const sealed = [];
-		for (let index = 0; index < args.length; index += 1) {
-			if (args[index] === '--verdicts') sealed.push(args[index + 1]);
-		}
+		if (nodePath.basename(args[0]) === 'combine_direction_blind_verdicts.py') {
+			const sealed = [];
+			for (let index = 0; index < args.length; index += 1) {
+				if (args[index] === '--verdicts') sealed.push(args[index + 1]);
+			}
 			const first = JSON.parse(await readFile(sealed[0], 'utf8'));
 			await writeFile(output, JSON.stringify({ pairs: first.pairs }));
-		} else if (args[0] === 'validate') {
+		} else if (nodePath.basename(args[0]) === 'validate_direction_blind_verdicts.py') {
+			await beforeValidate?.({ program, args });
 			const answerKey = JSON.parse(await readFile(args[args.indexOf('--answer-key') + 1], 'utf8'));
 			await writeFile(
 				output,
@@ -238,12 +310,16 @@ async function setupBlind(name, { runId = `release-${name}-blind` } = {}) {
 		})
 	);
 	const runsRoot = join(files.dir, 'blind-runs');
+	const hatchRuntimeAttestation = await attestFixtureHatchRuntime(
+		join(files.dir, 'ted-bot-hatch-runtime-attestation.json')
+	);
 	const pending = await prepareBlindRun({
 		runId,
 		runsRoot,
 		atlas: files.atlas,
 		blindSheet: files.blindSheet,
-		answerKey: files.answerKey
+		answerKey: files.answerKey,
+		hatchRuntimeAttestation: hatchRuntimeAttestation.path
 	});
 	const manifest = JSON.parse(await readFile(join(pending, 'blind-review-manifest.json'), 'utf8'));
 	const rawFiles = [];
@@ -271,30 +347,39 @@ async function setupBlind(name, { runId = `release-${name}-blind` } = {}) {
 		final: join(runsRoot, runId),
 		manifest,
 		rawFiles,
-		atlasSha256
+		atlasSha256,
+		hatchRuntimeAttestation
 	};
 }
 
-async function verifyBlind(setup, calls = []) {
+async function verifyBlind(setup, calls = [], runnerOptions = {}) {
 	return verifyAndCombine({
-		python: 'fake-python',
-		combineScript: 'combine',
-		validateScript: 'validate',
+		// These legacy fields must never select a runtime or script. The verifier
+		// derives every executable path from the copied, pinned attestation.
+		python: '/untrusted/python',
+		combineScript: '/untrusted/combine.py',
+		validateScript: '/untrusted/validate.py',
 		runId: setup.runId,
 		runsRoot: setup.runsRoot,
-		commandRunner: fakeHatchRunner(calls)
+		commandRunner: fakeHatchRunner(calls, runnerOptions)
 	});
 }
 
 async function expectNoFinal(setup, action) {
-	await assert.rejects(action(), /Ted-Bot direction evidence failed|unexpected/i);
+	await assert.rejects(
+		action(),
+		/Ted-Bot direction evidence failed|unexpected|EACCES|permission|not permitted/i
+	);
 	await assert.rejects(stat(setup.final), /ENOENT/);
 }
 
 test('rejects malformed PET and blind run IDs before touching injected path or filesystem dependencies', async () => {
 	const calls = [];
 	const verifier = createEvidenceVerifier({
-		path: new Proxy({}, { get: (_target, property) => () => calls.push(`path:${String(property)}`) }),
+		path: new Proxy(
+			{},
+			{ get: (_target, property) => () => calls.push(`path:${String(property)}`) }
+		),
 		fs: new Proxy({}, { get: (_target, property) => () => calls.push(`fs:${String(property)}`) })
 	});
 	for (const runId of ['', '.', '../escape', 'slash/value', 'space here', 'Upper']) {
@@ -322,7 +407,10 @@ test('creates only a private sibling pet-QA pending directory and refuses collis
 	const pending = await preparePetQaRun({ runId: 'release-outer', runsRoot, atlas });
 	assert.equal(pending, join(runsRoot, '.release-outer.pending'));
 	assert.equal((await stat(pending)).mode & 0o777, 0o700);
-	await assert.rejects(preparePetQaRun({ runId: 'release-outer', runsRoot, atlas }), /pending|final/i);
+	await assert.rejects(
+		preparePetQaRun({ runId: 'release-outer', runsRoot, atlas }),
+		/pending|final/i
+	);
 });
 
 test('contains valid sibling paths before checking collisions', async () => {
@@ -360,6 +448,9 @@ test('contains valid sibling paths before checking collisions', async () => {
 
 test('requires a complete Hatch blind key and PNG review sheet before creating a blind run', async () => {
 	const files = await createFiles('blind-input-contract');
+	const hatchRuntimeAttestation = await attestFixtureHatchRuntime(
+		join(files.dir, 'ted-bot-hatch-runtime-attestation.json')
+	);
 	const atlasSha256 = await hash(files.atlas);
 	await writeFile(
 		files.answerKey,
@@ -376,7 +467,8 @@ test('requires a complete Hatch blind key and PNG review sheet before creating a
 			runsRoot: join(files.dir, 'blind-runs'),
 			atlas: files.atlas,
 			blindSheet: files.blindSheet,
-			answerKey: files.answerKey
+			answerKey: files.answerKey,
+			hatchRuntimeAttestation: hatchRuntimeAttestation.path
 		}),
 		/Ted-Bot direction evidence failed/i
 	);
@@ -396,7 +488,8 @@ test('requires a complete Hatch blind key and PNG review sheet before creating a
 			runsRoot: join(files.dir, 'blind-runs'),
 			atlas: files.atlas,
 			blindSheet: files.blindSheet,
-			answerKey: files.answerKey
+			answerKey: files.answerKey,
+			hatchRuntimeAttestation: hatchRuntimeAttestation.path
 		}),
 		/Ted-Bot direction evidence failed/i
 	);
@@ -406,11 +499,15 @@ test('redacts the blind package and seals reviewer submissions against later raw
 	const setup = await setupBlind('seal');
 	await stat(join(setup.pending, 'blind-sheet.png'));
 	await assert.rejects(stat(join(setup.pending, 'key.json')), /ENOENT/);
-	const sealed = join(setup.pending, 'sealed-reviewer-reviewer-1.json');
+	const bundle = join(setup.pending, 'sealed-reviewer-reviewer-1');
+	const sealed = join(bundle, 'verdict.json');
+	const receipt = join(bundle, 'receipt.json');
+	assert.equal((await stat(bundle)).isDirectory(), true);
 	const before = await readFile(sealed, 'utf8');
 	await writeFile(setup.rawFiles[0], '{"changed":true}');
 	assert.equal(await readFile(sealed, 'utf8'), before);
 	assert.equal((await stat(sealed)).mode & 0o777, 0o600);
+	assert.equal((await stat(receipt)).mode & 0o777, 0o600);
 });
 
 test('combines only sealed submissions and validates through the injected Hatch runner', async () => {
@@ -420,12 +517,116 @@ test('combines only sealed submissions and validates through the injected Hatch 
 	const final = await verifyBlind(setup, calls);
 	assert.equal(final, setup.final);
 	assert.equal(calls.length, 2);
-	const combinePaths = calls[0].filter((value, index) => calls[0][index - 1] === '--verdicts');
+	assert.equal(calls[0].program, fixtureHatchRuntimeRealPath);
+	assert.equal(calls[1].program, fixtureHatchRuntimeRealPath);
+	assert.equal(
+		calls[0].args[0],
+		join(fixtureHatchPetRealDir, 'scripts/combine_direction_blind_verdicts.py')
+	);
+	assert.equal(
+		calls[1].args[0],
+		join(fixtureHatchPetRealDir, 'scripts/validate_direction_blind_verdicts.py')
+	);
+	const combinePaths = calls[0].args.filter(
+		(value, index) => calls[0].args[index - 1] === '--verdicts'
+	);
 	assert.equal(combinePaths.length, 3);
 	assert.ok(combinePaths.every((value) => String(value).includes('sealed-reviewer-')));
 	assert.ok(combinePaths.every((value) => !setup.rawFiles.includes(value)));
-	assert.equal(calls[1][calls[1].indexOf('--answer-key') + 1], setup.answerKey);
+	assert.equal(calls[1].args[calls[1].args.indexOf('--answer-key') + 1], setup.answerKey);
+	assert.match(
+		calls[1].args[calls[1].args.indexOf('--verdicts') + 1],
+		/ted-bot-direction-blind-validation-input\.json$/
+	);
+	assert.equal(
+		(await stat(join(final, 'ted-bot-direction-blind-validation-input.json'))).mode & 0o777,
+		0o400
+	);
 	await assert.rejects(stat(setup.pending), /ENOENT/);
+});
+
+test('rejects a plain-consensus mutation while Hatch validates an immutable snapshot', async () => {
+	const setup = await setupBlind('consensus-mutation');
+	const calls = [];
+	await expectNoFinal(setup, () =>
+		verifyBlind(setup, calls, {
+			beforeValidate: async () => {
+				await writeFile(
+					join(setup.pending, 'ted-bot-direction-blind-consensus.json'),
+					'{"changed":true}'
+				);
+			}
+		})
+	);
+	assert.equal(calls.length, 2);
+	const validationInput = calls[1].args[calls[1].args.indexOf('--verdicts') + 1];
+	assert.match(validationInput, /ted-bot-direction-blind-validation-input\.json$/);
+	assert.notEqual(validationInput, join(setup.pending, 'ted-bot-direction-blind-consensus.json'));
+});
+
+test('rejects a sealed validation-input mutation before the validator can publish a result', async () => {
+	const setup = await setupBlind('validation-input-mutation');
+	const calls = [];
+	await expectNoFinal(setup, () =>
+		verifyBlind(setup, calls, {
+			beforeValidate: async ({ args }) => {
+				const validationInput = args[args.indexOf('--verdicts') + 1];
+				await writeFile(validationInput, '{"changed":true}');
+			}
+		})
+	);
+	assert.match(
+		calls[1].args[calls[1].args.indexOf('--verdicts') + 1],
+		/ted-bot-direction-blind-validation-input\.json$/
+	);
+});
+
+test('rejects a valid-looking runtime attestation replacement while Hatch is running', async () => {
+	const setup = await setupBlind('runtime-attestation-swap');
+	const replacement = join(setup.dir, 'replacement-hatch-runtime-attestation.json');
+	await expectNoFinal(setup, () =>
+		verifyBlind(setup, [], {
+			beforeValidate: async () => {
+				await attestFixtureHatchRuntime(replacement);
+				await nodeFs.copyFile(
+					replacement,
+					join(setup.pending, 'ted-bot-hatch-runtime-attestation.json')
+				);
+			}
+		})
+	);
+});
+
+test('ignores a crash-style private reviewer staging bundle instead of treating it as sealed evidence', async () => {
+	const setup = await setupBlind('staged-reviewer-crash');
+	const interrupted = join(setup.pending, '.sealed-reviewer-reviewer-4.interrupted.pending');
+	await mkdir(interrupted, { mode: 0o700 });
+	await writeFile(join(interrupted, 'verdict.json'), '{"incomplete":true}');
+	const final = await verifyBlind(setup);
+	assert.equal(final, setup.final);
+});
+
+test('rejects legacy command-line runtime and script overrides before touching a blind run', () => {
+	const result = spawnSync(
+		process.execPath,
+		[
+			nodePath.resolve('scripts/verify-ted-bot-direction-evidence.mjs'),
+			'verify-and-combine',
+			'--python',
+			'/untrusted/python',
+			'--combine-script',
+			'/untrusted/combine.py',
+			'--validate-script',
+			'/untrusted/validate.py',
+			'--run-id',
+			'release-legacy-options',
+			'--runs-root',
+			join(fixtureRoot, 'legacy-options')
+		],
+		{ encoding: 'utf8' }
+	);
+	assert.notEqual(result.status, 0);
+	assert.match(result.stderr, /derives the bundled runtime and Hatch scripts/i);
 });
 
 test('rejects every changed blind input or sealed receipt before producing a blind final run', async () => {
@@ -434,8 +635,14 @@ test('rejects every changed blind input or sealed receipt before producing a bli
 		['blind-sheet', async (s) => writeFile(join(s.pending, 'blind-sheet.png'), 'changed-sheet')],
 		['answer-key', async (s) => writeFile(s.answerKey, '{"atlas_sha256":"changed","pairs":[]}')],
 		['manifest', async (s) => writeFile(join(s.pending, 'blind-review-manifest.json'), '{}')],
-		['sealed-verdict', async (s) => writeFile(join(s.pending, 'sealed-reviewer-reviewer-1.json'), '{}')],
-		['sealed-receipt', async (s) => writeFile(join(s.pending, 'sealed-reviewer-reviewer-1.receipt.json'), '{}')]
+		[
+			'sealed-verdict',
+			async (s) => writeFile(join(s.pending, 'sealed-reviewer-reviewer-1', 'verdict.json'), '{}')
+		],
+		[
+			'sealed-receipt',
+			async (s) => writeFile(join(s.pending, 'sealed-reviewer-reviewer-1', 'receipt.json'), '{}')
+		]
 	];
 	for (const [name, mutate] of cases) {
 		const setup = await setupBlind(`mutate-${name}`);
@@ -444,17 +651,75 @@ test('rejects every changed blind input or sealed receipt before producing a bli
 	}
 });
 
+test('fails closed when an attested runtime, pinned Hatch script, or copied attestation changes', async () => {
+	const originalRuntime = await readFile(fixtureHatchRuntime);
+	const combineScript = join(fixtureHatchPetDir, 'scripts/combine_direction_blind_verdicts.py');
+	const originalCombineScript = await readFile(combineScript);
+	const cases = [
+		[
+			'runtime',
+			async (setup) => writeFile(fixtureHatchRuntime, 'mutated bundled runtime'),
+			async () => writeFile(fixtureHatchRuntime, originalRuntime)
+		],
+		[
+			'pinned-script',
+			async () => writeFile(combineScript, 'mutated pinned Hatch combine script'),
+			async () => writeFile(combineScript, originalCombineScript)
+		],
+		[
+			'copied-attestation',
+			async (setup) =>
+				writeFile(join(setup.pending, 'ted-bot-hatch-runtime-attestation.json'), '{"forged":true}'),
+			async () => {}
+		]
+	];
+	for (const [name, mutate, restore] of cases) {
+		const setup = await setupBlind(`attestation-${name}`);
+		try {
+			await mutate(setup);
+			await expectNoFinal(setup, () => verifyBlind(setup));
+		} finally {
+			await restore();
+		}
+	}
+	await assert.rejects(
+		attestHatchRuntime({
+			runtime: '/usr/bin/python',
+			hatchPetSkillDir: fixtureHatchPetDir,
+			output: join(fixtureRoot, 'system-python-attestation.json')
+		}),
+		/bundled runtime/i
+	);
+	const systemRuntimeLink = join(fixtureRoot, 'system-runtime-link');
+	await symlink('/bin/sh', systemRuntimeLink);
+	try {
+		await assert.rejects(
+			attestHatchRuntime({
+				runtime: systemRuntimeLink,
+				hatchPetSkillDir: fixtureHatchPetDir,
+				output: join(fixtureRoot, 'system-runtime-link-attestation.json')
+			}),
+			/resolves to a system binary/i
+		);
+	} finally {
+		await rm(systemRuntimeLink, { force: true });
+	}
+});
+
 test('rejects missing or duplicate sealed reviewer submissions', async () => {
 	const missing = await setupBlind('missing-submission');
-	await rm(join(missing.pending, 'sealed-reviewer-reviewer-3.receipt.json'));
+	await rm(join(missing.pending, 'sealed-reviewer-reviewer-3', 'receipt.json'));
 	await expectNoFinal(missing, () => verifyBlind(missing));
 
 	const duplicate = await setupBlind('duplicate-submission');
 	const receipt = JSON.parse(
-		await readFile(join(duplicate.pending, 'sealed-reviewer-reviewer-2.receipt.json'), 'utf8')
+		await readFile(join(duplicate.pending, 'sealed-reviewer-reviewer-2', 'receipt.json'), 'utf8')
 	);
 	receipt.reviewerId = 'reviewer-1';
-	await writeFile(join(duplicate.pending, 'sealed-reviewer-reviewer-2.receipt.json'), JSON.stringify(receipt));
+	await writeFile(
+		join(duplicate.pending, 'sealed-reviewer-reviewer-2', 'receipt.json'),
+		JSON.stringify(receipt)
+	);
 	await expectNoFinal(duplicate, () => verifyBlind(duplicate));
 });
 
@@ -469,8 +734,8 @@ test('rejects an answer-key atlas mismatch even when its manifest and sealed att
 	manifest.manifestSha256 = manifestHash(manifest);
 	await writeFile(manifestPath, JSON.stringify(manifest));
 	for (const reviewerId of ['reviewer-1', 'reviewer-2', 'reviewer-3']) {
-		const sealedPath = join(setup.pending, `sealed-reviewer-${reviewerId}.json`);
-		const receiptPath = join(setup.pending, `sealed-reviewer-${reviewerId}.receipt.json`);
+		const sealedPath = join(setup.pending, `sealed-reviewer-${reviewerId}`, 'verdict.json');
+		const receiptPath = join(setup.pending, `sealed-reviewer-${reviewerId}`, 'receipt.json');
 		const verdict = JSON.parse(await readFile(sealedPath, 'utf8'));
 		verdict.manifestSha256 = manifest.manifestSha256;
 		await writeFile(sealedPath, JSON.stringify(verdict));
@@ -509,6 +774,9 @@ async function setupOuter(name, { runId = `release-${name}`, seal = true } = {})
 	const runsRoot = join(files.dir, 'pet-qa-runs');
 	const pending = await preparePetQaRun({ runId, runsRoot, atlas: files.atlas });
 	const atlasSha256 = await hash(files.atlas);
+	const hatchRuntimeAttestation = await attestFixtureHatchRuntime(
+		join(pending, 'ted-bot-hatch-runtime-attestation.json')
+	);
 	const outerBlindSheet = join(pending, 'ted-bot-direction-blind-sheet.png');
 	const outerAnswerKey = join(pending, 'ted-bot-direction-blind-answer-key.json');
 	await writePng(outerBlindSheet);
@@ -527,7 +795,14 @@ async function setupOuter(name, { runId = `release-${name}`, seal = true } = {})
 	);
 	await writeFile(
 		join(pending, 'ted-bot-pet-qa-inspection.json'),
-		JSON.stringify(inspectionResult({ atlas: files.atlas, atlasSha256, pending }))
+		JSON.stringify(
+			await inspectionResult({
+				atlas: files.atlas,
+				atlasSha256,
+				pending,
+				hatchRuntimeAttestationSha256: hatchRuntimeAttestation.sha256
+			})
+		)
 	);
 	await writePng(join(pending, 'ted-bot-atlas-contact-sheet.png'));
 	await writePng(join(pending, 'ted-bot-direction-qa-sheet.png'));
@@ -553,9 +828,12 @@ async function setupOuter(name, { runId = `release-${name}`, seal = true } = {})
 		runsRoot: blindRunsRoot,
 		atlas: files.atlas,
 		blindSheet: outerBlindSheet,
-		answerKey: outerAnswerKey
+		answerKey: outerAnswerKey,
+		hatchRuntimeAttestation: hatchRuntimeAttestation.path
 	});
-	const manifest = JSON.parse(await readFile(join(blindPending, 'blind-review-manifest.json'), 'utf8'));
+	const manifest = JSON.parse(
+		await readFile(join(blindPending, 'blind-review-manifest.json'), 'utf8')
+	);
 	for (const reviewerId of ['reviewer-1', 'reviewer-2', 'reviewer-3']) {
 		const raw = join(files.dir, `${runId}-${reviewerId}.json`);
 		await writeFile(
@@ -572,9 +850,6 @@ async function setupOuter(name, { runId = `release-${name}`, seal = true } = {})
 		await sealReviewerSubmission({ runId: blindRunId, runsRoot: blindRunsRoot, verdict: raw });
 	}
 	await verifyAndCombine({
-		python: 'fake-python',
-		combineScript: 'combine',
-		validateScript: 'validate',
 		runId: blindRunId,
 		runsRoot: blindRunsRoot,
 		commandRunner: fakeHatchRunner()
@@ -588,19 +863,27 @@ async function setupOuter(name, { runId = `release-${name}`, seal = true } = {})
 		final: join(runsRoot, runId),
 		blindRunId,
 		blindFinal: join(blindRunsRoot, blindRunId),
-		atlasSha256
+		atlasSha256,
+		hatchRuntimeAttestation
 	};
 }
 
 test('publishes only a sealed complete outer pet-QA bundle', async () => {
 	const setup = await setupOuter('publish');
-	const final = await publishPetQaRun({ runId: setup.runId, runsRoot: setup.runsRoot, atlas: setup.atlas });
+	const final = await publishPetQaRun({
+		runId: setup.runId,
+		runsRoot: setup.runsRoot,
+		atlas: setup.atlas
+	});
 	assert.equal(final, setup.final);
 	const metadata = JSON.parse(await readFile(join(final, 'ted-bot-pet-qa-run.json'), 'utf8'));
 	assert.equal(metadata.runId, setup.runId);
 	assert.equal(metadata.atlasSha256, setup.atlasSha256);
 	assert.ok(Object.keys(metadata.artifactSha256).length >= 10);
-	await assert.rejects(preparePetQaRun({ runId: setup.runId, runsRoot: setup.runsRoot, atlas: setup.atlas }), /final/i);
+	await assert.rejects(
+		preparePetQaRun({ runId: setup.runId, runsRoot: setup.runsRoot, atlas: setup.atlas }),
+		/final/i
+	);
 });
 
 test('rejects incomplete Hatch output contracts and diagonal evidence before sealing', async () => {
@@ -620,7 +903,11 @@ test('rejects incomplete Hatch output contracts and diagonal evidence before sea
 	delete continuityValue.alphaHoles;
 	await writeFile(continuityFile, JSON.stringify(continuityValue));
 	await assert.rejects(
-		sealPetQaArtifacts({ runId: continuity.runId, runsRoot: continuity.runsRoot, atlas: continuity.atlas }),
+		sealPetQaArtifacts({
+			runId: continuity.runId,
+			runsRoot: continuity.runsRoot,
+			atlas: continuity.atlas
+		}),
 		/Ted-Bot direction evidence failed/i
 	);
 
@@ -630,7 +917,11 @@ test('rejects incomplete Hatch output contracts and diagonal evidence before sea
 	delete semanticsValue.directions.find((entry) => entry.id === '045').landmarks;
 	await writeFile(semanticsFile, JSON.stringify(semanticsValue));
 	await assert.rejects(
-		sealPetQaArtifacts({ runId: diagonal.runId, runsRoot: diagonal.runsRoot, atlas: diagonal.atlas }),
+		sealPetQaArtifacts({
+			runId: diagonal.runId,
+			runsRoot: diagonal.runsRoot,
+			atlas: diagonal.atlas
+		}),
 		/Ted-Bot direction evidence failed/i
 	);
 
@@ -640,7 +931,25 @@ test('rejects incomplete Hatch output contracts and diagonal evidence before sea
 	inspectionValue.rubric.identity = 'fail';
 	await writeFile(inspectionFile, JSON.stringify(inspectionValue));
 	await assert.rejects(
-		sealPetQaArtifacts({ runId: inspection.runId, runsRoot: inspection.runsRoot, atlas: inspection.atlas }),
+		sealPetQaArtifacts({
+			runId: inspection.runId,
+			runsRoot: inspection.runsRoot,
+			atlas: inspection.atlas
+		}),
+		/Ted-Bot direction evidence failed/i
+	);
+
+	const unboundInspection = await setupOuter('unbound-inspection', { seal: false });
+	const unboundInspectionFile = join(unboundInspection.pending, 'ted-bot-pet-qa-inspection.json');
+	const unboundInspectionValue = JSON.parse(await readFile(unboundInspectionFile, 'utf8'));
+	unboundInspectionValue.validatorCommand[1] = '/untrusted/validate_atlas.py';
+	await writeFile(unboundInspectionFile, JSON.stringify(unboundInspectionValue));
+	await assert.rejects(
+		sealPetQaArtifacts({
+			runId: unboundInspection.runId,
+			runsRoot: unboundInspection.runsRoot,
+			atlas: unboundInspection.atlas
+		}),
 		/Ted-Bot direction evidence failed/i
 	);
 
@@ -655,31 +964,89 @@ test('rejects incomplete Hatch output contracts and diagonal evidence before sea
 	);
 });
 
+test('rejects forged Hatch atlas cell layout before sealing', async () => {
+	const setup = await setupOuter('forged-atlas-cells', { seal: false });
+	const file = join(setup.pending, 'ted-bot-atlas-validation.json');
+	const result = JSON.parse(await readFile(file, 'utf8'));
+	result.cells[0].state = 'fixture';
+	await writeFile(file, JSON.stringify(result));
+	await assert.rejects(
+		sealPetQaArtifacts({ runId: setup.runId, runsRoot: setup.runsRoot, atlas: setup.atlas }),
+		/Ted-Bot direction evidence failed/i
+	);
+});
+
 test('rejects mutated outer artifacts and blind linkage without publishing the current run', async () => {
 	const cases = [
-		['contact-sheet', async (s) => writeFile(join(s.pending, 'ted-bot-atlas-contact-sheet.png'), 'changed')],
-		['direction-sheet', async (s) => writeFile(join(s.pending, 'ted-bot-direction-qa-sheet.png'), 'changed')],
-		['atlas-validation', async (s) => writeFile(join(s.pending, 'ted-bot-atlas-validation.json'), '{"ok":false}')],
-		['continuity', async (s) => writeFile(join(s.pending, 'ted-bot-direction-continuity.json'), '{"ok":true,"warnings":[]}')],
-		['outer-blind-sheet', async (s) => writeFile(join(s.pending, 'ted-bot-direction-blind-sheet.png'), 'changed')],
-		['outer-answer-key', async (s) => writeFile(join(s.pending, 'ted-bot-direction-blind-answer-key.json'), '{"atlas_sha256":"changed","pairs":[]}')],
-		['semantics-direction', async (s) => {
-			const file = join(s.pending, 'ted-bot-direction-semantics.json');
-			const value = JSON.parse(await readFile(file, 'utf8'));
-			value.directions[0].expected = 'wrong';
-			await writeFile(file, JSON.stringify(value));
-		}],
-		['missing-warning-assessment', async (s) => {
-			const file = join(s.pending, 'ted-bot-direction-semantics.json');
-			const value = JSON.parse(await readFile(file, 'utf8'));
-			value.warningAssessments = [];
-			await writeFile(file, JSON.stringify(value));
-		}],
-		['blind-envelope', async (s) => writeFile(join(s.blindFinal, 'ted-bot-direction-blind-consensus-envelope.json'), '{}')],
-		['blind-consensus', async (s) => writeFile(join(s.blindFinal, 'ted-bot-direction-blind-consensus.json'), '{}')],
-		['blind-validation', async (s) => writeFile(join(s.blindFinal, 'ted-bot-direction-blind-validation.json'), '{"ok":false}')],
-		['blind-receipt', async (s) => writeFile(join(s.blindFinal, 'sealed-reviewer-reviewer-1.receipt.json'), '{}')],
-		['artifact-manifest', async (s) => writeFile(join(s.pending, 'ted-bot-pet-qa-artifact-manifest.json'), '{}')]
+		[
+			'contact-sheet',
+			async (s) => writeFile(join(s.pending, 'ted-bot-atlas-contact-sheet.png'), 'changed')
+		],
+		[
+			'direction-sheet',
+			async (s) => writeFile(join(s.pending, 'ted-bot-direction-qa-sheet.png'), 'changed')
+		],
+		[
+			'atlas-validation',
+			async (s) => writeFile(join(s.pending, 'ted-bot-atlas-validation.json'), '{"ok":false}')
+		],
+		[
+			'continuity',
+			async (s) =>
+				writeFile(join(s.pending, 'ted-bot-direction-continuity.json'), '{"ok":true,"warnings":[]}')
+		],
+		[
+			'outer-blind-sheet',
+			async (s) => writeFile(join(s.pending, 'ted-bot-direction-blind-sheet.png'), 'changed')
+		],
+		[
+			'outer-answer-key',
+			async (s) =>
+				writeFile(
+					join(s.pending, 'ted-bot-direction-blind-answer-key.json'),
+					'{"atlas_sha256":"changed","pairs":[]}'
+				)
+		],
+		[
+			'semantics-direction',
+			async (s) => {
+				const file = join(s.pending, 'ted-bot-direction-semantics.json');
+				const value = JSON.parse(await readFile(file, 'utf8'));
+				value.directions[0].expected = 'wrong';
+				await writeFile(file, JSON.stringify(value));
+			}
+		],
+		[
+			'missing-warning-assessment',
+			async (s) => {
+				const file = join(s.pending, 'ted-bot-direction-semantics.json');
+				const value = JSON.parse(await readFile(file, 'utf8'));
+				value.warningAssessments = [];
+				await writeFile(file, JSON.stringify(value));
+			}
+		],
+		[
+			'blind-envelope',
+			async (s) =>
+				writeFile(join(s.blindFinal, 'ted-bot-direction-blind-consensus-envelope.json'), '{}')
+		],
+		[
+			'blind-consensus',
+			async (s) => writeFile(join(s.blindFinal, 'ted-bot-direction-blind-consensus.json'), '{}')
+		],
+		[
+			'blind-validation',
+			async (s) =>
+				writeFile(join(s.blindFinal, 'ted-bot-direction-blind-validation.json'), '{"ok":false}')
+		],
+		[
+			'blind-receipt',
+			async (s) => writeFile(join(s.blindFinal, 'sealed-reviewer-reviewer-1', 'receipt.json'), '{}')
+		],
+		[
+			'artifact-manifest',
+			async (s) => writeFile(join(s.pending, 'ted-bot-pet-qa-artifact-manifest.json'), '{}')
+		]
 	];
 	for (const [name, mutate] of cases) {
 		const setup = await setupOuter(`outer-mutate-${name}`);
