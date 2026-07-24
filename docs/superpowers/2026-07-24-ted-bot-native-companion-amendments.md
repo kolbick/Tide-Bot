@@ -75,6 +75,15 @@ reviewing the approved native-companion plan against Tide-Bot at
   `BLIND_RUN_ID`: pending output is mode 0700, only the fully linked
   combine/validate/envelope directory is atomically published, failed current
   runs have no final directory, and an existing final run ID is refused.
+- The blind transaction is nested inside the required outer `PET_QA_RUN_ID`
+  transaction. The verifier creates only a 0700 outer pending run directory;
+  every pet QA artifact (validator/contact/direction/continuity/blind/semantic/
+  final metadata) is written there, never at evidence root. An owned
+  `publish-pet-qa-run` revalidates expected artifact/hash linkage and atomically
+  renames the entire outer directory only after the blind subdirectory and
+  semantic review succeed. Pending paths are explicitly nonaccepted diagnostic
+  state. Acceptance cites the published outer run path only; outer publish
+  fixtures cover success, mutation/no-current-final, existing-final refusal.
 
 ## Companion surface and canonical chat flow
 

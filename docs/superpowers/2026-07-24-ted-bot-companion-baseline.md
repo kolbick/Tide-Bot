@@ -53,6 +53,11 @@ implementation plan requires separate future gates that have not run here:
   and the envelope pass. An answer key with a wrong semantic `atlas_sha256`
   must fail even if all surrounding hashes are freshly consistent; stale or
   failed current-run artifacts cannot be accepted.
+- All pet QA is further scoped to one outer `PET_QA_RUN_ID`: validator,
+  contact-sheet, direction, blind, semantic, and metadata artifacts exist only
+  under its 0700 pending directory until `publish-pet-qa-run` validates and
+  atomically publishes the whole run. A pending path is never acceptance
+  evidence; the baseline has no published run and remains pending.
 - Lifecycle acceptance must exercise the narrow binding that `Chat.svelte`
   itself uses for deferred load, completion, stop, and queue continuations.
   A standalone epoch test is not sufficient; reset/navigation/destruction must

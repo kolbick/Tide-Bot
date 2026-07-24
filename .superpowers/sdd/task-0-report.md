@@ -301,3 +301,17 @@ release.
   provenance without consulting source/cwd/runtime environment. Cargo tests and
   Windows evidence cover this binding; actual production provisioning remains
   pending rather than claimed.
+
+## Final Task 0 review correction: whole pet-QA run scope
+
+- The blind transaction is now nested in the required outer `PET_QA_RUN_ID`
+  transaction. All release QA artifacts, including atlas validation, contact
+  sheet, direction/continuity, blind material, semantics, and final metadata,
+  live only in the 0700 outer pending run. `publish-pet-qa-run` revalidates the
+  complete artifact/hash chain and atomically publishes the entire run; root
+  evidence receives only the run root. Pending paths are explicitly nonaccepted
+  diagnostics and cannot be cited as acceptance.
+- The existing Node verifier test contract additionally covers outer publish,
+  mutation/no-current-final, and existing-final refusal. Acceptance must name
+  the current published `PET_QA_RUN_ID` path, not an inner blind or pending
+  path. This remains a future release gate, not a claim of completed QA.
