@@ -103,6 +103,7 @@ Start the new component test with the per-file environment and matcher setup:
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/svelte';
+import { expect, test } from 'vitest';
 import TedBotPet from './TedBotPet.svelte';
 
 test('provides one labelled image and a decorative sprite', () => {
@@ -180,6 +181,9 @@ git commit -m 'feat: add ted-bot companion renderer'
 - [ ] **Step 1: Write the failing security tests**
 
 ~~~py
+import asyncio
+import pytest
+
 @pytest.mark.asyncio
 async def test_update_rejects_another_users_chat_before_registry_mutation():
 	service, get_readable_chat = make_service(readable_chat=None)
@@ -294,6 +298,8 @@ git commit -m 'feat: synchronize ted-bot active chat presence'
 - [ ] **Step 1: Write the failing fake-timer tests**
 
 ~~~ts
+import { expect, test, vi } from 'vitest';
+
 test('publishes chat selection, focus, reconnect, and heartbeat', () => {
 	const socket = createFakeSocket();
 	const publisher = createMainPresencePublisher({
@@ -413,6 +419,8 @@ test('reuses the canonical companion Chat surface without duplicate APIs', async
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/svelte';
+import { expect, test } from 'vitest';
+import MessageInput from './MessageInput.svelte';
 
 test('companion input leaves typed send and stop available while hiding optional controls', () => {
 	render(MessageInput, { mode: 'companion' });
@@ -424,6 +432,9 @@ test('companion input leaves typed send and stop available while hiding optional
 
 ~~~ts
 // lifecycleGuard.test.ts: default Node environment
+import { expect, test, vi } from 'vitest';
+import { createLifecycleGuard } from './lifecycleGuard';
+
 test('drops stale load, completion, stop, and queue continuations after reset', async () => {
 	const guard = createLifecycleGuard();
 	const epoch = guard.capture();
@@ -526,12 +537,14 @@ cannot skip. `run-companion-cypress.test.mjs` uses injected environment/spawn
 dependencies to assert required-mode exit 2, optional-mode skip 0, and the
 configured redacted Cypress invocation without starting a browser.
 
-The authenticated spec signs in, visits `/companion`, verifies unauthenticated
-redirect to `/auth`, verifies companion chrome/shortcuts are suppressed, sends
-and stops a typed request, denies a confirmation, switches the active chat in
-the main session and observes synchronization, and intercepts completion to
-assert exactly one request. Redact request bodies and auth headers in Cypress
-logging.
+The spec uses separate cases and clears cookies, local storage, session storage,
+and Cypress session cache in `beforeEach`. The anonymous case visits
+`/companion` before any login and asserts redirect to `/auth`. The authenticated
+cases then sign in through the normal UI with the injected disposable account
+and verify companion chrome/shortcuts are suppressed, typed send/stop,
+confirmation denial, active-chat switching in the main session with companion
+synchronization, and an intercepted completion count of exactly one. Redact
+request bodies and auth headers in Cypress logging.
 
 - [ ] **Step 2: Verify and commit**
 
@@ -581,15 +594,17 @@ fn clamps_a_saved_position_into_the_current_monitor_work_area() {
 }
 
 #[test]
-fn companion_capability_is_remote_scoped_and_allows_only_show_main_window() {
-	let capability = include_str!("../capabilities/companion.json");
-	assert!(capability.contains("\"windows\": [\"companion\"]"));
-	assert!(capability.contains("show_main_window"));
-	assert!(capability.contains("\"remote\""));
-	assert!(capability.contains("\"urls\""));
-	assert!(!capability.contains("core:default"));
-	assert!(!capability.contains("fs:"));
-	assert!(!capability.contains("shell:"));
+fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
+	let capability: serde_json::Value = serde_json::from_str(include_str!("../capabilities/companion.json")).expect("valid capability JSON");
+	let permission: toml::Value = toml::from_str(include_str!("../permissions/companion.toml")).expect("valid companion permission TOML");
+	assert_eq!(capability["windows"], serde_json::json!(["companion"]));
+	assert_eq!(capability["permissions"], serde_json::json!(["companion:allow-show-main-window"]));
+	assert_eq!(capability["remote"]["urls"], configured_remote_urls_json());
+	assert_eq!(permission["identifier"].as_str(), Some("companion"));
+	let allowed = permission["commands"]["allow"].as_array().expect("command allow-list");
+	assert_eq!(allowed.iter().map(toml::Value::as_str).collect::<Vec<_>>(), vec![Some("show_main_window")]);
+	assert_no_forbidden_capabilities(&capability, &permission);
+	assert_build_rs_registers_only_show_main_window();
 }
 ~~~
 
@@ -620,6 +635,18 @@ fn show_main_window(app: AppHandle) -> tauri::Result<()> {
 }
 ~~~
 
+Add `serde_json` and `toml` to `desktop/tide-bot/src-tauri/Cargo.toml`
+`[dev-dependencies]`; `capabilities_test.rs` parses JSON and TOML into values,
+then asserts exact arrays rather than matching source formatting. It asserts
+`windows == ["companion"]`, the sole capability permission is
+`companion:allow-show-main-window`, the permission's sole allowed command is
+`show_main_window`, and `remote.urls` equals the two configured origins only:
+the production HTTPS origin and exact configured loopback development origin.
+The parsed-value traversal rejects filesystem, shell, process, credential,
+arbitrary-navigation, eval, and `core:default` grants. It also checks the
+build registration/AppManifest contract exposes only `show_main_window` to the
+companion permission.
+
 `desktop/tide-bot/package.json` declares reproducible `tauri`, `build:debug`,
 and `build:windows` scripts plus pinned Tauri CLI/API dependencies. Set the app
 product name, bundle identifier, version, and build metadata in
@@ -648,13 +675,14 @@ position, and expanded state.
 Run:
 
 ~~~
-cd desktop/tide-bot/src-tauri && cargo test placement_test && cargo test capabilities_test && cargo check
+cd desktop/tide-bot/src-tauri && cargo test placement_test && cargo test capabilities_test && cargo build --verbose && cargo check
 cd .. && npm run tauri build -- --debug
 ~~~
 
-Expected: placement/capability tests, Rust compilation, capability inspection,
-and the debug bundle pass. Inspect the packaged capability JSON to verify only
-the companion window, explicit remote URLs, and `show_main_window` permission.
+Expected: placement/capability tests, Rust compilation, semantic parsed-config
+inspection, and the debug bundle pass. Inspect the generated/package manifest
+from the verbose build to confirm AppManifest command registration remains only
+`show_main_window` and no additional webview permission is packaged.
 
 ~~~
 git add desktop/tide-bot
@@ -680,6 +708,9 @@ git commit -m 'feat: add ted-bot desktop companion shell'
 - [ ] **Step 1: Write the failing native-action test**
 
 ~~~ts
+import { expect, test, vi } from 'vitest';
+import { openMainWindow } from './openMainWindow';
+
 test('uses the native show-main command only inside Tauri', async () => {
 	const invoke = vi.fn();
 	vi.stubGlobal('__TAURI_INTERNALS__', {});
