@@ -68,6 +68,13 @@ reviewing the approved native-companion plan against Tide-Bot at
   fixture test must mutate each of atlas/sheet/key/manifest/verdicts after
   manifest creation and prove every run fails with no accepted consensus; this
   evidence has not run.
+- The test matrix also needs a semantic answer-key case: regenerate a consistent
+  key-file hash, manifest key hash, reviewer manifest hash, and verdicts around
+  a key whose `atlas_sha256` is wrong. Atomic verification must reject it and
+  publish no output. Blind evidence is transactional per required unique
+  `BLIND_RUN_ID`: pending output is mode 0700, only the fully linked
+  combine/validate/envelope directory is atomically published, failed current
+  runs have no final directory, and an existing final run ID is refused.
 
 ## Companion surface and canonical chat flow
 
@@ -258,6 +265,17 @@ reviewing the approved native-companion plan against Tide-Bot at
   external URL is approved/generated and `/companion`, cannot diverge from
   `remote.urls`, and rejects fixture invalid/missing/stale generated sources.
   Browser detection is SSR-safe.
+
+- The resolver writes a separate generated provenance JSON atomically with the
+  capability JSON, never unknown capability fields. It records schema, tracked
+  resolver/template digests, capability SHA, normalized-origin hash, and a
+  cryptographic generation nonce. The tracked build launcher prepares both
+  files, passes only that nonce as build-only input, and `build.rs` verifies all
+  links before emitting the nonce into Rust. `origin.rs` compile-time embeds
+  both files and checks nonce/digests/linkage, so installed artifacts do not
+  read source/cwd or runtime environment. The URL test rejects old nonce,
+  missing provenance, bad digest/config linkage, and proves external runtime
+  environment invariance.
 - A macOS debug build does not establish Windows acceptance. Both platform
   builds and their manual sign-in/minimize/session checks remain required
   release evidence.

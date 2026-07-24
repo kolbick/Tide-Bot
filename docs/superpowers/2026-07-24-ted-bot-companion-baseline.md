@@ -48,6 +48,11 @@ implementation plan requires separate future gates that have not run here:
   link every source verdict and artifact hash to consensus; mutation after
   manifest generation must fail without an accepted consensus. That verifier/test
   and release evidence have not run, so they are pending rather than claimed.
+- Blind publication is per unique `BLIND_RUN_ID`: the verifier owns a 0700
+  pending directory and atomically publishes it only after both Hatch scripts
+  and the envelope pass. An answer key with a wrong semantic `atlas_sha256`
+  must fail even if all surrounding hashes are freshly consistent; stale or
+  failed current-run artifacts cannot be accepted.
 - Lifecycle acceptance must exercise the narrow binding that `Chat.svelte`
   itself uses for deferred load, completion, stop, and queue continuations.
   A standalone epoch test is not sufficient; reset/navigation/destruction must
@@ -69,6 +74,11 @@ implementation plan requires separate future gates that have not run here:
   capability `remote.urls` through `configured_companion_url()`, not an app or
   runtime environment URL. Missing/stale/invalid generated source and any
   origin divergence must be rejected by the Cargo integration test.
+- Desktop release artifacts must compile-time embed separately generated
+  capability and provenance JSON plus the fresh build nonce. The launcher and
+  `build.rs` bind the prepared output before compilation; installed runtime
+  environment/source/cwd state cannot select a URL. Provenance freshness and
+  installed Windows artifact proof remain pending.
 
 No live Compose, authenticated browser, Cypress, Redis, native desktop, or
 Hatch release acceptance is claimed by this baseline.

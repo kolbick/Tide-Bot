@@ -284,3 +284,20 @@ release.
   and runtime overrides. The new Cargo integration target proves that linkage
   and is included in task/final acceptance commands. Production provisioning
   remains external/pending; no host was invented.
+
+## Final Task 0 review correction: freshness and transactional publication
+
+- The blind-evidence test contract now separately proves semantic answer-key
+  binding: a freshly self-consistent key/manifest/reviewer fixture with only a
+  wrong `answer_key.atlas_sha256` must fail with no published output. Evidence
+  uses a required unique `BLIND_RUN_ID`; the verifier writes only a mode-0700
+  pending directory, atomically publishes after both Hatch stages/envelope
+  succeed, refuses an existing final ID, and leaves no accepted current-run
+  output on failure.
+- Desktop origin generation now writes separate capability and provenance files.
+  The tracked launcher creates a fresh nonce, passes it only to `build.rs`, and
+  build verification emits that nonce into Rust. The installed app compile-time
+  embeds both files and rejects stale nonce, digest/config linkage, or missing
+  provenance without consulting source/cwd/runtime environment. Cargo tests and
+  Windows evidence cover this binding; actual production provisioning remains
+  pending rather than claimed.

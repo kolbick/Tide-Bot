@@ -198,6 +198,10 @@ absolute `ATLAS` path is the input to every release-only command:
 
 ~~~
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
+BLIND_RUN_ID="release-<unique-lowercase-id>" # required; no generated fallback
+BLIND_RUNS_ROOT="$EVIDENCE_DIR/ted-bot-direction-blind-runs"
+REVIEW_INBOX="$EVIDENCE_DIR/.ted-bot-blind-review-inbox/$BLIND_RUN_ID"
+install -d -m 700 "$REVIEW_INBOX"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" \
   --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" \
@@ -209,37 +213,38 @@ HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" \
   --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
   --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
-node scripts/verify-ted-bot-direction-evidence.mjs create-manifest \
+node scripts/verify-ted-bot-direction-evidence.mjs prepare-blind-run \
+  --run-id "$BLIND_RUN_ID" \
+  --runs-root "$BLIND_RUNS_ROOT" \
   --atlas "$ATLAS" \
   --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
-  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
-  --output "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json"
-# Each of three independent reviewers receives only the blind sheet and this
-# redacted manifest, never the answer key, labeled direction sheet, atlas,
-# prompts, or another reviewer's verdict.
+  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
+# The verifier alone creates "$BLIND_RUNS_ROOT/.${BLIND_RUN_ID}.pending" mode
+# 0700. Each independent reviewer receives only its blind-sheet.png and
+# blind-review-manifest.json, never the answer key, labeled direction sheet,
+# atlas, prompts, another verdict, or the final run directory.
 node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine \
   --python "$PYTHON" \
   --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" \
   --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" \
-  --atlas "$ATLAS" \
-  --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
-  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
-  --manifest "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json" \
-  --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" \
-  --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" \
-  --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" \
-  --consensus-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" \
-  --validation-output "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json" \
-  --envelope-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus-envelope.json"
+  --run-id "$BLIND_RUN_ID" \
+  --runs-root "$BLIND_RUNS_ROOT" \
+  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-1.json" \
+  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-2.json" \
+  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-3.json"
 ~~~
 
 `scripts/verify-ted-bot-direction-evidence.mjs` uses Node built-ins only and
-owns this provenance boundary. `create-manifest` hashes the exact atlas, blind
-sheet, and answer key and writes a redacted manifest with `schemaVersion`,
-`atlasSha256`, `blindSheetSha256`, `answerKeySha256`, and `manifestSha256`.
-`manifestSha256` is the SHA-256 of the canonical manifest payload with that
-self field omitted, so it can be recomputed without a recursive hash. This
-manifest is the only nonvisual metadata a blind reviewer receives.
+owns this provenance boundary. It requires a unique conservative
+`BLIND_RUN_ID` (lowercase letters, digits, and hyphens; begins/ends
+alphanumeric) and rejects an existing final run ID. `prepare-blind-run` hashes
+the exact atlas, blind sheet, and answer key and creates only the sibling
+`$BLIND_RUNS_ROOT/.${BLIND_RUN_ID}.pending` directory with mode 0700. It writes
+a redacted manifest with `schemaVersion`, `atlasSha256`, `blindSheetSha256`,
+`answerKeySha256`, and `manifestSha256`; the self hash is over the canonical
+manifest payload with that field omitted. It copies the review sheet and keeps
+the key private. The blind sheet plus redacted manifest are the only reviewer
+material; they never receive a final directory.
 
 Each reviewer verdict JSON must have the same schema version, a unique
 `reviewerId`, `atlasSha256`, `blindSheetSha256`, `manifestSha256`, and complete
@@ -254,14 +259,19 @@ combine script with the explicit bundled `PYTHON` and script path on those
 sealed copies only. It must not pass mutable reviewer files to Hatch after
 verification.
 
-The wrapper writes both the plain Hatch-compatible consensus (for the required
-Hatch validator) and `ted-bot-direction-blind-consensus-envelope.json`. Before
-calling the required Hatch validator in that same wrapper invocation, it
-re-hashes the generated plain consensus and checks its linkage to the envelope;
-it passes explicit bundled `PYTHON`, validator-script, answer-key, and
-consensus paths. The envelope contains the atlas/sheet/key/manifest SHA-256s,
-exact SHA-256 of every source verdict, the sealed-copy hashes, the Hatch combine
-result/hash, plain-consensus hash, and Hatch validation result/hash. It fails closed on a
+The wrapper writes sealed source copies, plain Hatch-compatible consensus,
+validation, and `ted-bot-direction-blind-consensus-envelope.json` only inside
+that private pending directory. Before calling the required Hatch validator in
+the same wrapper invocation, it re-hashes the generated plain consensus and
+checks its linkage to the envelope; it passes explicit bundled `PYTHON`,
+validator-script, answer-key, and consensus paths. The envelope contains the
+atlas/sheet/key/manifest SHA-256s, exact SHA-256 of every source verdict, the
+sealed-copy hashes, Hatch combine result/hash, plain-consensus hash, and Hatch
+validation result/hash. Only after both required Hatch scripts and envelope
+verification succeed does it atomically rename the whole pending directory to
+`$BLIND_RUNS_ROOT/$BLIND_RUN_ID`; that published directory is the sole accepted
+evidence. On any error it removes only that exact pending directory, leaving no
+final directory for the current run ID. It fails closed on a
 missing or mismatched input/hash, malformed vote, missing reviewer, duplicate
 ID, unverifiable manifest, replaced verdict, failed Hatch combine, or envelope
 mismatch. Direct raw Hatch combine is prohibited for release evidence.
@@ -270,7 +280,13 @@ Create focused `scripts/verify-ted-bot-direction-evidence.test.mjs` fixtures
 for a passing atomic run plus a mutation-after-manifest matrix: mutate the
 atlas, blind sheet, answer key, manifest, and each of the three individual
 verdict files in turn. Every mutation must fail and leave no accepted consensus
-or success envelope. Run:
+or success envelope. Add a distinct semantic-key fixture where the answer key's
+`atlas_sha256` is wrong but its file hash, manifest `answerKeySha256`, reviewer
+manifest hash, and all reviewer attestations are freshly regenerated and
+consistent; `verify-and-combine` must still reject it with no published output.
+Also prove successful publication; a failure after a different prior successful
+run cannot publish the current run; a failure/mutation leaves no current-run
+final directory; and an existing same-run final directory is refused. Run:
 
 ~~~
 node --test scripts/verify-ted-bot-direction-evidence.test.mjs
@@ -980,6 +996,7 @@ git commit -m 'test: add companion smoke coverage'
 - Create: desktop/tide-bot/src-tauri/tauri.conf.json
 - Create: desktop/tide-bot/src-tauri/templates/companion.capability.template.json
 - Generate (ignored): desktop/tide-bot/src-tauri/capabilities/companion.json
+- Generate (ignored): desktop/tide-bot/src-tauri/generated/desktop-origin-provenance.json
 - Create: desktop/tide-bot/src-tauri/permissions/companion.toml
 - Create: desktop/tide-bot/src-tauri/src/main.rs
 - Create: desktop/tide-bot/src-tauri/src/lib.rs
@@ -989,6 +1006,7 @@ git commit -m 'test: add companion smoke coverage'
 - Create: desktop/tide-bot/src-tauri/tests/capabilities_test.rs
 - Create: desktop/tide-bot/src-tauri/tests/companion_url_test.rs
 - Create: desktop/tide-bot/scripts/desktop-origins.mjs
+- Create: desktop/tide-bot/scripts/build-desktop.mjs
 - Create: desktop/tide-bot/README.md
 
 **Interfaces:**
@@ -1029,9 +1047,7 @@ fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
 Run:
 
 ~~~
-cd desktop/tide-bot
-npm run prepare:origins
-cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo test --test companion_url_test
+cd desktop/tide-bot && npm run test:tauri:generated
 ~~~
 
 Expected: FAIL because the Tauri package does not exist.
@@ -1087,18 +1103,24 @@ crate name. The test files therefore use normal integration-test imports such
 as `use tide_bot::{clamp_to_monitor, configured_remote_urls_json, MonitorBounds};`
 rather than private `crate::` paths.
 
-`desktop/tide-bot/package.json` declares reproducible `tauri`, `build:debug`,
-and `build:windows` scripts plus pinned Tauri CLI/API dependencies. Set the app
+`desktop/tide-bot/package.json` declares reproducible `tauri`,
+`test:tauri:generated`, `build:debug`, and `build:windows` scripts plus pinned
+Tauri CLI/API dependencies. The generated-test/debug/Windows scripts all call
+`build-desktop.mjs`; direct Cargo/Tauri invocation is not a supported package
+workflow. Set the app
 product name, bundle identifier, version, and build metadata in
 `tauri.conf.json`/Cargo metadata. Add the checked-in
 `src-tauri/templates/companion.capability.template.json` and a single resolver,
 `desktop/tide-bot/scripts/desktop-origins.mjs`. Before **every** Tauri build or
-capability test, the package script runs that resolver to materialize the sole
-generated origin/capability source,
-`src-tauri/capabilities/companion.json`, from the template. That generated file
-is ignored, is consumed by the Tauri build, and is parsed by
-`capabilities_test.rs`; no hand-edited fallback capability or invented runtime
-origin is allowed.
+capability test, the tracked `desktop/tide-bot/scripts/build-desktop.mjs`
+launcher runs that resolver and atomically materializes both the ignored
+`src-tauri/capabilities/companion.json` and separate ignored
+`src-tauri/generated/desktop-origin-provenance.json`. The capability JSON has
+no provenance-only unknown fields. The provenance JSON records schema version,
+SHA-256 digests of the tracked resolver and template, capability SHA-256,
+normalized-origins hash, and a cryptographically random per-prepare
+`generationNonce`. No hand-edited fallback capability, provenance, or invented
+runtime origin is allowed.
 
 The resolver requires `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN`. It parses and
 normalizes it to an absolute canonical HTTPS origin, rejects a missing host,
@@ -1111,24 +1133,40 @@ required production input fails before Cargo/Tauri work begins. The generated
 JSON records the resolved non-secret origins and uses them as its `remote.urls`
 array: production first and optional development second.
 
+The launcher reads the freshly written provenance and passes only its exact
+nonce as build-only `TIDE_BOT_DESKTOP_GENERATION_NONCE` to Cargo/Tauri; it does
+not pass any runtime origin URL. `build.rs` fails if that environment binding is
+missing, verifies the provenance's resolver/template/capability/origin digests
+against the generated capability and tracked inputs, compares the nonce, and
+emits the accepted nonce into compiled Rust with `cargo:rustc-env`. Package
+build/test commands must use this launcher, not `cargo` or `tauri` directly.
+Raw runtime environment variables never influence the installed app URL; the
+build-only nonce only binds that compilation to freshly generated input.
+
 `src-tauri/src/origin.rs` defines `configured_companion_url()`. It reads **only**
-the resolver-generated `src-tauri/capabilities/companion.json`, parses its
-`remote.urls`, selects the required first resolved production origin, and safely
-appends exactly `/companion`. It must never read an arbitrary runtime URL or
-origin environment variable, and it rejects a missing/unreadable generated
-file, an invalid/stale generated origin, an empty/malformed remote list, any
-noncanonical external origin, or a result not exactly equal to one approved
-generated `remote.urls` origin plus `/companion`. `companion_window` must call
-this helper; no `app_url`, duplicate origin resolver, or fallback host is
-permitted.
+compile-time embeds **both** the generated capability and provenance using
+`include_str!` (or equivalent), verifies their linkage, expected compiled nonce,
+and resolver/template digests, then parses `remote.urls`, selects the required
+first resolved production origin, and safely appends exactly `/companion`. It
+never reads a source path, current working directory, arbitrary runtime URL, or
+origin environment variable. It rejects missing/unreadable generated source at
+build time, invalid/stale provenance, nonce/digest/config mismatch, an
+empty/malformed remote list, any noncanonical external origin, or a result not
+exactly equal to one approved generated `remote.urls` origin plus `/companion`.
+`companion_window` must call this helper; no `app_url`, duplicate origin
+resolver, or fallback host is permitted.
 
 Export the read-only URL/config helper from `src/lib.rs` solely for executable
-integration tests. `companion_url_test.rs` proves the returned external
+integration tests; its fixture parser accepts supplied document bytes, while
+the production `configured_companion_url()` calls it only with compile-time
+embedded bytes and compiled nonce. `companion_url_test.rs` proves the returned external
 `WebviewUrl` has the generated approved production origin and `/companion`,
-cannot diverge from `remote.urls`, and rejects missing, stale, or invalid
-generated capability sources via controlled fixture paths. It also proves an
-environment URL cannot affect the result. Run it with the placement and
-capability tests after `npm run prepare:origins`.
+cannot diverge from `remote.urls`, and rejects missing provenance, invalid
+resolver/template digest, invalid capability/provenance link, and a
+syntactically valid old fixture with old nonce/provenance via controlled fixture
+paths. It also proves external runtime environment values cannot affect the
+result. Run it with the placement and
+capability tests through `npm run test:tauri:generated`.
 
 There is currently no confirmed canonical production deployment origin. Do not
 invent one or hardcode a plausible domain. Until a deployment owner provisions
@@ -1158,9 +1196,7 @@ position, and expanded state.
 Run:
 
 ~~~
-cd desktop/tide-bot && npm run prepare:origins
-cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo test --test companion_url_test && cargo build --verbose && cargo check
-cd .. && npm run tauri build -- --debug
+cd desktop/tide-bot && npm run test:tauri:generated && npm run build:debug
 ~~~
 
 Expected: placement/capability tests, Rust compilation, semantic parsed-config
@@ -1236,8 +1272,9 @@ Add a GitHub-triggered Windows artifact build in
 branch trigger) using `windows-latest`, the pinned Node version, and
 `desktop/tide-bot`'s Windows build command. The workflow receives the required
 non-secret GitHub repository variable `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` as
-the same-named environment input to `npm run prepare:origins` and the Windows
-build. It may receive the optional non-secret repository variable
+the same-named environment input to `npm run build:windows`; that tracked
+launcher prepares fresh capability/provenance output and passes its nonce to
+Cargo. It may receive the optional non-secret repository variable
 `TIDE_BOT_DESKTOP_DEV_ORIGIN` only for an intentionally loopback development
 artifact; release workflow configuration normally omits it. The workflow must
 fail before compilation if the required variable is absent or either resolver
@@ -1277,20 +1314,22 @@ node --test scripts/verify-ted-bot-direction-evidence.test.mjs
 # Release-only: call load_workspace_dependencies; set PYTHON to its exact bundled runtime.
 ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/superpowers/evidence/2026-07-24-ted-bot-native-companion"; shasum -a 256 "$ATLAS"
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
+BLIND_RUN_ID="release-<unique-lowercase-id>"; BLIND_RUNS_ROOT="$EVIDENCE_DIR/ted-bot-direction-blind-runs"
+REVIEW_INBOX="$EVIDENCE_DIR/.ted-bot-blind-review-inbox/$BLIND_RUN_ID"; install -d -m 700 "$REVIEW_INBOX"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-qa-sheet.png"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/measure_direction_continuity.py" "$ATLAS" --json-out "$EVIDENCE_DIR/ted-bot-direction-continuity.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
-node scripts/verify-ted-bot-direction-evidence.mjs create-manifest --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --output "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json"
-# Obtain three independent verdict JSON files from reviewers who saw only the blind sheet and redacted manifest.
+node scripts/verify-ted-bot-direction-evidence.mjs prepare-blind-run --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
+# Reviewers receive only "$BLIND_RUNS_ROOT/.${BLIND_RUN_ID}.pending/blind-sheet.png" and the redacted manifest.
 # Release evidence must not invoke raw Hatch combine outside this atomic wrapper.
-node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine --python "$PYTHON" --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --atlas "$ATLAS" --blind-sheet "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --manifest "$EVIDENCE_DIR/ted-bot-direction-blind-review-manifest.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdict "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --consensus-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" --validation-output "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json" --envelope-output "$EVIDENCE_DIR/ted-bot-direction-blind-consensus-envelope.json"
+node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine --python "$PYTHON" --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-1.json" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-2.json" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-3.json"
 shasum -a 256 "$ATLAS"
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
 npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts src/lib/ted-bot/openMainWindow.test.ts
 node --test scripts/run-companion-cypress.test.mjs
-cd desktop/tide-bot && npm run prepare:origins && cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo test --test companion_url_test && cargo check
+cd desktop/tide-bot && npm run test:tauri:generated && npm run build:debug
 cd ../../.. && RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs
 RUN_ID=cypress-release-$(date +%s) npm run test:companion:e2e
 ~~~
@@ -1301,7 +1340,8 @@ deterministic alpha/transparency JSON plus a rendered contact sheet, a labeled
 direction QA sheet, continuity JSON, a randomized blind sheet/answer key,
 redacted provenance manifest, three attested independent blind verdicts,
 atomic source-hash-linked consensus envelope, consensus, and blind validation. Every item must
-carry the same pre/post atlas SHA-256. No blind cardinal may be missing,
+live only under one unique published `BLIND_RUN_ID` directory and carry the
+same pre/post atlas SHA-256. No blind cardinal may be missing,
 failing, or ambiguous; every one of the 16 semantic entries must record
 expected direction, observed behavior, pass/fail/ambiguous verdict, and reason;
 semantic failures and unassessed continuity warnings block release. The gate
@@ -1315,7 +1355,8 @@ The release acceptance record must include a current visual atlas-inspection
 entry for the tracked black-goldendoodle asset; the blind sheet, redacted
 manifest, its canonical self-hash, three reviewer IDs/verdict hashes, and
 passing atomic consensus envelope linking the required Hatch combine result to
-the plain consensus; and the exact successful
+the plain consensus; and the unique published `BLIND_RUN_ID` path (with no
+accepted `.pending` path); and the exact successful
 `RUN_ID=release-... node scripts/run-companion-presence-redis-integration.mjs`
 command, explicit isolated Compose project name, worker-a/worker-b endpoint
 evidence, direct-WebSocket shared ordered revisions, single-emitter expiry/
@@ -1333,9 +1374,11 @@ removed with the isolated stack; it is not a cross-client sync claim. A
 structural package check or single-worker/fake-Redis pytest does not replace
 either gate.
 Final release evidence additionally requires the resolved non-secret desktop
-origin, generated capability JSON SHA-256, parsed capability-test and
+origin, generated capability and separate provenance JSON SHA-256s,
+generation nonce, parsed capability-test and
 `companion_url_test` result proving the actual Webview URL is the generated
-approved origin plus `/companion`,
+approved origin plus `/companion`, plus installed Windows artifact proof that
+the compile-time embedded capability/provenance/nonce binding was used,
 green GitHub Windows artifact build, and completed manual Windows procedure;
 neither is replaced by the local macOS debug bundle. The unprovisioned real
 production origin remains external/pending rather than being invented.
