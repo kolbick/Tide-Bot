@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
+	resolve: {
+		conditions: ['browser']
+	},
 	plugins: [
 		sveltekit(),
 		viteStaticCopy({
@@ -25,6 +28,9 @@ export default defineConfig({
 	},
 	worker: {
 		format: 'es'
+	},
+	test: {
+		environmentMatchGlobs: [['src/lib/components/ted-bot/TedBotPet.test.ts', 'jsdom']]
 	},
 	esbuild: {
 		pure: process.env.ENV === 'dev' ? [] : ['console.log', 'console.debug', 'console.error']
