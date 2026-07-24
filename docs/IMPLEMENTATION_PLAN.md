@@ -1,6 +1,14 @@
-# Tide-Bot implementation plan
+# Tide-Bot current implementation plan
 
-This plan operationalizes the root build specification. It is intentionally Tide-Bot-only.
+> **Status, 2026-07-24:** The upstream recovery, Tide-Bot brand foundation,
+> private base Compose stack, Tide Terminal build overlay, and CPTR gateway
+> overlay are present in this checkout. The base app, terminal, and gateway
+> containers are currently healthy; authenticated browser flows and real CPTR
+> upstream acceptance have not been freshly exercised. Historical execution
+> plans are retained in `docs/superpowers/plans/`.
+
+This is the active roadmap for the remaining Tide-Bot release work. It is
+intentionally Tide-Bot-only.
 
 ## Guiding constraints
 
@@ -10,80 +18,70 @@ This plan operationalizes the root build specification. It is intentionally Tide
 - Treat terminal and computer-workspace access as privileged and disabled by default.
 - Never commit secrets, production data, uploads, databases, model files, or terminal homes.
 
-## Phase 0: establish the upstream baseline
+## Completed foundation
 
-1. Add `https://github.com/open-webui/open-webui.git` as the `upstream` remote.
-2. Select a pinned, tested upstream release commit for the initial import. The upstream `dev` branch may be tracked for future work, but it must not be the unpinned production baseline.
-3. Import the selected upstream history into this repository rather than replacing it with a prebuilt image or shallow UI.
-4. Preserve all upstream license files and record the imported tag, SHA, date, and licensing notes in `docs/UPSTREAM.md`.
-5. Add `docs/UPSTREAM_SYNC.md` with a repeatable fetch, review, rebrand-audit, test, and merge process.
+- Open WebUI `dev` commit `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237` is
+  an ancestor of `HEAD`; the recovery record and future sync procedure are in
+  `docs/UPSTREAM.md` and `docs/UPSTREAM_SYNC.md`.
+- Tide-Bot identity, default assets, private sharing defaults, and the
+  source-level branding audit are implemented. Ted-Bot is a supporting mascot
+  asset, not a separate product.
+- `deploy/tide-stack/` has a private base stack plus source-built Tide Terminal
+  and CPTR gateway overlays. Each uses Tide-Bot-specific names and internal
+  networking.
 
-**Checkpoint:** the unmodified source builds locally from this repository before Tide-Bot changes begin.
+## Phase 1: preserve and verify the branded source
 
-## Phase 1: centralize the Tide-Bot identity
+1. Run the supported Node 22.18.0 toolchain, focused frontend and backend
+   regressions, `npm run audit:branding`, a production build, and
+   `git diff --check` after each source change.
+2. Treat the repository-wide `npm run check` result as an inherited upstream
+   baseline unless changed-path evidence shows a new Tide-Bot regression.
+3. Keep `AGENTS.md`, `tide-bot-pet/`, and `teddy-v2-upgrade/` untracked and
+   unmodified unless the user explicitly authorizes a change.
 
-1. Inspect every logo/reference asset supplied with this repository and document its intended use.
-2. Add one brand-configuration module for product names, slug, domain, colors, logos, icons, terminal name, and computer-workspace name.
-3. Generate only the required derived logo variants, retaining supplied originals unchanged.
-4. Replace product identity across metadata, PWA manifest, static assets, browser title, onboarding, login, settings, admin pages, dialogs, notifications, accessibility text, and mobile views.
-5. Keep any allowed upstream mentions narrowly documented for license, attribution, and dependency purposes.
+**Checkpoint:** the source build and brand audit pass with no new
+changed-path diagnostics.
 
-**Checkpoint:** light and dark desktop/mobile screenshots show Tide-Bot identity only.
+## Phase 2: validate the connected local stack
 
-## Phase 2: enforce the rebrand
+1. Create or update ignored local environment values without printing or
+   committing secrets, then start the base stack and required overlays.
+2. Verify Compose rendering, service health, local `/health`, and the
+   Socket.IO path.
+3. In an authenticated browser, test bootstrap/login, ordinary chat, settings,
+   private-sharing restrictions, and desktop and mobile widths.
+4. Verify data persists through a safe container replacement. Keep the test
+   stack running when requested and document exact stop/restart commands.
 
-1. Create a branding-audit script with an explained allowlist.
-2. Scan source, localization files, static assets, manifests, Docker metadata, public docs, built production assets, and service-worker output.
-3. Fail the audit for unintended Open WebUI identity, upstream promotional URLs, upstream logo assets, and any Kolb-Bot identity.
-4. Add unit tests for brand configuration and generated metadata.
+**Checkpoint:** fresh local authenticated-browser evidence, not only container
+health, is recorded.
 
-**Checkpoint:** the production build and branding audit both pass in CI.
+## Phase 3: accept privileged optional integrations
 
-## Phase 3: create the isolated deployment stack
+1. Build the Tide Terminal overlay from pinned Open Terminal source
+   `v0.11.34` / `9162e808c3aaf8dba38745cea55204a42bbb348d`; verify its health,
+   authenticated connection, and disabled-overlay behavior.
+2. With an authorized CPTR gateway only, verify model discovery, headers,
+   approved-user access, conversation continuity, rejection behavior, and
+   ordinary chat with CPTR disabled.
+3. Confirm neither integration publishes a host port, mounts a broad host
+   filesystem, bypasses CPTR safeguards, or exposes management UI publicly.
 
-1. Add production and development Docker build targets that build from source.
-2. Add a Compose stack with Tide-Bot-specific services, volumes, network, cache prefixes, cookie name, and configurable host port.
-3. Add `.env.example`, health checks, restart policies, log rotation, non-root runtime behavior where supported, and safe writable mounts.
-4. Default to disabled public signup, no anonymous privileged access, disabled telemetry unless configured, and no committed secrets.
-5. Document reverse-proxy headers and WebSocket forwarding for `tide-bot.com`.
+**Checkpoint:** each integration has fresh enabled and disabled acceptance
+evidence.
 
-**Checkpoint:** Tide-Bot starts from a clean clone with its own data volume and no shared resources.
+## Phase 4: prepare a controlled production release
 
-## Phase 4: integrate Tide Terminal
+1. Re-run the upstream sync review against an explicit release tag before any
+   production update; inspect branding, Docker, security, and licensing
+   changes before merging.
+2. Validate the production overlay with deployment secrets managed outside Git,
+   HTTPS reverse-proxy headers, WebSockets, backups/restores, and rollback.
+3. Recheck the deployed domain in an authenticated browser before reporting a
+   release. Local Docker health and Tailscale access do not prove public
+   production deployment.
 
-1. Bring in the official Open Terminal source as a separately built and licensed service.
-2. Apply the Tide Terminal user-facing branding while preserving required license notices and protocol compatibility.
-3. Keep it on the internal Docker network with a dedicated volume, health check, server-side key, and no public port by default.
-4. Make terminal access a configuration switch and default to Docker isolation with no Docker socket or broad host mounts.
-5. Verify the main app remains usable when the terminal is unavailable.
-
-**Checkpoint:** an authenticated Tide Terminal connection works over the internal network and can be disabled without rebuilding.
-
-## Phase 5: integrate Tide Computer through CPTR
-
-1. Add a replaceable, OpenAI-compatible CPTR adapter using the configured gateway endpoint.
-2. Expose the connection in Tide-Bot as `Tide Computer`, while keeping CPTR attribution and its own interface unchanged.
-3. Support `host.docker.internal` and the Linux host-gateway mapping, with server-side secrets only.
-4. Require explicit opt-in for host workspaces and keep CPTR management/UI off the public proxy by default.
-5. Add diagnostics, health checks, disablement behavior, and clear operator warnings about host-level capability.
-
-**Checkpoint:** model discovery and conversation continuity work with CPTR enabled; ordinary chat works normally with it disabled.
-
-## Phase 6: verify and prepare operations
-
-1. Add CI for source build, tests, production branding audit, and relevant integration coverage.
-2. Add end-to-end coverage for admin bootstrap, login, chat, settings, terminal, optional CPTR, and mobile navigation.
-3. Add screenshot coverage for important light/dark desktop and phone-width screens.
-4. Create operator documentation for deployment, security, architecture, backups/restores, Open Terminal, CPTR, licensing, and upgrades/rollback.
-5. Test container replacement, data persistence, backup restore, reverse-proxy HTTPS/WebSockets, and isolation from Kolb-Bot resources.
-
-**Release checkpoint:** no visible upstream or Kolb-Bot identity remains, required licensing remains, automated checks pass, no unresolved placeholders remain, and the stack is operationally documented.
-
-## First implementation sequence
-
-1. Pin and import the Open WebUI baseline.
-2. Confirm the source builds unchanged.
-3. Inventory the supplied Tide-Bot visual assets.
-4. Add the brand configuration module and apply the initial identity sweep.
-5. Build the first production artifact and run the branding audit.
-6. Add the isolated Compose stack before enabling Tide Terminal or CPTR.
+**Release checkpoint:** no visible upstream or Kolb-Bot identity remains,
+required licensing remains, source and runtime acceptance are fresh, and the
+stack is operationally documented.

@@ -1,6 +1,12 @@
 # Tide-Bot Recovery and Current Dev Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status, updated 2026-07-24:** Historical execution plan completed on
+> 2026-07-23. The recovery baseline is recorded in
+> `docs/superpowers/2026-07-23-current-dev-recovery-baseline.md`; use
+> `docs/IMPLEMENTATION_PLAN.md` for remaining work.
+
+> **Archive note:** All execution checkboxes below are historical records, not
+> outstanding work.
 
 **Goal:** Remove the companion-first detour without touching user assets, then establish Tide-Bot on the current official Open WebUI `dev` commit.
 
@@ -33,7 +39,7 @@
 - Consumes: `origin/main`, current `HEAD`, and the explicitly allowed untracked asset paths.
 - Produces: a recoverable Git reference at the exact pre-reset commit and stopped Tide-Bot containers with their named volumes intact.
 
-- [ ] **Step 1: Assert the only untracked project paths are user-owned assets**
+- [x] **Step 1: Assert the only untracked project paths are user-owned assets**
 
 Run:
 
@@ -48,7 +54,7 @@ test -f /Users/kolbyunderwood/Desktop/Teddy-desktop-pet.zip
 
 Expected: the status output lists only `AGENTS.md`, `tide-bot-pet/`, and `teddy-v2-upgrade/` as untracked paths. Stop if any tracked modification or other untracked path appears.
 
-- [ ] **Step 2: Record the exact detour range before changing refs**
+- [x] **Step 2: Record the exact detour range before changing refs**
 
 Run:
 
@@ -60,7 +66,7 @@ git rev-parse origin/main
 
 Expected: the range begins with `b678375e8` and ends with the current recovery-plan commit; `origin/main` remains `25e124602`.
 
-- [ ] **Step 3: Create a local backup reference**
+- [x] **Step 3: Create a local backup reference**
 
 Run:
 
@@ -71,7 +77,7 @@ git show -s --format='%H%n%s' backup/pre-tide-bot-product-recovery-2026-07-23
 
 Expected: the branch points to the current `HEAD`. It is a local rollback reference only and is never pushed.
 
-- [ ] **Step 4: Stop only Tide-Bot stack containers without deleting data**
+- [x] **Step 4: Stop only Tide-Bot stack containers without deleting data**
 
 Run:
 
@@ -82,7 +88,7 @@ docker ps --format '{{.Names}}	{{.Status}}'
 
 Expected: `tide-bot-tide-bot-1`, `tide-bot-tide-terminal-1`, and `tide-bot-tide-cptr-gateway-1` are stopped or absent; the unrelated `cptr` container is not stopped; no volume is removed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 No commit is created for a local safety branch or stopped containers. Confirm the backup reference is present before continuing to Task 2.
 
@@ -97,7 +103,7 @@ No commit is created for a local safety branch or stopped containers. Confirm th
 - Consumes: the backup branch from Task 1 and published `origin/main`.
 - Produces: an active branch equal to `origin/main` plus the approved recovery design, with all companion, pet renderer, Tauri, and detour Compose code absent from tracked source.
 
-- [ ] **Step 1: Reset only tracked active-branch content to `origin/main`**
+- [x] **Step 1: Reset only tracked active-branch content to `origin/main`**
 
 Run:
 
@@ -108,7 +114,7 @@ git status --short
 
 Expected: tracked files exactly match `origin/main`; the three user-owned untracked asset paths remain present. `git reset --hard` must not be followed by `git clean`.
 
-- [ ] **Step 2: Restore the approved recovery specification only**
+- [x] **Step 2: Restore the approved recovery specification only**
 
 Run:
 
@@ -122,7 +128,7 @@ git show --stat --oneline HEAD
 
 Expected: two clean documentation commits recreate the approved recovery design and this execution plan only.
 
-- [ ] **Step 3: Prove companion and desktop code are absent from the active branch**
+- [x] **Step 3: Prove companion and desktop code are absent from the active branch**
 
 Run:
 
@@ -138,7 +144,7 @@ test ! -e deploy/tide-stack/docker-compose.cptr.yml
 
 Expected: every `test !` succeeds and the final `rg` has no output. The recovery design and execution plan are intentionally the only local commits above `origin/main` at this point.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 The cherry-pick and plan-retention commit in Step 2 are the commits for this task. Do not create a duplicate cleanup commit because the active branch no longer contains the detour content.
 
@@ -153,7 +159,7 @@ The cherry-pick and plan-retention commit in Step 2 are the commits for this tas
 - Consumes: active branch from Task 2 and `upstream/dev` at `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237`.
 - Produces: a non-fast-forward Tide-Bot merge whose first parent is the recovered product branch and whose second parent is current Open WebUI dev.
 
-- [ ] **Step 1: Verify the official upstream ref before merging**
+- [x] **Step 1: Verify the official upstream ref before merging**
 
 Run:
 
@@ -165,7 +171,7 @@ git show -s --format='%H%n%cI%n%s' upstream/dev
 
 Expected: the ref is exactly `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237`. If it moved, stop and record the new ref for renewed review instead of silently merging a different commit.
 
-- [ ] **Step 2: Create a no-commit merge for review**
+- [x] **Step 2: Create a no-commit merge for review**
 
 Run:
 
@@ -177,7 +183,7 @@ git diff --name-only --diff-filter=U
 
 Expected: either a clean staged merge or conflicts limited to Tide-Bot root documentation. When `README.md` conflicts, retain Tide-Bot's product definition, its upstream attribution, and the current imported commit record; do not accept the upstream marketing README as the product guide.
 
-- [ ] **Step 3: Record the current-dev merge in Tide-Bot documentation**
+- [x] **Step 3: Record the current-dev merge in Tide-Bot documentation**
 
 Add this recovery entry to `docs/UPSTREAM.md`:
 
@@ -199,7 +205,7 @@ The 2026-07-23 recovery merge intentionally uses the reviewed current `dev`
 commit above; later production syncs return to explicit release tags.
 ```
 
-- [ ] **Step 4: Commit the upstream merge**
+- [x] **Step 4: Commit the upstream merge**
 
 Run:
 
@@ -221,7 +227,7 @@ Expected: the merge commit has two parents and a subject containing the exact ei
 - Consumes: the merge commit from Task 3.
 - Produces: evidence that future Tide-Bot branding starts from current upstream code without the companion detour.
 
-- [ ] **Step 1: Verify graph and removal boundary**
+- [x] **Step 1: Verify graph and removal boundary**
 
 Run:
 
@@ -235,7 +241,7 @@ git status --short
 
 Expected: current `upstream/dev` is an ancestor of `HEAD`; companion and desktop paths are absent; only the three preserved user-owned paths are untracked.
 
-- [ ] **Step 2: Run source and configuration gates with the supported Node runtime**
+- [x] **Step 2: Run source and configuration gates with the supported Node runtime**
 
 Run:
 
@@ -248,7 +254,7 @@ npx -y -p node@22.18.0 -p npm@10.9.3 npm run check
 
 Expected: frontend tests and production build pass. Record the exact repository-wide check error and warning counts as the new current-dev baseline; do not alter source merely to hide pre-existing diagnostics.
 
-- [ ] **Step 3: Check recovered Docker source and working tree**
+- [x] **Step 3: Check recovered Docker source and working tree**
 
 Run:
 
@@ -260,7 +266,7 @@ git status --short
 
 Expected: the base Compose configuration parses, the diff check is clean, and no user asset is staged or modified.
 
-- [ ] **Step 4: Commit verification record**
+- [x] **Step 4: Commit verification record**
 
 Create `docs/superpowers/2026-07-23-current-dev-recovery-baseline.md` with the commands above, tool versions, pass/fail status, exact diagnostics counts, and the explicit note that runtime Docker acceptance is deferred until the branded stack plan. Commit it with:
 
