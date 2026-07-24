@@ -209,3 +209,42 @@ release.
   files, fixture health/dependency state, fixture model ID, exactly-one request
   assertions, canonical confirmation denial, no-secret fixture guarantee, and
   safe named-stack teardown.
+
+## Final Task 0 review correction: release-gate completeness
+
+- Pet release QA now continues after v2 atlas validation/contact-sheet creation
+  with the Hatch Pet direction QA sheet, continuity JSON, randomized blind
+  sheet/answer key, three independent blind verdicts, consensus, and validation.
+  All evidence is SHA-bound to the exact tracked atlas. The plan requires a
+  16-direction semantic record with expected direction, observed behavior,
+  pass/fail/ambiguous, and reason; missing/failing/ambiguous blind cardinals,
+  semantic failures, and unassessed continuity warnings block release. This is
+  a future release gate, not a claim that bundled-runtime evidence now exists.
+- Replaced the pure lifecycle-guard acceptance proposal with the narrow
+  `chatLifecycleBinding.ts` seam used by `Chat.svelte` itself. Deferred load,
+  completion, stop, and queue tests now reset/navigate/destroy through that
+  same binding, prove stale real mutations are suppressed, and prove the real
+  pending `eventCallback` receives `false`. A Chat source/contract test covers
+  the real continuation entry points and navigation/destroy reset paths without
+  duplicating canonical Chat behavior.
+- The Compose-owned fake OpenAI fixture now has a deterministic slow-stream
+  barrier. Cypress observes its first delta/status, sees and clicks Stop, then
+  proves server-observed abort, zero final completion, and no duplicate proxy
+  request. Web Search denial is explicitly type prompt, toggle, dialog, deny,
+  and zero fixture completion count.
+- Desktop origins now use the required non-secret
+  `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` and optional strict-loopback
+  `TIDE_BOT_DESKTOP_DEV_ORIGIN` through a checked-in template and one generated
+  capability source consumed by both Tauri build and test. Windows CI must
+  provision repository variables and record resolved origin, generated SHA,
+  capability result, and actual artifact proof. The real production origin is
+  not known, so production desktop release acceptance remains external/pending;
+  no domain was invented.
+
+## Final review-correction verification
+
+- Documentation changes are confined to the native-companion plan, binding
+  amendments, baseline status, and this Task 0 report.
+- `git diff --check` is required before the single focused docs commit. No
+  product, dependency, runtime configuration, secret, or user-owned file is in
+  scope for this correction.

@@ -37,8 +37,23 @@ implementation plan requires separate future gates that have not run here:
   proved only by the real Redis/two-worker gate, not Cypress.
 - The tracked static atlas needs a release-only bundled-runtime Hatch Pet v2
   validator run, deterministic alpha/transparency JSON, SHA-256-bound contact
-  sheet, and saved pass/fail rubric. If that runtime or evidence is missing,
-  release acceptance remains pending.
+  sheet, direction QA/continuity artifacts, three independent blind verdicts,
+  and a 16-direction semantic record. Missing/failing/ambiguous blind
+  cardinals, semantic failure, or unassessed continuity warnings keep release
+  acceptance pending.
+- Lifecycle acceptance must exercise the narrow binding that `Chat.svelte`
+  itself uses for deferred load, completion, stop, and queue continuations.
+  A standalone epoch test is not sufficient; reset/navigation/destruction must
+  suppress stale real mutations and resolve the actual pending callback false.
+- Cypress acceptance needs the fixture slow-stream barrier and server-observed
+  abort proof, not a normal stream completion. Its full-chat confirmation test
+  must type prompt, toggle Web Search, see the dialog, deny, and retain zero
+  fixture completions.
+- Desktop acceptance requires a provisioned
+  `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN`, generated capability SHA, parsed
+  capability-test result, and actual Windows artifact/manual proof. The real
+  production origin is not recorded here; this external release gate remains
+  pending.
 
 No live Compose, authenticated browser, Cypress, Redis, native desktop, or
 Hatch release acceptance is claimed by this baseline.

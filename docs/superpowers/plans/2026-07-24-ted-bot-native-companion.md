@@ -195,11 +195,29 @@ absolute `ATLAS` path is the input to every release-only command:
 
 ~~~
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
-SKILL_DIR="$HATCH_PET_SKILL_DIR"
-"$PYTHON" "$SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" \
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" \
   --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
-"$PYTHON" "$SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" \
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" \
   --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_qa_sheet.py" "$ATLAS" \
+  --output "$EVIDENCE_DIR/ted-bot-direction-qa-sheet.png"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/measure_direction_continuity.py" "$ATLAS" \
+  --json-out "$EVIDENCE_DIR/ted-bot-direction-continuity.json"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" \
+  --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" \
+  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
+# Three independent reviewers receive only ted-bot-direction-blind-sheet.png.
+# Each writes one redacted verdict JSON; none may see the answer key, labeled
+# direction sheet, atlas, prompts, or either other reviewer's verdict.
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" \
+  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" \
+  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" \
+  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" \
+  --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" \
+  --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" \
+  --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" \
+  --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json"
 ~~~
 
 The Hatch validator's JSON is the deterministic alpha/transparency result: it
@@ -210,10 +228,26 @@ visually inspect that contact sheet. The acceptance record must name the
 absolute tracked input path, pre/post SHA-256, bundled-runtime path, validator
 command/result, contact-sheet path, inspector/date, and a pass/fail rubric for
 black-goldendoodle identity, 8-by-11/cell alignment, all look-direction
-continuity, and unused-cell transparency. A missing bundled Hatch runtime,
-hash mismatch, absent evidence artifact, or failed rubric leaves release
-acceptance **pending**; it must never be reported as a pass. This is
-independent of the Node structural validator. Do not stage user-owned
+continuity, and unused-cell transparency. In addition, save
+`ted-bot-direction-semantics.json` with exactly these 16 expected directions:
+`000 up`, `022.5 up-right`, `045 up-right`, `067.5 up-right`, `090 right`,
+`112.5 down-right`, `135 down-right`, `157.5 down-right`, `180 down`,
+`202.5 down-left`, `225 down-left`, `247.5 down-left`, `270 left`, `292.5
+up-left`, `315 up-left`, and `337.5 up-left`. Each entry records its expected
+direction, observed behavior, `pass`/`fail`/`ambiguous` verdict, and reason;
+diagonals include both horizontal and vertical landmark evidence. Record every
+continuity warning from `ted-bot-direction-continuity.json` and the visual
+assessment that accepts or rejects it.
+
+This is a hard release gate: all generated artifacts and each reviewer verdict
+are SHA-bound to the pre/post-identical atlas SHA-256; no blind cardinal may be
+missing, failing, or ambiguous; no semantic verdict may fail; and every
+continuity warning must be assessed and recorded. An ambiguous intermediate
+semantic verdict requires explicit labeled-loop rationale but never overrides a
+blind-cardinal gate. A missing bundled Hatch runtime, hash mismatch, absent
+evidence artifact, failed blind validation, semantic failure, or unassessed
+continuity warning leaves release acceptance **pending**; it must never be
+reported as a pass. This is independent of the Node structural validator. Do not stage user-owned
 `teddy-v2-upgrade/` QA or provenance, and do not stage the root
 `tide-bot-pet/` Cyborg package.
 
@@ -543,8 +577,9 @@ git commit -m 'feat: publish tide-bot active chat presence'
 - Create: src/lib/components/ted-bot/CompanionPanel.svelte
 - Create: src/lib/components/ted-bot/CompanionPanel.test.ts
 - Create: src/routes/(app)/companion/+page.svelte
-- Create: src/lib/components/chat/lifecycleGuard.ts
-- Create: src/lib/components/chat/lifecycleGuard.test.ts
+- Create: src/lib/components/chat/chatLifecycleBinding.ts
+- Create: src/lib/components/chat/chatLifecycleBinding.test.ts
+- Create: src/lib/components/chat/Chat.lifecycle-contract.test.ts
 - Create: src/lib/components/chat/MessageInput/CompanionTextComposer.svelte
 - Create: src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts
 - Create: src/lib/components/chat/MessageInput.companion-contract.test.ts
@@ -628,47 +663,23 @@ and gates attachment, audio, web-search, tool, terminal,
 and other optional controls out of companion mode. This contract test is the
 parent-delegation proof; it must not render `MessageInput` with fake context.
 
-~~~ts
-// lifecycleGuard.test.ts: default Node environment
-import { expect, test, vi } from 'vitest';
-import { createLifecycleGuard } from './lifecycleGuard';
-
-test('drops stale load, completion, stop, and queue continuations after reset', async () => {
-	const guard = createLifecycleGuard();
-	const epoch = guard.capture();
-	guard.reset();
-	expect(guard.afterLoad(epoch)).toBe(false);
-	expect(guard.afterCompletion(epoch)).toBe(false);
-	expect(guard.afterStop(epoch)).toBe(false);
-	expect(guard.afterQueue(epoch)).toBe(false);
-});
-
-test('resolves pending confirmation and input callbacks false on reset', () => {
-	const confirmation = vi.fn();
-	const input = vi.fn();
-	const guard = createLifecycleGuard({ confirmation, input });
-	guard.reset();
-	expect(confirmation).toHaveBeenCalledWith(false);
-	expect(input).toHaveBeenCalledWith(false);
-});
-
-test('resets when chatIdProp becomes empty or nullish', () => {
-	const guard = createLifecycleGuard();
-	const epoch = guard.capture();
-	guard.onChatIdPropChange('');
-	expect(guard.isCurrent(epoch)).toBe(false);
-	const nullishEpoch = guard.capture();
-	guard.onChatIdPropChange(null);
-	expect(guard.isCurrent(nullishEpoch)).toBe(false);
-});
-~~~
+The lifecycle tests are default-Node tests, but they must test the narrow
+binding `Chat.svelte` actually uses rather than an isolated epoch abstraction.
+Use four deferred promises (load, completion, stop, and queue), supply the
+same real mutation callbacks that the source wires after each await, call
+`resetForNavigation()` or `destroy()` before resolving each promise, and assert
+that no stale mutation is applied. Register a real `eventCallback` setter with
+the binding before the reset/destroy and assert it is invoked once with
+`false`. `Chat.lifecycle-contract.test.ts` must read `Chat.svelte` and reject a
+change that leaves any of `navigateHandler`/`loadChat`, completion settlement,
+`stopResponse`, or `processNextInQueue` outside the capture/check seam.
 
 - [ ] **Step 2: Verify the tests fail**
 
-Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts
+Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts
 
 Expected: FAIL because the canonical companion surface, compact input mode, and
-their test contracts do not exist.
+the real-Chat lifecycle binding/contracts do not exist.
 
 - [ ] **Step 3: Reuse the canonical, epoch-protected Chat surface**
 
@@ -677,15 +688,50 @@ type ChatSurface = 'full' | 'note' | 'companion';
 export let surface: ChatSurface = 'full';
 ~~~
 
-Create the pure `lifecycleGuard.ts` module and use it from canonical
-`Chat.svelte`, rather than creating a controller. The guard captures an epoch
-before every awaited load, completion, stop, and queue operation, and Chat
-checks `isCurrent(epoch)` after each await before mutating state. `reset()`
-increments the epoch and resolves pending confirmation and input callbacks with
-`false`; `onChatIdPropChange('')`, `onChatIdPropChange(null)`, and
-`onChatIdPropChange(undefined)` call reset. The lifecycleGuard tests,
-not component tests, are the required coverage for stale continuation and
-callback-reset behavior.
+Replace the proposed pure guard with the intentionally narrow
+`src/lib/components/chat/chatLifecycleBinding.ts` seam. `Chat.svelte` creates
+the binding and is its only consumer; the binding must **not** contain a second
+Chat controller, completion builder, event handler, or state model. It owns
+only an epoch, destruction/reset state, and the pending `eventCallback`
+settlers. Its API accepts the real Chat continuation as a callback, for example
+`capture('load' | 'completion' | 'stop' | 'queue', continueCurrent)` returns a
+token whose `continueIfCurrent()` executes that supplied continuation exactly
+once only while the token is current. Thus the existing `Chat.svelte`
+continuations retain their actual mutations (including `loading`, `history`,
+`generating`, `generationController`, queue state, scroll work, and existing
+`eventCallback` handling); the binding merely decides whether that real
+continuation may run after an await.
+
+`Chat.svelte` must call the same binding at every real deferred entry point:
+`navigateHandler`/`loadChat`, completion submission and stream settlement,
+`stopResponse`, and `processNextInQueue`. Capture before each relevant await
+and route the existing post-await mutation through `continueIfCurrent()`.
+Register the real pending confirmation/input callback with the binding when
+`eventCallback` is assigned; `resetForNavigation()` and `destroy()` increment
+the epoch and resolve each still-pending callback with `false` exactly once.
+Call `resetForNavigation()` on every chat-ID transition, including `''`,
+`null`, and `undefined`, and call `destroy()` from `onDestroy`. Preserve the
+canonical submit, stop, confirmation, event, and queue semantics; no
+continuation may be reimplemented inside the binding.
+
+Create `chatLifecycleBinding.test.ts` and
+`Chat.lifecycle-contract.test.ts` in the same directory. The binding test
+creates real deferred promises for load, completion, stop, and queue, starts
+each through the same `capture(..., continuation)` shape used by `Chat.svelte`,
+then resets for navigation and destroys before resolving. It proves none of the
+real mutation callbacks run and that the actual registered `eventCallback`
+receives `false`. The source/contract test reads `Chat.svelte` and asserts all
+four real continuation entry points import/use the binding, capture/check their
+post-await continuation, register `eventCallback`, and reset on both
+navigation and `onDestroy`. Run them with:
+
+~~~
+npx vitest run src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts
+~~~
+
+The old standalone `lifecycleGuard.ts` proposal is removed: a pure test that
+does not exercise the binding used by `Chat.svelte` is insufficient release
+evidence.
 The companion page obtains the active authorized chat ID from presence and
 renders `CompanionPanel`, which renders `<Chat chatIdProp={chatId}
 surface="companion" />`. Companion presentation retains the canonical
@@ -706,16 +752,17 @@ canonical Messages, confirmation, and submit behavior; it also must guard its
 
 - [ ] **Step 4: Verify and commit**
 
-Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts
+Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts
 
 Expected: PASS with Node source/contract evidence of canonical-surface reuse
 and no duplicate completion/tool API import, Node parent-delegation evidence
 that companion mode hides every optional control, jsdom evidence of the small
-typed-only child, and lifecycleGuard evidence for stale load/completion/stop/
-queue, pending callback denial, and cleared chat ID reset.
+typed-only child, and lifecycle-binding evidence for stale load/completion/stop/
+queue, pending callback denial, cleared chat ID reset, destruction, and source
+coverage of the actual `Chat.svelte` deferred continuations.
 
 ~~~
-git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.ts src/lib/components/chat/lifecycleGuard.test.ts
+git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.svelte src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts
 git commit -m 'feat: add ted-bot typed companion chat'
 ~~~
 
@@ -759,12 +806,22 @@ the named project. The service never mounts a host credential/configuration
 file, does not log request bodies or headers, and is removed with the named
 test project. Its deterministic OpenAI-compatible API returns exactly one model,
 `tedbot-cypress-model`, from `GET /v1/models`. `POST /v1/chat/completions`
-returns a fixed successful non-stream completion, and when `stream: true`, a
-fixed valid SSE delta/finish sequence followed by `[DONE]`. It keeps an
-in-memory, redacted completion counter available to Cypress at that
-fixture-only status route so the test can prove what the proxy actually sent;
-the status response exposes only the count, never a prompt, header, token, or
-other request data. It must also offer its health route before Tide-Bot starts.
+returns a fixed successful non-stream completion, and ordinary `stream: true`
+requests return a fixed valid SSE delta/finish sequence followed by `[DONE]`.
+One test-only slow-stream marker in the request body selects a barrier scenario:
+the fixture sends exactly one first SSE delta, records `requestCount: 1` and
+`streamStarted: true`, then waits for the client to abort the HTTP stream. It
+sets `aborted: true` only after the server observes the aborted/closed request,
+never emits a finish delta or `[DONE]` for that scenario, never increments
+`completedCount`, and must not time out into normal completion.
+
+The generated loopback fixture status endpoint is exactly
+`GET /__fixture/status` and returns only `requestCount`, `streamStarted`,
+`aborted`, and `completedCount`. It reveals no prompt, header, token, or other
+request data; has clean in-memory state for each named Compose project; cannot
+be reset by Cypress; and disappears with the stack. The runner waits for fixture
+health before Cypress begins, and its unconditional cleanup tears down the
+named project and private env directory even if a barrier is still open.
 
 Only the Tide-Bot service in this Cypress Compose file receives the supported
 fixture settings: `OPENAI_API_BASE_URLS=http://fake-openai:8081/v1`, a fixed
@@ -795,14 +852,18 @@ and safe-teardown path without starting Docker or a browser.
 The spec uses separate cases and clears cookies, local storage, session storage,
 and Cypress session cache in `beforeEach`. The anonymous case visits
 `/companion` before any login and asserts redirect to `/auth`. The authenticated
-companion case verifies compact chrome/shortcut suppression and typed send/stop.
-It uses a Cypress intercept for exactly one Tide-Bot completion-proxy request,
-then queries the generated-loopback fixture-only status route and asserts
-that the fake model received exactly one completion. The full canonical chat
-case, not `/companion`, opens the existing integrations control, toggles its
-existing Web Search control, submits a typed prompt, and denies the existing
-Web Search confirmation dialog. It asserts the denial closes the dialog and
-does not create a fake-model completion. It does not add or pretend that the
+companion slow-stream case verifies compact chrome/shortcut suppression, types
+the special marker, and intercepts exactly one Tide-Bot completion-proxy
+request. It waits for `GET /__fixture/status` to show `requestCount === 1` and
+`streamStarted === true`, asserts Stop is visible after the first delta, clicks
+Stop, and waits for `aborted === true`. It then proves `completedCount === 0`,
+no final completion UI state, and no duplicate Tide-Bot completion-proxy
+request. This is the abort proof, not a normal stream-completion assertion.
+
+The full canonical chat case follows this exact confirmation flow: type prompt
+→ toggle Web Search → assert dialog → deny → assert fixture
+`completedCount` remains zero. It does not submit before the dialog and does
+not add or pretend that the
 companion exposes a hidden optional control. `CompanionPanel.test.ts` remains a
 separate source/route contract: it must prove the panel renders canonical
 `Chat.svelte` with `surface="companion"` and that canonical Chat retains its
@@ -844,18 +905,22 @@ git commit -m 'test: add companion smoke coverage'
 - Create: desktop/tide-bot/src-tauri/Cargo.toml
 - Create: desktop/tide-bot/src-tauri/build.rs
 - Create: desktop/tide-bot/src-tauri/tauri.conf.json
-- Create: desktop/tide-bot/src-tauri/capabilities/companion.json
+- Create: desktop/tide-bot/src-tauri/templates/companion.capability.template.json
+- Generate (ignored): desktop/tide-bot/src-tauri/capabilities/companion.json
 - Create: desktop/tide-bot/src-tauri/permissions/companion.toml
 - Create: desktop/tide-bot/src-tauri/src/main.rs
 - Create: desktop/tide-bot/src-tauri/src/lib.rs
 - Create: desktop/tide-bot/src-tauri/src/placement.rs
 - Create: desktop/tide-bot/src-tauri/tests/placement_test.rs
 - Create: desktop/tide-bot/src-tauri/tests/capabilities_test.rs
+- Create: desktop/tide-bot/scripts/desktop-origins.mjs
 - Create: desktop/tide-bot/README.md
 
 **Interfaces:**
 - Produces: main and companion windows, show_main_window command, tray actions, and non-sensitive placement persistence.
-- Consumes: production Tide-Bot HTTPS origin and /companion route.
+- Consumes: required `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` build/CI input and
+  optional `TIDE_BOT_DESKTOP_DEV_ORIGIN` loopback build input, plus the
+  `/companion` route.
 
 - [ ] **Step 1: Write the failing placement and capability tests**
 
@@ -886,7 +951,13 @@ fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
 
 - [ ] **Step 2: Verify it fails**
 
-Run: cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test
+Run:
+
+~~~
+cd desktop/tide-bot
+npm run prepare:origins
+cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test
+~~~
 
 Expected: FAIL because the Tauri package does not exist.
 
@@ -919,8 +990,10 @@ application permissions use `[[permission]]`, so the test must parse
 has identifier `allow-show-main-window` and `commands.allow` exactly
 `["show_main_window"]`. It also asserts `windows == ["companion"]`, the sole
 capability permission reference is the unprefixed
-`allow-show-main-window`, and `remote.urls` equals the two configured origins only:
-the production HTTPS origin and exact configured loopback development origin.
+`allow-show-main-window`, and `remote.urls` equals the resolved production
+origin plus the optional resolved development origin only when development was
+configured. The test reads the exact generated capability file that the Tauri
+build consumes; it must not reconstruct expected origins independently.
 The parsed-value traversal rejects filesystem, shell, process, credential,
 arbitrary-navigation, eval, and `core:default` grants. It also checks the
 build registration/AppManifest contract exposes only `show_main_window` to the
@@ -939,15 +1012,37 @@ rather than private `crate::` paths.
 `desktop/tide-bot/package.json` declares reproducible `tauri`, `build:debug`,
 and `build:windows` scripts plus pinned Tauri CLI/API dependencies. Set the app
 product name, bundle identifier, version, and build metadata in
-`tauri.conf.json`/Cargo metadata. Configure a required external production
-`https://` Tide-Bot origin and an explicitly selected loopback development
-origin; reject arbitrary origins and never embed credentials.
+`tauri.conf.json`/Cargo metadata. Add the checked-in
+`src-tauri/templates/companion.capability.template.json` and a single resolver,
+`desktop/tide-bot/scripts/desktop-origins.mjs`. Before **every** Tauri build or
+capability test, the package script runs that resolver to materialize the sole
+generated origin/capability source,
+`src-tauri/capabilities/companion.json`, from the template. That generated file
+is ignored, is consumed by the Tauri build, and is parsed by
+`capabilities_test.rs`; no hand-edited fallback capability or invented runtime
+origin is allowed.
+
+The resolver requires `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN`. It parses and
+normalizes it to an absolute canonical HTTPS origin, rejects a missing host,
+wildcard, credentials, query, fragment, or any path other than an optional
+trailing `/`, and writes no credential to output. It accepts
+`TIDE_BOT_DESKTOP_DEV_ORIGIN` only when supplied and only as an absolute `http`
+origin with an exact loopback host (`127.0.0.1`, `localhost`, or `::1`), no
+wildcard, credentials, query, fragment, or non-root path. Invalid or absent
+required production input fails before Cargo/Tauri work begins. The generated
+JSON records the resolved non-secret origins and uses them as its `remote.urls`
+array: production first and optional development second.
+
+There is currently no confirmed canonical production deployment origin. Do not
+invent one or hardcode a plausible domain. Until a deployment owner provisions
+the required production input, production desktop release acceptance is
+external/pending, not passed.
 
 Use `build.rs` with the generated AppManifest/permission registration and add
 only `permissions/companion.toml`, using one `[[permission]]` entry that
 defines the single application permission identifier
 `allow-show-main-window` with `commands.allow` exactly
-`["show_main_window"]`. `capabilities/companion.json` binds only
+`["show_main_window"]`. The resolver-generated `capabilities/companion.json` binds only
 `windows: ["companion"]`, references exactly `allow-show-main-window`, and explicitly scopes
 `remote.urls` to the exact production HTTPS origin and configured loopback dev
 origin. Do not use `core:default`: remote APIs otherwise need explicit scope,
@@ -966,7 +1061,8 @@ position, and expanded state.
 Run:
 
 ~~~
-cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo build --verbose && cargo check
+cd desktop/tide-bot && npm run prepare:origins
+cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo build --verbose && cargo check
 cd .. && npm run tauri build -- --debug
 ~~~
 
@@ -1041,10 +1137,24 @@ export async function openMainWindow({ invoke, navigate, windowRef = typeof wind
 Add a GitHub-triggered Windows artifact build in
 `.github/workflows/ted-bot-windows.yml` (manual dispatch and protected release
 branch trigger) using `windows-latest`, the pinned Node version, and
-`desktop/tide-bot`'s Windows build command. Upload the signed/unsigned build
-artifact as appropriate; record workflow run URL, commit SHA, artifact name,
-and checksum in acceptance evidence. A local macOS debug build is not Windows
-acceptance.
+`desktop/tide-bot`'s Windows build command. The workflow receives the required
+non-secret GitHub repository variable `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` as
+the same-named environment input to `npm run prepare:origins` and the Windows
+build. It may receive the optional non-secret repository variable
+`TIDE_BOT_DESKTOP_DEV_ORIGIN` only for an intentionally loopback development
+artifact; release workflow configuration normally omits it. The workflow must
+fail before compilation if the required variable is absent or either resolver
+validation fails. Provision these repository variables through the protected
+release workflow/repository settings, never as a secret and never by placing an
+origin in source.
+
+Upload the signed/unsigned build artifact as appropriate; record workflow run
+URL, commit SHA, artifact name, checksum, resolved non-secret production/dev
+origin values, SHA-256 of the generated `companion.json`, and the parsed
+capability-test result in acceptance evidence. A local macOS debug build is not
+Windows acceptance. The actual downloaded Windows artifact must additionally
+pass the manual procedure below; missing production-origin provisioning or
+artifact proof leaves desktop release acceptance external/pending.
 
 The acceptance document records exact macOS and Windows build, OS, and result
 for sign-in; minimizing the main window then continuing typed chat; active-chat
@@ -1070,19 +1180,32 @@ ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/s
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_atlas.py" "$ATLAS" --require-v2 --json-out "$EVIDENCE_DIR/ted-bot-atlas-validation.json"
 "$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_contact_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-atlas-contact-sheet.png"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-qa-sheet.png"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/measure_direction_continuity.py" "$ATLAS" --json-out "$EVIDENCE_DIR/ted-bot-direction-continuity.json"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/make_direction_blind_qa_sheet.py" "$ATLAS" --output "$EVIDENCE_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json"
+# Obtain three independent verdict JSON files from reviewers who saw only the blind sheet.
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-1.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-2.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-verdict-3.json" --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json"
+"$PYTHON" "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --answer-key "$EVIDENCE_DIR/ted-bot-direction-blind-answer-key.json" --verdicts "$EVIDENCE_DIR/ted-bot-direction-blind-consensus.json" --json-out "$EVIDENCE_DIR/ted-bot-direction-blind-validation.json"
 shasum -a 256 "$ATLAS"
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
-npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/lifecycleGuard.test.ts src/lib/ted-bot/openMainWindow.test.ts
+npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput/CompanionTextComposer.test.ts src/lib/components/chat/MessageInput.companion-contract.test.ts src/lib/components/chat/chatLifecycleBinding.test.ts src/lib/components/chat/Chat.lifecycle-contract.test.ts src/lib/ted-bot/openMainWindow.test.ts
 node --test scripts/run-companion-cypress.test.mjs
-cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo check
+cd desktop/tide-bot && npm run prepare:origins && cd src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo check
 cd ../../.. && RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs
 RUN_ID=cypress-release-$(date +%s) npm run test:companion:e2e
 ~~~
 
 Expected: every focused local check passes. The Hatch commands use no bare
 Python, consume the exact SHA-256-bound tracked atlas, produce passing
-deterministic alpha/transparency JSON plus a rendered contact sheet, and leave
-release acceptance pending if the bundled runtime or evidence is absent. The
+deterministic alpha/transparency JSON plus a rendered contact sheet, a labeled
+direction QA sheet, continuity JSON, a randomized blind sheet/answer key,
+three independent blind verdicts, consensus, and blind validation. Every item
+must carry the same pre/post atlas SHA-256. No blind cardinal may be missing,
+failing, or ambiguous; every one of the 16 semantic entries must record
+expected direction, observed behavior, pass/fail/ambiguous verdict, and reason;
+semantic failures and unassessed continuity warnings block release. The gate
+leaves acceptance pending if the bundled runtime or any required evidence is
+absent. The
 required Cypress command provisions and tears down its own loopback-only stack;
 it must never skip for missing user credentials or run against a live stack.
 Record the inherited global npm run check result separately if it remains
@@ -1097,15 +1220,19 @@ result, and confirmation that only the namespaced test resources were removed
 without stopping or restarting an existing Tide-Bot service. Cypress evidence
 must separately name its loopback origin, randomized supported-auth account
 flow, fixed fixture model ID, fake-model health/dependency result, the one
-intercepted Tide-Bot completion-proxy request and one fake-model completion
-counter result, the full-chat Web Search confirmation denial result, and safe
+intercepted Tide-Bot completion-proxy request, slow-stream first-delta/Stop/
+observed-abort result, zero final completion, no duplicate proxy request, the
+exact type-prompt/toggle-Web-Search/dialog/deny/zero-completion confirmation
+result, and safe
 teardown. It must confirm no fixture emitted secrets and that the fixture was
 removed with the isolated stack; it is not a cross-client sync claim. A
 structural package check or single-worker/fake-Redis pytest does not replace
 either gate.
-Final release evidence additionally requires the green GitHub Windows artifact
-build and the completed manual Windows procedure; neither is replaced by the
-local macOS debug bundle.
+Final release evidence additionally requires the resolved non-secret desktop
+origin, generated capability JSON SHA-256, parsed capability-test result,
+green GitHub Windows artifact build, and completed manual Windows procedure;
+neither is replaced by the local macOS debug bundle. The unprovisioned real
+production origin remains external/pending rather than being invented.
 
 - [ ] **Step 5: Commit acceptance documentation**
 

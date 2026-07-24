@@ -34,6 +34,21 @@ reviewing the approved native-companion plan against Tide-Bot at
   missing/failed evidence leaves release acceptance pending, not passed.
   Neither the root Cyborg package nor user-owned `teddy-v2-upgrade/` provenance
   may be staged for that evidence.
+- Release QA is not complete after the atlas validator/contact sheet. With
+  `HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"`, and
+  using the bundled `PYTHON` plus the exact SHA-bound tracked atlas, run
+  `make_direction_qa_sheet.py`, `measure_direction_continuity.py --json-out`,
+  and `make_direction_blind_qa_sheet.py --answer-key`. Three independent blind
+  reviewers receive only the randomized blind sheet, then their three verdict
+  files are combined with `combine_direction_blind_verdicts.py` and checked by
+  `validate_direction_blind_verdicts.py`. Save a per-direction semantic record
+  for all 16 directions with expected direction, observed behavior,
+  `pass`/`fail`/`ambiguous`, and reason (including horizontal/vertical landmark
+  evidence for diagonals). The hard gate rejects a missing/failing/ambiguous
+  blind cardinal, any semantic failure, or an unassessed continuity warning.
+  Every artifact and reviewer verdict must identify the exact atlas SHA-256.
+  This has not run: lack of a bundled runtime/evidence is a pending release
+  gate, not a passing claim.
 
 ## Companion surface and canonical chat flow
 
@@ -53,11 +68,22 @@ reviewing the approved native-companion plan against Tide-Bot at
   event, confirmation, queue, tool, terminal, or stop logic. Extend the
   canonical `Chat.svelte` with a typed `surface: 'full' | 'note' |
   'companion'` prop and use its existing completion engine.
-- `Chat.svelte` must make lifecycle resets safe before companion reuse: an
-  epoch invalidates stale load, completion, stop, and queue continuations; a
-  pending confirmation or input callback resolves `false` before reset or
-  destroy; and an empty (`''`) or nullish `chatIdProp` transition is handled as
-  a route-switch reset.
+- `Chat.svelte` must use an intentionally narrow
+  `src/lib/components/chat/chatLifecycleBinding.ts` integration seam rather
+  than a standalone epoch-only guard. The binding owns only token validity and
+  pending `eventCallback` settlement, accepts the existing post-await Chat
+  mutation as a callback, and never duplicates completion, event, queue, stop,
+  or controller logic. `Chat.svelte` captures/checks that same binding around
+  actual `navigateHandler`/`loadChat`, completion settlement, `stopResponse`,
+  and `processNextInQueue` continuations. Reset on navigation and destroy
+  invalidates the epoch and resolves the actual pending callback `false` once;
+  empty (`''`) and nullish `chatIdProp` transitions are navigation resets.
+  Deferred-operation tests must reset/navigate/destroy through that same
+  binding before load/completion/stop/queue resolution and prove no stale real
+  mutation plus `eventCallback(false)`. A `Chat.lifecycle-contract.test.ts`
+  source test verifies every listed real continuation uses capture/check and
+  reset on navigation/destroy. Preserve canonical submit/stop/confirmation
+  semantics.
 - `MessageInput.svelte` receives a companion mode that mounts the presentation-
   only `MessageInput/CompanionTextComposer.svelte` as an early branch. That
   child has only a textarea plus dispatched send/stop events; `MessageInput`
@@ -156,36 +182,52 @@ reviewing the approved native-companion plan against Tide-Bot at
   and data. The Compose file adds a tracked, Compose-owned local fake
   OpenAI-compatible service that returns exactly `tedbot-cypress-model` from
   `/v1/models` and fixed valid stream/non-stream responses from
-  `/v1/chat/completions`; it exposes only an in-memory redacted completion
-  count to Cypress through a generated loopback-only status port, emits no
-  secrets, has a health check, accepts no external credentials, and disappears
-  with the stack. Only the isolated
+  `/v1/chat/completions`. A special local slow-stream request sends one first
+  delta, records request/stream-start receipt, then waits for the actual client
+  abort rather than completing normally. Its generated loopback-only
+  `GET /__fixture/status` exposes only redacted `requestCount`, `streamStarted`,
+  `aborted`, and `completedCount`; the barrier must never emit a final delta or
+  `[DONE]`. It emits no secrets, has a health check, accepts no external
+  credentials, starts clean per named stack, and disappears with the stack. Only the isolated
   Tide-Bot service is configured with the supported fixture OpenAI base URL/key
   env, `ENABLE_SIGNUP=true`, `DEFAULT_USER_ROLE=user`, and
   `DEFAULT_MODELS=tedbot-cypress-model`; it also has
   `ENABLE_WEB_SEARCH=true` and `ENABLE_WEB_SEARCH_CONFIRMATION=true`. No
   external model, search, OAuth, terminal, or CPTR service may be inherited or
   reachable. Cypress proves anonymous redirect, authenticated compact UI,
-  typed send/stop, one intercepted Tide-Bot completion-proxy request plus one
-  fake-model completion, and safe teardown. Confirmation denial is tested
-  separately on the full canonical chat UI by toggling its existing Web Search
-  control, submitting, and denying the existing dialog; the test must not claim
-  that companion exposes this intentionally omitted optional control.
+  typed send/stop, and one intercepted Tide-Bot completion-proxy request. It
+  waits for the fixture's first chunk/stream-start status, sees Stop, clicks it,
+  then proves observed abort, no final completion, and no duplicate proxy
+  request before teardown. Confirmation denial is tested separately on the
+  full canonical chat UI in this exact order: type prompt, toggle Web Search,
+  assert dialog, deny, assert `completedCount` remains zero. The test must not
+  claim that companion exposes this intentionally omitted optional control.
   `CompanionPanel` source/route coverage separately proves canonical Chat and
   its confirmation UI remain in use. Cypress does not prove cross-client
   synchronization; the real Redis/two-worker integration gate owns that
   evidence. Release evidence requires a green isolated run and safe teardown
   verification.
 - The desktop shell permits only a companion-scoped `show_main_window` native
-  command. It uses a release HTTPS Tide-Bot origin and an explicitly separate
-  loopback development origin, with no filesystem, shell, credential bridge,
-  or arbitrary navigation capability. The Tauri 2 application permission TOML
+  command. A checked-in capability template plus
+  `desktop/tide-bot/scripts/desktop-origins.mjs` resolver requires
+  `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` and accepts optional
+  `TIDE_BOT_DESKTOP_DEV_ORIGIN`. It produces one ignored generated
+  `src-tauri/capabilities/companion.json` used by both Tauri build and parsed
+  capability test. Production must be absolute canonical HTTPS with no
+  wildcard, credentials, query, fragment, or non-root path; development must
+  be `http` loopback-only under the same no-ambiguity rules. Invalid/missing
+  production input fails build. The Tauri 2 application permission TOML
   uses `[[permission]]`; its capability test parses `permission["permission"]`
   as exactly one entry and asserts that entry's identifier is
   `allow-show-main-window` and its `commands.allow` is exactly
   `["show_main_window"]`. The capability refers to that unprefixed identifier,
   while the generated AppManifest registration and remote scope remain
-  explicitly tested. Browser detection is SSR-safe.
+  explicitly tested. CI/Windows provisioning maps the non-secret repository
+  variable `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` (and optional development
+  variable only where intentional) into this resolver; release evidence records
+  resolved origin, generated-config SHA, capability result, and actual Windows
+  artifact/manual proof. No actual production origin is currently known, so the
+  final release gate is external/pending. Browser detection is SSR-safe.
 - A macOS debug build does not establish Windows acceptance. Both platform
   builds and their manual sign-in/minimize/session checks remain required
   release evidence.
