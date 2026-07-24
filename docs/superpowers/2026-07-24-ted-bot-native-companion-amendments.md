@@ -17,6 +17,16 @@ reviewing the approved native-companion plan against Tide-Bot at
 - Do not stage the root `tide-bot-pet/` directory: it is a different Cyborg
   Captain package. Do not stage `teddy-v2-upgrade/`: it is local generation
   and QA provenance, not runtime source.
+- Task 2 must add a tracked Node-only structural validator and Node test for
+  this exact package. They validate every required v2 manifest field and the
+  exact `spritesheetPath`, require a 1536-by-2288 WebP, and enforce the 8-by-11,
+  192-by-208 atlas contract while rejecting all mismatches. Both run at staging
+  and final release gates; Hatch is not a CI dependency. Before release,
+  separately record a current visual inspection of the verified tracked
+  black-goldendoodle atlas, including its hash, inspector/date, rendered
+  evidence, direction continuity, alignment, and unused-cell transparency.
+  Neither the root Cyborg package nor user-owned `teddy-v2-upgrade/` provenance
+  may be staged for that evidence.
 
 ## Companion surface and canonical chat flow
 
@@ -69,6 +79,17 @@ reviewing the approved native-companion plan against Tide-Bot at
 - Disconnect removes its socket before session cleanup. The TTL loop has a
   stored FastAPI lifespan task that is cancelled and awaited on shutdown.
   Reconnect resets the browser revision before accepting a fresh snapshot.
+- Retain focused pytest unit tests and add a disposable Docker integration
+  harness with real Redis and two independently started Tide-Bot workers. It
+  must drive actual Socket.IO handlers and the Redis atomic path, not
+  `fake_redis` or injected revisions/counts; prove concurrent cross-worker
+  updates share revision ordering, disconnect cleanup promotes the remaining
+  focused client, and user rooms are isolated. Use a generated ephemeral key
+  namespace, no real credentials or credential logging, and unconditional
+  teardown. The final Docker gate is
+  `RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs`;
+  record both worker endpoints, ordered revisions, promotion/isolation
+  assertions, and teardown in acceptance evidence.
 
 ## Tests and native boundary
 

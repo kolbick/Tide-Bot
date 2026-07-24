@@ -79,6 +79,8 @@ git commit -m 'docs: record ted-bot companion baseline'
 - Create: src/lib/components/ted-bot/TedBotPet.svelte
 - Create: src/lib/components/ted-bot/TedBotPet.test.ts
 - Create: static/tide-bot/ted-bot/pet.json
+- Create: scripts/validate-ted-bot-pet.mjs
+- Create: scripts/validate-ted-bot-pet.test.mjs
 - Modify: src/lib/components/branding/TedBotMascot.svelte
 - Modify: package.json
 - Modify: package-lock.json
@@ -149,14 +151,49 @@ Add a 6rem by 6.5rem clipped atlas viewport, 4-second stepped idle animation, fa
 }
 ~~~
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Add a tracked structural package validator**
 
-Run: npx vitest run src/lib/components/ted-bot/TedBotPet.test.ts
+Create `scripts/validate-ted-bot-pet.mjs`, using only Node built-ins so CI does
+not depend on the external Hatch runtime. It must read
+`static/tide-bot/ted-bot/pet.json` and the WebP file resolved from its
+`spritesheetPath`, reject a missing, non-string, absolute, escaping, or
+non-`spritesheet.webp` path, and reject missing, extra, or mistyped v2 manifest
+fields. The required manifest contract is exactly `id`, `displayName`,
+`description`, `spriteVersionNumber`, and `spritesheetPath`, with the values
+shown above and `spriteVersionNumber === 2`. Parse the WebP container enough to
+reject an unreadable or non-1536-by-2288 image, and assert the 8-by-11 atlas
+contract: 192-by-208 cells, exact divisibility, and the resulting
+1536-by-2288 sheet. Exit nonzero with a specific diagnostic for every mismatch.
+
+Create `scripts/validate-ted-bot-pet.test.mjs` with Node's built-in test
+runner. It invokes the validator against the tracked package and temporary
+fixture copies that prove rejection of every manifest-field failure, a bad
+`spritesheetPath`, an absent atlas, wrong dimensions, and an invalid
+8-by-11/cell-size relationship. Clean up fixtures at the end.
+
+- [ ] **Step 5: Verify, visually inspect, and commit**
+
+Run:
+
+~~~
+npx vitest run src/lib/components/ted-bot/TedBotPet.test.ts
+node --test scripts/validate-ted-bot-pet.test.mjs
+node scripts/validate-ted-bot-pet.mjs
+~~~
 
 Expected: PASS.
 
+Before release, record a current visual atlas inspection of the verified
+black-goldendoodle asset in
+`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md`: command
+and SHA-256 of the tracked atlas, inspector/date, rendered-image evidence, and
+pass/fail for black-goldendoodle identity, 8-by-11 cell alignment, direction
+continuity, and unused-cell transparency. This is independent of the
+structural validator. Do not stage user-owned `teddy-v2-upgrade/` QA or
+provenance, and do not stage the root `tide-bot-pet/` Cyborg package.
+
 ~~~
-git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json
+git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json scripts/validate-ted-bot-pet.mjs scripts/validate-ted-bot-pet.test.mjs
 git add package.json package-lock.json
 git commit -m 'feat: add ted-bot companion renderer'
 ~~~
@@ -168,6 +205,9 @@ git commit -m 'feat: add ted-bot companion renderer'
 - Create: backend/open_webui/socket/companion_presence.py
 - Create: backend/open_webui/socket/test_companion_presence.py
 - Create: backend/open_webui/socket/test_companion_presence_handlers.py
+- Create: backend/open_webui/socket/test_companion_presence_redis_integration.py
+- Create: deploy/tide-stack/docker-compose.presence-integration.yml
+- Create: scripts/run-companion-presence-redis-integration.mjs
 - Modify: backend/open_webui/routers/chats.py
 - Modify: backend/open_webui/socket/main.py
 - Modify: backend/open_webui/main.py
@@ -268,16 +308,52 @@ cross-user/rate-limit/expiry/disconnect promotion, the one-worker memory
 topology, multi-worker no-Redis startup failure, Redis atomic revision updates,
 disconnect-before-session-cleanup ordering, and task cancellation/awaiting.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Add the real-Redis, two-worker integration harness**
 
-Run: pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
+Keep the focused pytest unit tests above, including their fake-Redis coverage,
+but add a separate disposable integration harness that cannot substitute a fake
+Redis client or an injected revision/count. Create
+`deploy/tide-stack/docker-compose.presence-integration.yml` with a test Redis
+service, two independently started Tide-Bot worker services
+(`presence-worker-a` and `presence-worker-b`) configured for
+`WEBSOCKET_MANAGER=redis`, and a one-shot `presence-integration` test service.
+The workers expose separate Socket.IO endpoints to the test service while
+sharing one real Redis instance; they use a generated ephemeral Redis key
+namespace (for example `tedbot-presence-it-${RUN_ID}:`), never default
+application presence data. The configuration uses only local test values,
+reads no real credentials, and never prints credentials.
+
+Create `scripts/run-companion-presence-redis-integration.mjs` to generate the
+run ID, start the composed stack, wait for both worker health endpoints, run
+the test service, collect only non-sensitive worker/test logs and request
+evidence, then always run `docker compose ... down --volumes --remove-orphans`
+in `finally`/trap cleanup. Create
+`backend/open_webui/socket/test_companion_presence_redis_integration.py` as
+the test-service entrypoint. It connects authenticated test clients to both
+independently started workers and exercises the actual Socket.IO handler and
+`RedisPresenceStore` atomic update path. It proves concurrent updates from the
+two workers result in one shared monotonically ordered revision stream,
+disconnect cleanup promotes the remaining focused client, and no state/event
+crosses from `user-a` into `user-b`'s room. Assert the ephemeral namespace is
+empty at the end. No test is complete if it calls `fake_redis`, directly patches
+a store count/revision, or runs both clients through one worker.
+
+- [ ] **Step 5: Verify and commit**
+
+Run:
+
+~~~
+pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
+RUN_ID=local-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs
+~~~
 
 Expected: PASS with malformed, unauthorized, cross-user, rate-limit, expiry,
 disconnect-promotion, topology, Redis atomic revision, disconnect ordering, and
-lifespan shutdown coverage.
+lifespan shutdown coverage, plus disposable real-Redis/two-worker
+concurrent-revision, disconnect-promotion, and room-isolation evidence.
 
 ~~~
-git add backend/open_webui/utils/chat_access.py backend/open_webui/socket backend/open_webui/routers/chats.py backend/open_webui/main.py
+git add backend/open_webui/utils/chat_access.py backend/open_webui/socket backend/open_webui/routers/chats.py backend/open_webui/main.py deploy/tide-stack/docker-compose.presence-integration.yml scripts/run-companion-presence-redis-integration.mjs
 git commit -m 'feat: synchronize ted-bot active chat presence'
 ~~~
 
@@ -796,16 +872,26 @@ npm run audit:branding
 npm run test:frontend -- --run
 npm run build
 git diff --check
+node --test scripts/validate-ted-bot-pet.test.mjs
+node scripts/validate-ted-bot-pet.mjs
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q
 npx vitest run src/lib/ted-bot/presence.test.ts src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts src/lib/components/chat/lifecycleGuard.test.ts src/lib/ted-bot/openMainWindow.test.ts
 node --test scripts/run-companion-cypress.test.mjs
 cd desktop/tide-bot/src-tauri && cargo test --test placement_test && cargo test --test capabilities_test && cargo check
-cd ../../.. && CYPRESS_COMPANION_E2E_REQUIRED=1 npm run test:companion:e2e
+cd ../../.. && RUN_ID=release-$(date +%s) node scripts/run-companion-presence-redis-integration.mjs
+CYPRESS_COMPANION_E2E_REQUIRED=1 npm run test:companion:e2e
 ~~~
 
 Expected: every focused local check passes; the required Cypress command exits
 2 rather than skipping if its credentials/config are missing. Record the
 inherited global npm run check result separately if it remains non-clean.
+The release acceptance record must include a current visual atlas-inspection
+entry for the tracked black-goldendoodle asset and the exact successful
+`RUN_ID=release-... node scripts/run-companion-presence-redis-integration.mjs`
+command, worker-a/worker-b endpoint evidence, shared ordered revisions,
+disconnect-promotion result, user-room-isolation result, and teardown
+confirmation. A structural package check or single-worker/fake-Redis pytest
+does not replace either gate.
 Final release evidence additionally requires the green GitHub Windows artifact
 build and the completed manual Windows procedure; neither is replaced by the
 local macOS debug bundle.
