@@ -3,7 +3,7 @@
 
 	const i18n = getContext('i18n');
 
-	import { settings } from '$lib/stores';
+	import { settings, WEBUI_NAME } from '$lib/stores';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -126,7 +126,8 @@
 
 				<div class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
 					{$i18n.t(
-						'CORS must be properly configured by the provider to allow requests from Open WebUI.'
+						'CORS must be properly configured by the provider to allow requests from {{name}}.',
+						{ name: $WEBUI_NAME }
 					)}
 				</div>
 			</UserSettingSection>

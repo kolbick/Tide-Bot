@@ -421,7 +421,7 @@
 			{:else if STT_ENGINE === ''}
 				<AdminSettingField
 					label={$i18n.t('STT Model')}
-					description={$i18n.t('Open WebUI uses faster-whisper internally.')}
+					description={$i18n.t('The configured speech engine uses faster-whisper internally.')}
 				>
 					<div class="flex w-full gap-2">
 						<input
@@ -593,7 +593,9 @@
 			{:else if TTS_ENGINE === 'transformers'}
 				<AdminSettingField
 					label={$i18n.t('TTS Model')}
-					description={$i18n.t('Open WebUI uses SpeechT5 and CMU Arctic speaker embeddings.')}
+					description={$i18n.t(
+						'The local speech engine uses SpeechT5 and CMU Arctic speaker embeddings.'
+					)}
 				>
 					<input
 						list="tts-transformers-model-list"

@@ -1,1 +1,11 @@
-{}
+{
+  "name": "Tide-Bot | Changing Tides Treatment Center",
+  "short_name": "Tide-Bot",
+  "icons": [
+    { "src": "/tide-bot/tide-bot-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/tide-bot/tide-bot-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "theme_color": "#07151d",
+  "background_color": "#07151d",
+  "display": "standalone"
+}

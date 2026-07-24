@@ -1,33 +1,72 @@
-# Tide-Bot connected stack
+# Tide-Bot deployment stack
 
-This is the first Tide-Bot deployment package. It starts the application, a shared multi-user Tide Terminal, and an internal CPTR gateway with no manual connection setup inside the web UI.
+This package starts Tide-Bot alone by default. Tide Terminal and the CPTR
+gateway are privileged integrations and require explicit Compose overlays.
 
-## What it does
+## Base application
 
-- The first Tide-Bot account is the Open WebUI admin. That account can immediately use Tide Terminal and CPTR.
-- Tide Terminal uses Open Terminal multi-user mode. Every Tide-Bot user receives a separate Unix account and persistent home directory under the `tide-terminal-homes` volume.
-- CPTR is hidden from unapproved users and rejects guessed requests. The gateway allows Tide-Bot admins automatically and allows non-admin users only when their email is listed in `TIDE_CPTR_APPROVED_EMAILS`.
-- CPTR itself stays on the host computer. Its management interface is not published by this Compose stack.
+1. Copy `.env.example` to `.env` and set a fresh `WEBUI_SECRET_KEY`.
+2. Start the base app:
 
-## First start
+   ```bash
+   docker compose up -d --build
+   ```
 
-1. Start CPTR on the host and create a gateway API key in CPTR Settings > Gateway.
-2. Copy `.env.example` to `.env`, add fresh secrets, then set `CPTR_GATEWAY_API_KEY`.
-3. From this directory, run `docker compose up -d --build`.
-4. Open Tide-Bot at `http://localhost:3102`, create the first account, and use it as the admin account.
+3. Open `http://localhost:3102`, create the first account, and keep that
+   account as the Tide-Bot administrator.
 
-## Approving a user for CPTR
-
-Add their Tide-Bot login email to `TIDE_CPTR_APPROVED_EMAILS` in `.env`, then run:
+The base stack has a dedicated `tide-bot-data` volume and a private
+`tide-bot-network`. Public signup is disabled. Its CORS and Socket.IO defaults
+allow only `localhost:3102` and `127.0.0.1:3102` for local testing. Production
+must use the production overlay, which allows only the exact Tide-Bot HTTPS
+origins:
 
 ```bash
-docker compose up -d --no-deps tide-cptr-gateway
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
 ```
 
-Remove their email and run the same command to revoke CPTR access. Tide Terminal access is available to all approved Tide-Bot accounts, but their files remain under their own home directory.
+Do not use a wildcard origin. Put the published endpoint behind an HTTPS
+reverse proxy before using `tide-bot.com`. A safe Nginx reference and
+backup/release checklist are in
+[`PRODUCTION.md`](PRODUCTION.md).
 
-## Important boundary
+## Tide Terminal overlay
 
-This uses shared-container multi-user mode because that is the requested tradeoff. It separates user files with Unix accounts and permissions, but it is not a hard container boundary between users. Do not give accounts to people you would not trust to share the same terminal host.
+Set a fresh `TIDE_TERMINAL_API_KEY` in `.env`, then run:
 
-The CPTR gateway runs agent requests with the privileges of the CPTR host workspace. Treat approval for CPTR as privileged access.
+```bash
+docker compose -f docker-compose.yml -f docker-compose.terminal.yml up -d --build
+```
+
+The overlay builds Tide Terminal from official Open Terminal source pinned to
+`v0.11.34` / `9162e808c3aaf8dba38745cea55204a42bbb348d`. It verifies that
+revision during the build, replaces the public API identity with Tide Terminal,
+and retains the upstream MIT license in the resulting image. The service has no
+published host port, Docker socket, or host-filesystem bind mount.
+
+Tide Terminal uses shared-container multi-user mode. Users receive separate
+Unix homes in `tide-terminal-homes`, but this is not a hard container boundary
+between users. Do not grant access to people you would not trust to share the
+same terminal host.
+
+## CPTR overlay
+
+CPTR is optional and has host-level implications. Start CPTR on the host,
+create a gateway API key, then set `TIDE_CPTR_GATE_TOKEN`,
+`CPTR_GATEWAY_URL`, and `CPTR_GATEWAY_API_KEY` in `.env`.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cptr.yml up -d --build
+```
+
+The CPTR management UI is not published by this stack. The gateway permits
+Tide-Bot administrators and explicitly listed non-admin email addresses only.
+To approve or revoke a non-admin user, update `TIDE_CPTR_APPROVED_EMAILS` and
+restart just the gateway:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cptr.yml up -d --no-deps tide-cptr-gateway
+```
+
+To run both optional integrations, add both overlay files in the shown order.
+Treat CPTR approval as privileged host access.

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getVersionUpdates } from '$lib/apis';
 	import { getOllamaVersion } from '$lib/apis/ollama';
+	import { BRAND } from '$lib/branding';
 	import { WEBUI_BUILD_HASH, WEBUI_VERSION } from '$lib/constants';
 	import { WEBUI_NAME, config, showChangelog } from '$lib/stores';
 	import { compareVersion } from '$lib/utils';
@@ -63,16 +64,13 @@
 						</Tooltip>
 
 						{#if $config?.features?.enable_version_update_check}
-							<a
-								href="https://github.com/open-webui/open-webui/releases/tag/v{version.latest}"
-								target="_blank"
-							>
+							<span>
 								{updateAvailable === null
 									? $i18n.t('Checking for updates...')
 									: updateAvailable
 										? `(v${version.latest} ${$i18n.t('available!')})`
 										: $i18n.t('(latest)')}
-							</a>
+							</span>
 						{/if}
 					</div>
 
@@ -107,34 +105,16 @@
 			</UserSettingSection>
 		{/if}
 
-		<UserSettingSection title={$i18n.t('Community')}>
+		<UserSettingSection title={$i18n.t('Tide-Bot support')}>
 			{#if $config?.license_metadata}
 				<div class="text-xs text-gray-600 dark:text-gray-400">
-					{#if !$WEBUI_NAME.includes('Open WebUI')}
-						<span>{$WEBUI_NAME}</span> -
-					{/if}
+					<span>{$WEBUI_NAME}</span> -
 
 					<span class="capitalize">{$config?.license_metadata?.type}</span> license purchased by
 					<span class="capitalize">{$config?.license_metadata?.organization_name}</span>
 				</div>
 			{:else}
-				<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400 dark:text-gray-600">
-					<a
-						class="hover:text-gray-700 dark:hover:text-gray-400"
-						href="https://discord.gg/5rJgQTnV4s"
-						target="_blank">Discord</a
-					>
-					<a
-						class="hover:text-gray-700 dark:hover:text-gray-400"
-						href="https://twitter.com/OpenWebUI"
-						target="_blank">X</a
-					>
-					<a
-						class="hover:text-gray-700 dark:hover:text-gray-400"
-						href="https://github.com/open-webui/open-webui"
-						target="_blank">GitHub</a
-					>
-				</div>
+				<div class="text-xs text-gray-400 dark:text-gray-600">{BRAND.supportLabel}</div>
 			{/if}
 
 			<div class="text-xs text-gray-400 dark:text-gray-500">
@@ -144,17 +124,9 @@
 			</div>
 
 			<div class="text-xs text-gray-400 dark:text-gray-500">
-				Copyright (c) {new Date().getFullYear()}
-				<a href="https://openwebui.com" target="_blank" class="underline">Open WebUI Inc.</a>
+				Tide-Bot is a private workspace for Changing Tides Treatment Center.
 				<a href="https://github.com/open-webui/open-webui/blob/main/LICENSE" target="_blank"
-					>All rights reserved.</a
-				>
-			</div>
-
-			<div class="text-xs text-gray-400 dark:text-gray-500">
-				{$i18n.t('Created by')}
-				<a class="text-gray-500 dark:text-gray-400" href="https://github.com/tjbck" target="_blank"
-					>Tim J. Baek</a
+					>View open-source license.</a
 				>
 			</div>
 		</UserSettingSection>

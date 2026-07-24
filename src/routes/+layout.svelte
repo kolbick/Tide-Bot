@@ -62,6 +62,7 @@
 	} from '$lib/utils/connections';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL, WEBUI_HOSTNAME } from '$lib/constants';
+	import { BRAND } from '$lib/branding';
 	import {
 		bestMatchingLanguage,
 		cleanText,
@@ -73,7 +74,6 @@
 
 	import NotificationToast from '$lib/components/NotificationToast.svelte';
 	import AppSidebar from '$lib/components/app/AppSidebar.svelte';
-	import SyncStatsModal from '$lib/components/chat/Settings/SyncStatsModal.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { getOutputText } from '$lib/components/chat/Messages/structuredOutput';
 	import { getUserSettings } from '$lib/apis/users';
@@ -111,9 +111,6 @@
 	let isAuthRedirectInProgress = false;
 
 	let showRefresh = false;
-
-	let showSyncStatsModal = false;
-	let syncStatsEventData = null;
 
 	let heartbeatInterval = null;
 	let disconnectToastTimer = null;
@@ -539,9 +536,9 @@
 
 			if ($isLastActiveTab) {
 				if ($settings?.notificationEnabled ?? false) {
-					new Notification(`${data.title} • Open WebUI`, {
+					new Notification(`${data.title} / ${BRAND.name}`, {
 						body: timeStr,
-						icon: `${WEBUI_BASE_URL}/static/favicon.png`
+						icon: `${WEBUI_BASE_URL}${BRAND.faviconPath}`
 					});
 				}
 			}
@@ -674,9 +671,9 @@
 
 					if ($isLastActiveTab) {
 						if ($settings?.notificationEnabled ?? false) {
-							new Notification(`${displayTitle} • Open WebUI`, {
+							new Notification(`${displayTitle} / ${BRAND.name}`, {
 								body: contentPreview,
-								icon: `${WEBUI_BASE_URL}/static/favicon.png`
+								icon: `${WEBUI_BASE_URL}${BRAND.faviconPath}`
 							});
 						}
 					}
@@ -781,7 +778,7 @@
 
 				if ($isLastActiveTab) {
 					if ($settings?.notificationEnabled ?? false) {
-						new Notification(`${title} • Open WebUI`, {
+						new Notification(`${title} / ${BRAND.name}`, {
 							body: data?.content,
 							icon: `${WEBUI_API_BASE_URL}/users/${data?.user?.id}/profile/image`
 						});
@@ -975,21 +972,6 @@
 		}
 	};
 
-	const windowMessageEventHandler = async (event) => {
-		if (
-			!['https://openwebui.com', 'https://www.openwebui.com', 'http://localhost:9999'].includes(
-				event.origin
-			)
-		) {
-			return;
-		}
-
-		if (event.data === 'export:stats' || event.data?.type === 'export:stats') {
-			syncStatsEventData = event.data;
-			showSyncStatsModal = true;
-		}
-	};
-
 	onMount(async () => {
 		const originalFetch = window.fetch.bind(window);
 		window.fetch = async (input, init) => {
@@ -1006,8 +988,6 @@
 
 			return response;
 		};
-
-		window.addEventListener('message', windowMessageEventHandler);
 
 		let touchstartY = 0;
 
@@ -1270,18 +1250,8 @@
 			loaded = true;
 		}
 
-		// Auto-show SyncStatsModal when opened with ?sync=true (from community)
-		if (
-			(window.opener ?? false) &&
-			$page.url.searchParams.get('sync') === 'true' &&
-			($config?.features?.enable_community_sharing ?? false)
-		) {
-			showSyncStatsModal = true;
-		}
-
 		return () => {
 			window.removeEventListener('resize', onResize);
-			window.removeEventListener('message', windowMessageEventHandler);
 			document.removeEventListener('touchstart', touchstartHandler);
 			document.removeEventListener('touchmove', touchmoveHandler);
 			document.removeEventListener('touchend', touchendHandler);
@@ -1298,10 +1268,10 @@
 
 <svelte:head>
 	<title>{$WEBUI_NAME}</title>
-	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}/static/favicon.png" />
+	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}{BRAND.faviconPath}" />
 
 	<meta name="apple-mobile-web-app-title" content={$WEBUI_NAME} />
-	<meta name="description" content={$WEBUI_NAME} />
+	<meta name="description" content={BRAND.description} />
 	<link
 		rel="search"
 		type="application/opensearchdescription+xml"
@@ -1329,10 +1299,6 @@
 	{:else}
 		<slot />
 	{/if}
-{/if}
-
-{#if $config?.features.enable_community_sharing}
-	<SyncStatsModal bind:show={showSyncStatsModal} eventData={syncStatsEventData} />
 {/if}
 
 <Toaster

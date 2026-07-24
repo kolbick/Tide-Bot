@@ -600,7 +600,7 @@ async def get_model_profile_image(
                 # only serve known-safe raster types inline; reject SVG/unknown (can run script on our origin)
                 if media_type not in PROFILE_IMAGE_ALLOWED_MIME_TYPES:
                     return RedirectResponse(
-                        url='/static/favicon.png',
+                        url='/tide-bot/tide-bot-96.png',
                         status_code=status.HTTP_302_FOUND,
                     )
 
@@ -627,7 +627,7 @@ async def get_model_profile_image(
                 )
 
     return RedirectResponse(
-        url='/static/favicon.png',
+        url='/tide-bot/tide-bot-96.png',
         status_code=status.HTTP_302_FOUND,
     )
 

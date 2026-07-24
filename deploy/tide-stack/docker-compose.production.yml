@@ -1,0 +1,5 @@
+services:
+  tide-bot:
+    environment:
+      # Do not add localhost, wildcards, or a staging domain to this list.
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-https://tide-bot.com;https://www.tide-bot.com}

@@ -1,0 +1,41 @@
+services:
+  tide-bot:
+    environment:
+      ENABLE_OPENAI_API: 'true'
+      ENABLE_FORWARD_USER_INFO_HEADERS: 'true'
+      OPENAI_API_BASE_URLS: http://tide-cptr-gateway:8081/v1
+      OPENAI_API_KEYS: ${TIDE_CPTR_GATE_TOKEN}
+      OPENAI_API_CONFIGS: >-
+        {"0":{"headers":{"X-OpenWebUI-Chat-Id":"{{CHAT_ID}}","X-OpenWebUI-Message-Id":"{{MESSAGE_ID}}","X-OpenWebUI-User-Message-Id":"{{USER_MESSAGE_ID}}","X-OpenWebUI-User-Message-Parent-Id":"{{USER_MESSAGE_PARENT_ID}}","X-OpenWebUI-Task":"{{TASK}}"}}}
+    depends_on:
+      tide-cptr-gateway:
+        condition: service_healthy
+
+  tide-cptr-gateway:
+    build:
+      context: ./cptr-gateway
+    image: tide-cptr-gateway:local
+    container_name: tide-cptr-gateway
+    restart: unless-stopped
+    environment:
+      TIDE_CPTR_GATE_TOKEN: ${TIDE_CPTR_GATE_TOKEN}
+      TIDE_CPTR_UPSTREAM_URL: ${CPTR_GATEWAY_URL}
+      TIDE_CPTR_UPSTREAM_API_KEY: ${CPTR_GATEWAY_API_KEY}
+      TIDE_CPTR_APPROVED_EMAILS: ${TIDE_CPTR_APPROVED_EMAILS:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    expose:
+      - '8081'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tide-bot-network

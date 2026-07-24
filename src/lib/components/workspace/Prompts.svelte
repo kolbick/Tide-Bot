@@ -36,7 +36,6 @@
 	import GarbageBin from '../icons/GarbageBin.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
 	import TagSelector from './common/TagSelector.svelte';
-	import CommunityDiscover from './common/CommunityDiscover.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import Switch from '../common/Switch.svelte';
 	import Pagination from '../common/Pagination.svelte';
@@ -193,24 +192,6 @@
 		}
 	};
 
-	const shareHandler = async (prompt) => {
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-
-		const tab = await window.open(`${url}/prompts/create`, '_blank');
-		window.addEventListener(
-			'message',
-			(event) => {
-				if (event.origin !== url) return;
-				if (event.data === 'loaded') {
-					tab.postMessage(JSON.stringify(prompt), '*');
-				}
-			},
-			false
-		);
-	};
-
 	const toPromptDraft = (prompt: any): PromptDraft => ({
 		name: prompt.name || prompt.title || 'Prompt',
 		command: prompt.command || '',
@@ -296,24 +277,6 @@
 		viewOption = localStorage?.workspaceViewOption || '';
 		loaded = true;
 
-		const onMessage = async (event: MessageEvent) => {
-			if (
-				!['https://openwebui.com', 'https://www.openwebui.com', 'http://localhost:9999'].includes(
-					event.origin
-				)
-			) {
-				return;
-			}
-
-			openCreateModal(toPromptDraft(JSON.parse(event.data)));
-		};
-
-		window.addEventListener('message', onMessage);
-
-		if (window.opener ?? false) {
-			window.opener.postMessage('loaded', '*');
-		}
-
 		if (sessionStorage.prompt) {
 			const prompt = JSON.parse(sessionStorage.prompt);
 			sessionStorage.removeItem('prompt');
@@ -344,7 +307,6 @@
 
 		return () => {
 			clearTimeout(searchDebounceTimer);
-			window.removeEventListener('message', onMessage);
 			window.removeEventListener('keydown', onKeyDown);
 			window.removeEventListener('keyup', onKeyUp);
 			window.removeEventListener('blur', onBlur);
@@ -358,7 +320,7 @@
 
 <svelte:head>
 	<title>
-		{$i18n.t('Prompts')} • {$WEBUI_NAME}
+		{$i18n.t('Prompts')} / {$WEBUI_NAME}
 	</title>
 </svelte:head>
 
@@ -663,9 +625,6 @@
 											editHandler={() => {
 												goto(`/workspace/prompts/${prompt.id}`);
 											}}
-											shareHandler={() => {
-												shareHandler(prompt);
-											}}
 											cloneHandler={() => {
 												cloneHandler(prompt);
 											}}
@@ -729,25 +688,16 @@
 				</div>
 			{/if}
 		{:else}
-			<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-				<div class="max-w-md text-center">
-					<div class=" text-3xl mb-3">😕</div>
-					<div class=" text-lg font-normal mb-1">{$i18n.t('No prompts found')}</div>
-					<div class=" text-gray-500 text-center text-xs">
+			<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
+				<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
+					<div class="mb-1.5 text-sm">{$i18n.t('No prompts found')}</div>
+					<div class="text-center text-xs leading-5 text-gray-500">
 						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
 					</div>
 				</div>
 			</div>
 		{/if}
 	</div>
-
-	{#if $config?.features.enable_community_sharing}
-		<CommunityDiscover
-			href="https://openwebui.com/prompts"
-			title={$i18n.t('Discover a prompt')}
-			description={$i18n.t('Discover, download, and explore custom prompts')}
-		/>
-	{/if}
 {:else}
 	<div class="w-full h-full flex justify-center items-center">
 		<Spinner className="size-5" />

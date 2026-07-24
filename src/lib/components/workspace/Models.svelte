@@ -58,7 +58,6 @@
 	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
 	import TagSelector from './common/TagSelector.svelte';
-	import CommunityDiscover from './common/CommunityDiscover.svelte';
 	import Pagination from '../common/Pagination.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 
@@ -208,25 +207,6 @@
 			name: `${model.name} (Clone)`
 		});
 		goto('/workspace/models/create');
-	};
-
-	const shareModelHandler = async (model) => {
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-		const fullModel = getFullModel(model);
-
-		const tab = await window.open(`${url}/post?type=model`, '_blank');
-
-		const messageHandler = async (event) => {
-			if (event.origin !== url) return;
-			if (event.data === 'loaded') {
-				tab.postMessage(JSON.stringify(await fullModel), '*');
-				window.removeEventListener('message', messageHandler);
-			}
-		};
-
-		window.addEventListener('message', messageHandler, false);
 	};
 
 	const hideModelHandler = async (model) => {
@@ -433,7 +413,7 @@
 
 <svelte:head>
 	<title>
-		{$i18n.t('Models')} • {$WEBUI_NAME}
+		{$i18n.t('Models')} / {$WEBUI_NAME}
 	</title>
 </svelte:head>
 
@@ -825,9 +805,6 @@
 												editHandler={() => {
 													goto(`/workspace/models/edit?id=${encodeURIComponent(model.id)}`);
 												}}
-												shareHandler={() => {
-													shareModelHandler(model);
-												}}
 												cloneHandler={() => {
 													cloneModelHandler(model);
 												}}
@@ -896,11 +873,10 @@
 					<Pagination bind:page count={total} perPage={30} />
 				{/if}
 			{:else}
-				<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-					<div class="max-w-md text-center">
-						<div class=" text-3xl mb-3">😕</div>
-						<div class=" text-lg font-normal mb-1">{$i18n.t('No models found')}</div>
-						<div class=" text-gray-500 text-center text-xs">
+				<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
+					<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
+						<div class="mb-1.5 text-sm">{$i18n.t('No models found')}</div>
+						<div class="text-center text-xs leading-5 text-gray-500">
 							{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
 						</div>
 					</div>
@@ -912,14 +888,6 @@
 			</div>
 		{/if}
 	</div>
-
-	{#if $config?.features.enable_community_sharing}
-		<CommunityDiscover
-			href="https://openwebui.com/models"
-			title={$i18n.t('Discover a model')}
-			description={$i18n.t('Discover, download, and explore model presets')}
-		/>
-	{/if}
 {:else}
 	<div class="w-full h-full flex justify-center items-center">
 		<Spinner className="size-5" />

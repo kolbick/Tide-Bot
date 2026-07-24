@@ -9,78 +9,35 @@ services:
     container_name: tide-bot
     restart: unless-stopped
     ports:
-      - "${APP_HOST_PORT:-3102}:8080"
+      - '${APP_HOST_PORT:-3102}:8080'
     environment:
       WEBUI_NAME: Tide-Bot
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
-      ENABLE_SIGNUP: "false"
-      ENABLE_OPENAI_API: "true"
-      ENABLE_FORWARD_USER_INFO_HEADERS: "true"
-      OPENAI_API_BASE_URLS: http://tide-cptr-gateway:8081/v1
-      OPENAI_API_KEYS: ${TIDE_CPTR_GATE_TOKEN}
-      OPENAI_API_CONFIGS: >-
-        {"0":{"headers":{"X-OpenWebUI-Chat-Id":"{{CHAT_ID}}","X-OpenWebUI-Message-Id":"{{MESSAGE_ID}}","X-OpenWebUI-User-Message-Id":"{{USER_MESSAGE_ID}}","X-OpenWebUI-User-Message-Parent-Id":"{{USER_MESSAGE_PARENT_ID}}","X-OpenWebUI-Task":"{{TASK}}"}}}
-      TERMINAL_SERVER_CONNECTIONS: >-
-        [{"id":"tide-terminal","name":"Tide Terminal","enabled":true,"url":"http://tide-terminal:8000","key":"${TIDE_TERMINAL_API_KEY}","auth_type":"bearer","config":{"access_grants":[{"principal_type":"user","principal_id":"*","permission":"read"}]}}]
+      ENABLE_SIGNUP: 'false'
+      ENABLE_VERSION_UPDATE_CHECK: 'false'
+      ENABLE_COMMUNITY_SHARING: 'false'
+      # Testing stack only: keep browser and Socket.IO access limited to local
+      # development plus the private Tailscale Serve origin. Production
+      # replaces this with the public Tide-Bot HTTPS origins.
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-http://localhost:3102;http://127.0.0.1:3102;https://kolbys-mac-mini.tail756dc8.ts.net:3102}
+      WEBUI_FAVICON_URL: /tide-bot/tide-bot-96.png
     volumes:
       - tide-bot-data:/app/backend/data
-    depends_on:
-      tide-terminal:
-        condition: service_healthy
-      tide-cptr-gateway:
-        condition: service_healthy
-    networks:
-      - tide-bot-network
-
-  tide-terminal:
-    image: ghcr.io/open-webui/open-terminal:latest
-    container_name: tide-terminal
-    restart: unless-stopped
-    environment:
-      OPEN_TERMINAL_API_KEY: ${TIDE_TERMINAL_API_KEY}
-      OPEN_TERMINAL_MULTI_USER: "true"
-      OPEN_TERMINAL_FILE_BROWSER_ROOT: home
-    volumes:
-      - tide-terminal-homes:/home
-    expose:
-      - "8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
-      interval: 15s
-      timeout: 5s
+      test:
+        [
+          'CMD-SHELL',
+          'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:8080/health'', timeout=5)"'
+        ]
+      interval: 20s
+      timeout: 8s
       retries: 10
-      start_period: 20s
+      start_period: 30s
     networks:
       - tide-bot-network
-
-  tide-cptr-gateway:
-    build:
-      context: ./cptr-gateway
-    image: tide-cptr-gateway:local
-    container_name: tide-cptr-gateway
-    restart: unless-stopped
-    environment:
-      TIDE_CPTR_GATE_TOKEN: ${TIDE_CPTR_GATE_TOKEN}
-      TIDE_CPTR_UPSTREAM_URL: ${CPTR_GATEWAY_URL}
-      TIDE_CPTR_UPSTREAM_API_KEY: ${CPTR_GATEWAY_API_KEY}
-      TIDE_CPTR_APPROVED_EMAILS: ${TIDE_CPTR_APPROVED_EMAILS:-}
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    expose:
-      - "8081"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-    networks:
-      - tide-bot-network
-
 volumes:
   tide-bot-data:
     name: tide-bot-data
-  tide-terminal-homes:
-    name: tide-terminal-homes
 
 networks:
   tide-bot-network:

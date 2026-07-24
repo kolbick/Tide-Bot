@@ -200,7 +200,7 @@
 	<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">{$i18n.t('General')}</h2>
 
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
-		<UserSettingSection title={$i18n.t('WebUI Settings')} first>
+		<UserSettingSection title={$i18n.t('Tide-Bot Settings')} first>
 			<UserSettingRow
 				label={$i18n.t('Theme')}
 				description={$i18n.t('Choose the color theme used by the interface.')}
@@ -240,14 +240,7 @@
 			</UserSettingRow>
 			{#if $i18n.language === 'en-US' && !($config?.license_metadata ?? false)}
 				<div class="-mt-1 text-[0.6875rem] text-gray-400 dark:text-gray-600">
-					Couldn't find your language?
-					<a
-						class="font-normal underline text-gray-400 dark:text-gray-600"
-						href="https://github.com/open-webui/open-webui/blob/main/docs/CONTRIBUTING.md#-translations-and-internationalization"
-						target="_blank"
-					>
-						Help us translate Open WebUI!
-					</a>
+					Need another language? Contact your Tide-Bot administrator.
 				</div>
 			{/if}
 		</UserSettingSection>

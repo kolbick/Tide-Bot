@@ -83,7 +83,7 @@
 		{/if}
 
 		<div
-			class=" mt-2 mb-4 text-3xl text-gray-800 dark:text-gray-100 text-left flex items-center gap-4 "
+			class=" mt-2 mb-4 text-3xl text-gray-800 dark:text-gray-100 text-left flex items-center gap-4"
 		>
 			<div>
 				<div class=" capitalize line-clamp-1" in:fade={{ duration: 200 }}>
@@ -109,18 +109,8 @@
 						</div>
 						{#if models[selectedModelIdx]?.info?.meta?.user}
 							<div class="mt-0.5 text-sm font-normal text-gray-400 dark:text-gray-500">
-								By
-								{#if models[selectedModelIdx]?.info?.meta?.user.community}
-									<a
-										href="https://openwebui.com/m/{models[selectedModelIdx]?.info?.meta?.user
-											.username}"
-										>{models[selectedModelIdx]?.info?.meta?.user.name
-											? models[selectedModelIdx]?.info?.meta?.user.name
-											: `@${models[selectedModelIdx]?.info?.meta?.user.username}`}</a
-									>
-								{:else}
-									{models[selectedModelIdx]?.info?.meta?.user.name}
-								{/if}
+								By {models[selectedModelIdx]?.info?.meta?.user.name ??
+									`@${models[selectedModelIdx]?.info?.meta?.user.username}`}
 							</div>
 						{/if}
 					{:else}
@@ -132,7 +122,7 @@
 			</div>
 		</div>
 
-		<div class=" w-full " in:fade={{ duration: 200, delay: 300 }}>
+		<div class=" w-full" in:fade={{ duration: 200, delay: 300 }}>
 			<Suggestions
 				className="grid grid-cols-2"
 				suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??

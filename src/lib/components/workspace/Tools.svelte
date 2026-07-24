@@ -38,7 +38,6 @@
 	import XMark from '../icons/XMark.svelte';
 	import ImportModal from '../ImportModal.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
-	import CommunityDiscover from './common/CommunityDiscover.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import ChevronDown from '../icons/ChevronDown.svelte';
 	import ChevronUp from '../icons/ChevronUp.svelte';
@@ -171,30 +170,6 @@
 		return target instanceof Element && !!target.closest('button, a, input, [role="menu"]');
 	};
 
-	const shareHandler = async (tool) => {
-		const item = await getToolById(localStorage.token, tool.id).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-
-		const tab = await window.open(`${url}/tools/create`, '_blank');
-
-		const messageHandler = (event) => {
-			if (event.origin !== url) return;
-			if (event.data === 'loaded') {
-				tab.postMessage(JSON.stringify(item), '*');
-				window.removeEventListener('message', messageHandler);
-			}
-		};
-
-		window.addEventListener('message', messageHandler, false);
-		console.log(item);
-	};
-
 	const cloneHandler = async (tool) => {
 		const _tool = await getToolById(localStorage.token, tool.id).catch((error) => {
 			toast.error(`${error}`);
@@ -282,7 +257,7 @@
 
 <svelte:head>
 	<title>
-		{$i18n.t('Tools')} • {$WEBUI_NAME}
+		{$i18n.t('Tools')} / {$WEBUI_NAME}
 	</title>
 </svelte:head>
 
@@ -568,9 +543,6 @@
 											editHandler={() => {
 												goto(`/workspace/tools/edit?id=${encodeURIComponent(tool.id)}`);
 											}}
-											shareHandler={() => {
-												shareHandler(tool);
-											}}
 											cloneHandler={() => {
 												cloneHandler(tool);
 											}}
@@ -606,25 +578,16 @@
 				</div>
 			</div>
 		{:else}
-			<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-				<div class="max-w-md text-center">
-					<div class=" text-3xl mb-3">😕</div>
-					<div class=" text-lg font-normal mb-1">{$i18n.t('No tools found')}</div>
-					<div class=" text-gray-500 text-center text-xs">
+			<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
+				<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
+					<div class="mb-1.5 text-sm">{$i18n.t('No tools found')}</div>
+					<div class="text-center text-xs leading-5 text-gray-500">
 						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
 					</div>
 				</div>
 			</div>
 		{/if}
 	</div>
-
-	{#if $config?.features.enable_community_sharing}
-		<CommunityDiscover
-			href="https://openwebui.com/tools"
-			title={$i18n.t('Discover a tool')}
-			description={$i18n.t('Discover, download, and explore custom tools')}
-		/>
-	{/if}
 
 	<DeleteConfirmDialog
 		bind:show={showDeleteConfirm}

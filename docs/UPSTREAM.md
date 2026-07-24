@@ -20,6 +20,21 @@ The upstream `.github/workflows` files were deliberately excluded from the initi
 
 This exception applies only to the upstream workflow directory. The application source, static assets, licensing files, and history were imported.
 
+## 2026-07-23 current-dev recovery merge
+
+| Item | Value |
+| --- | --- |
+| Upstream branch | `dev` |
+| Reviewed commit | `e64acf1c0a532c7a87c5f6666cb88ba02f8fe237` |
+| Commit date | 2026-07-23 |
+| Reason | Replace the stale July 17 bootstrap with the current development baseline before Tide-Bot branding. |
+
+This recovery merge intentionally uses a reviewed moving `dev` commit because
+the user requested the newest development baseline. Future production updates
+must return to explicit release tags and follow the documented sync procedure.
+
 ## Next upstream sync
 
-Use the process in `docs/UPSTREAM_SYNC.md` once it is added. Every sync must be reviewed for user-visible branding, security-sensitive configuration, licensing, and Docker/runtime changes before merging.
+Use the process in `docs/UPSTREAM_SYNC.md`. Every sync must be reviewed for
+user-visible branding, security-sensitive configuration, licensing, and
+Docker/runtime changes before merging.

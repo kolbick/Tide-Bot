@@ -2,25 +2,23 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<link rel="icon" type="image/png" href="/static/favicon.png" crossorigin="use-credentials" />
 		<link
 			rel="icon"
 			type="image/png"
-			href="/static/favicon-96x96.png"
+			href="/tide-bot/tide-bot-96.png"
+			crossorigin="use-credentials"
+		/>
+		<link
+			rel="icon"
+			type="image/png"
+			href="/tide-bot/tide-bot-96.png"
 			sizes="96x96"
 			crossorigin="use-credentials"
 		/>
 		<link
-			rel="icon"
-			type="image/svg+xml"
-			href="/static/favicon.svg"
-			crossorigin="use-credentials"
-		/>
-		<link rel="shortcut icon" href="/static/favicon.ico" crossorigin="use-credentials" />
-		<link
 			rel="apple-touch-icon"
 			sizes="180x180"
-			href="/static/apple-touch-icon.png"
+			href="/tide-bot/tide-bot-192.png"
 			crossorigin="use-credentials"
 		/>
 		<link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
@@ -28,7 +26,7 @@
 			name="viewport"
 			content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
 		/>
-		<meta name="theme-color" content="#171717" />
+		<meta name="theme-color" content="#07151d" />
 		<meta name="robots" content="noindex,nofollow" />
 
 		<script src="/static/loader.js" defer crossorigin="use-credentials"></script>
@@ -52,28 +50,26 @@
 
 				if (localStorage.theme === 'system') {
 					document.documentElement.classList.add(prefersDarkTheme ? 'dark' : 'light');
-					metaThemeColorTag.setAttribute('content', prefersDarkTheme ? '#171717' : '#ffffff');
+					metaThemeColorTag.setAttribute('content', '#07151d');
 				} else if (localStorage.theme === 'oled-dark') {
 					document.documentElement.style.setProperty('--color-gray-800', '#101010');
 					document.documentElement.style.setProperty('--color-gray-850', '#050505');
 					document.documentElement.style.setProperty('--color-gray-900', '#000000');
 					document.documentElement.style.setProperty('--color-gray-950', '#000000');
 					document.documentElement.classList.add('dark');
-					metaThemeColorTag.setAttribute('content', '#000000');
+					metaThemeColorTag.setAttribute('content', '#07151d');
 				} else if (localStorage.theme === 'light') {
 					document.documentElement.classList.add('light');
-					metaThemeColorTag.setAttribute('content', '#ffffff');
+					metaThemeColorTag.setAttribute('content', '#07151d');
 				} else if (localStorage.theme === 'her') {
 					document.documentElement.classList.add('her');
 					metaThemeColorTag.setAttribute('content', '#983724');
 				} else {
 					document.documentElement.classList.add('dark');
-					metaThemeColorTag.setAttribute('content', '#171717');
+					metaThemeColorTag.setAttribute('content', '#07151d');
 				}
 
-				const preloadHref = document.documentElement.classList.contains('dark')
-					? '/static/splash-dark.png'
-					: '/static/splash.png';
+				const preloadHref = '/tide-bot/tide-bot-512.png';
 				const preload = document.createElement('link');
 				preload.rel = 'preload';
 				preload.as = 'image';
@@ -86,11 +82,11 @@
 						if (e.matches) {
 							document.documentElement.classList.add('dark');
 							document.documentElement.classList.remove('light');
-							metaThemeColorTag.setAttribute('content', '#171717');
+							metaThemeColorTag.setAttribute('content', '#07151d');
 						} else {
 							document.documentElement.classList.add('light');
 							document.documentElement.classList.remove('dark');
-							metaThemeColorTag.setAttribute('content', '#ffffff');
+							metaThemeColorTag.setAttribute('content', '#07151d');
 						}
 					}
 				});
@@ -102,7 +98,7 @@
 					'position: absolute; width: auto; height: 6rem; top: 44%; left: 50%; transform: translateX(-50%); display:block;';
 				logo.loading = 'eager';
 				logo.fetchPriority = 'high';
-				logo.src = isDarkMode ? '/static/splash-dark.png' : '/static/splash.png';
+				logo.src = '/tide-bot/tide-bot-512.png';
 
 				document.addEventListener('DOMContentLoaded', function () {
 					const splash = document.getElementById('splash-screen');
@@ -115,7 +111,7 @@
 			})();
 		</script>
 
-		<title>Open WebUI</title>
+		<title>Tide-Bot | Changing Tides Treatment Center</title>
 
 		%sveltekit.head%
 	</head>
@@ -150,7 +146,7 @@
 				<img
 					id="logo-her"
 					style="width: auto; height: 13rem"
-					src="/static/splash.png"
+					src="/tide-bot/tide-bot-512.png"
 					loading="eager"
 					fetchpriority="high"
 					class="animate-pulse-fast"
@@ -196,11 +192,11 @@
 		}
 
 		#splash-screen {
-			background: #fff;
+			background: #07151d;
 		}
 
 		html.dark #splash-screen {
-			background: #000;
+			background: #07151d;
 		}
 
 		html.her #splash-screen {

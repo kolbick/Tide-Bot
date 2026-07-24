@@ -20,9 +20,11 @@
 	import { refreshChatList } from '$lib/stores/chatList';
 	import { sanitizeResponseContent, extractCurlyBraceWords } from '$lib/utils';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { BRAND } from '$lib/branding';
 
 	import Suggestions from './Suggestions.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import TedBotMascot from '$lib/components/branding/TedBotMascot.svelte';
 	import EyeSlash from '$lib/components/icons/EyeSlash.svelte';
 	import MessageInput from './MessageInput.svelte';
 	import FolderPlaceholder from './Placeholder/FolderPlaceholder.svelte';
@@ -144,7 +146,7 @@
 					</div>
 
 					<div
-						class=" text-2xl @sm:text-2xl line-clamp-1 flex items-center"
+						class="text-2xl @sm:text-2xl line-clamp-1 flex items-center"
 						in:fade={{ duration: 100 }}
 					>
 						{#if models[selectedModelIdx]?.name}
@@ -158,10 +160,19 @@
 								</span>
 							</Tooltip>
 						{:else}
-							{$i18n.t('Hello, {{name}}', { name: $user?.name })}
+							{$i18n.t('Welcome back, {{name}}', { name: $user?.name })}
 						{/if}
 					</div>
 				</div>
+
+				{#if !models[selectedModelIdx]?.name}
+					<div class="mt-3 flex flex-col items-center gap-2" in:fade={{ duration: 160, delay: 40 }}>
+						<TedBotMascot label="Ted-Bot, the Tide-Bot mascot" />
+						<p class="max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
+							{BRAND.description} Ted-Bot is here to help you get started.
+						</p>
+					</div>
+				{/if}
 
 				<div class="flex mt-1 mb-2">
 					<div in:fade={{ duration: 100, delay: 50 }}>
@@ -233,7 +244,7 @@
 						{toolServers}
 						{stopResponse}
 						{createMessagePair}
-						placeholder={$i18n.t('How can I help you today?')}
+						placeholder={$i18n.t('Ask Tide-Bot anything...')}
 						{onChange}
 						{onUpload}
 						{onWebSearchToggle}

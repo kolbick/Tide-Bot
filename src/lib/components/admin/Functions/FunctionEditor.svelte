@@ -44,9 +44,8 @@
 	let starterType = 'filter';
 	const filterBoilerplate = `"""
 title: Example Filter
-author: open-webui
-author_url: https://github.com/open-webui
-funding_url: https://github.com/open-webui
+author: tide-bot
+author_url: https://tide-bot.com
 version: 0.1
 """
 
@@ -112,9 +111,8 @@ class Filter:
 `;
 	const eventBoilerplate = `"""
 title: Example Event
-author: open-webui
-author_url: https://github.com/open-webui
-funding_url: https://github.com/open-webui
+author: tide-bot
+author_url: https://tide-bot.com
 version: 0.1
 """
 

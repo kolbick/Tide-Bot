@@ -2026,7 +2026,7 @@ DEFAULT_ARENA_MODEL = {
     'id': 'arena-model',
     'name': 'Arena Model',
     'meta': {
-        'profile_image_url': '/favicon.png',
+        'profile_image_url': '/tide-bot/tide-bot-96.png',
         'description': 'Submit your questions to anonymous AI chatbots and vote on the best response.',
         'model_ids': None,
     },
@@ -2050,7 +2050,7 @@ ENABLE_ADMIN_CHAT_ACCESS = os.getenv('ENABLE_ADMIN_CHAT_ACCESS', 'True').lower()
 
 ENABLE_ADMIN_ANALYTICS = os.getenv('ENABLE_ADMIN_ANALYTICS', 'True').lower() == 'true'
 
-ENABLE_COMMUNITY_SHARING = os.getenv('ENABLE_COMMUNITY_SHARING', 'True').lower() == 'true'
+ENABLE_COMMUNITY_SHARING = os.getenv('ENABLE_COMMUNITY_SHARING', 'False').lower() == 'true'
 
 ENABLE_MESSAGE_RATING = os.getenv('ENABLE_MESSAGE_RATING', 'True').lower() == 'true'
 
