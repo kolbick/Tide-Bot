@@ -598,9 +598,9 @@ fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
 	let capability: serde_json::Value = serde_json::from_str(include_str!("../capabilities/companion.json")).expect("valid capability JSON");
 	let permission: toml::Value = toml::from_str(include_str!("../permissions/companion.toml")).expect("valid companion permission TOML");
 	assert_eq!(capability["windows"], serde_json::json!(["companion"]));
-	assert_eq!(capability["permissions"], serde_json::json!(["companion:allow-show-main-window"]));
+	assert_eq!(capability["permissions"], serde_json::json!(["allow-show-main-window"]));
 	assert_eq!(capability["remote"]["urls"], configured_remote_urls_json());
-	assert_eq!(permission["identifier"].as_str(), Some("companion"));
+	assert_eq!(permission["identifier"].as_str(), Some("allow-show-main-window"));
 	let allowed = permission["commands"]["allow"].as_array().expect("command allow-list");
 	assert_eq!(allowed.iter().map(toml::Value::as_str).collect::<Vec<_>>(), vec![Some("show_main_window")]);
 	assert_no_forbidden_capabilities(&capability, &permission);
@@ -639,7 +639,7 @@ Add `serde_json` and `toml` to `desktop/tide-bot/src-tauri/Cargo.toml`
 `[dev-dependencies]`; `capabilities_test.rs` parses JSON and TOML into values,
 then asserts exact arrays rather than matching source formatting. It asserts
 `windows == ["companion"]`, the sole capability permission is
-`companion:allow-show-main-window`, the permission's sole allowed command is
+`allow-show-main-window`, the permission's sole allowed command is
 `show_main_window`, and `remote.urls` equals the two configured origins only:
 the production HTTPS origin and exact configured loopback development origin.
 The parsed-value traversal rejects filesystem, shell, process, credential,
@@ -655,9 +655,10 @@ product name, bundle identifier, version, and build metadata in
 origin; reject arbitrary origins and never embed credentials.
 
 Use `build.rs` with the generated AppManifest/permission registration and add
-only `permissions/companion.toml`, defining `show_main_window` as the sole
-webview command. `capabilities/companion.json` binds only
-`windows: ["companion"]`, names only that permission, and explicitly scopes
+only `permissions/companion.toml`, defining the single application permission
+identifier `allow-show-main-window` with `commands.allow` exactly
+`["show_main_window"]`. `capabilities/companion.json` binds only
+`windows: ["companion"]`, references exactly `allow-show-main-window`, and explicitly scopes
 `remote.urls` to the exact production HTTPS origin and configured loopback dev
 origin. Do not use `core:default`: remote APIs otherwise need explicit scope,
 and that default would grant broad path/window/tray APIs. Do not grant
@@ -713,8 +714,8 @@ import { openMainWindow } from './openMainWindow';
 
 test('uses the native show-main command only inside Tauri', async () => {
 	const invoke = vi.fn();
-	vi.stubGlobal('__TAURI_INTERNALS__', {});
-	await openMainWindow({ invoke, navigate: vi.fn() });
+	const windowRef: TauriWindowRef = { __TAURI_INTERNALS__: {} } as TauriWindowRef;
+	await openMainWindow({ invoke, navigate: vi.fn(), windowRef });
 	expect(invoke).toHaveBeenCalledWith('show_main_window');
 });
 
@@ -734,10 +735,12 @@ Expected: FAIL until the native-or-browser action exists.
 - [ ] **Step 3: Implement the action and acceptance record**
 
 ~~~ts
+type TauriWindowRef = Window & { __TAURI_INTERNALS__?: unknown };
+
 export async function openMainWindow({ invoke, navigate, windowRef = typeof window !== 'undefined' ? window : undefined }: {
 	invoke: (command: string) => Promise<unknown>;
 	navigate: (path: string) => void;
-	windowRef?: Window;
+	windowRef?: TauriWindowRef;
 }) {
 	if (windowRef && '__TAURI_INTERNALS__' in windowRef) return invoke('show_main_window');
 	navigate('/');
