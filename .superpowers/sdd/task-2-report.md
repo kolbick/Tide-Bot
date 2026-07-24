@@ -21,3 +21,9 @@
 ## Pending external gate
 
 Live Hatch Pet v2 validation, contact/direction sheet generation, and independent blind/semantic reviews remain pending. They require the bundled workspace Python runtime and independent reviewer artifacts; this task intentionally did not substitute a system Python or create acceptance evidence.
+
+## Follow-up review fix
+
+- Added a private, atomic reviewer sealing operation. The combine operation now discovers and verifies exactly three sealed submissions and receipts, never consumes mutable external reviewer paths.
+- Strengthened outer publish checks for atlas validation, continuity/semantic assessment, blind evidence linkage, and artifact/run metadata before the final atomic rename.
+- Kept the DOM-only Svelte test resolution local to Vitest and removed the application-wide browser resolve condition.

@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { access, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import {
+	access,
+	copyFile,
+	mkdir,
+	readFile,
+	readdir,
+	rename,
+	rm,
+	stat,
+	writeFile
+} from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -82,7 +92,9 @@ async function readJson(file, label) {
 }
 
 async function writeJson(file, value, mode = 0o600) {
-	await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, { mode });
+	const temporary = `${file}.${process.pid}.tmp`;
+	await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode });
+	await rename(temporary, file);
 }
 
 export async function preparePetQaRun({ runId, runsRoot, atlas }) {
@@ -185,19 +197,57 @@ function verifiedVerdict(value, manifest, answerKey) {
 	return value;
 }
 
-export async function verifyAndCombine({
-	python,
-	combineScript,
-	validateScript,
-	runId,
-	runsRoot,
-	verdicts
-}) {
+export async function sealReviewerSubmission({ runId, runsRoot, verdict }) {
 	const paths = runPaths(runId, runsRoot);
 	if (!(await exists(paths.pending)) || (await exists(paths.final)))
 		fail('blind pending run must exist without a final run');
-	if (!Array.isArray(verdicts) || verdicts.length !== 3)
-		fail('exactly three reviewer verdicts are required');
+	const source = path.resolve(verdict);
+	const manifest = await readJson(
+		path.join(paths.pending, 'blind-review-manifest.json'),
+		'blind review manifest'
+	);
+	const context = await readJson(
+		path.join(paths.pending, 'blind-run-context.json'),
+		'private blind run context'
+	);
+	if (manifest.manifestSha256 !== selfHash(manifest))
+		fail('blind review manifest self hash does not verify');
+	const answerKey = await readJson(path.resolve(context.answerKeyPath), 'answer key');
+	const raw = await readFile(source);
+	const parsed = verifiedVerdict(JSON.parse(raw), manifest, answerKey);
+	const safeReviewerId = parsed.reviewerId.replace(/[^a-zA-Z0-9_-]/g, '_');
+	const sealed = path.join(paths.pending, `sealed-reviewer-${safeReviewerId}.json`);
+	const receiptPath = path.join(paths.pending, `sealed-reviewer-${safeReviewerId}.receipt.json`);
+	if ((await exists(sealed)) || (await exists(receiptPath)))
+		fail(`reviewer submission already sealed: ${parsed.reviewerId}`);
+	const sourceSha256 = createHash('sha256').update(raw).digest('hex');
+	const temporary = `${sealed}.${process.pid}.tmp`;
+	try {
+		await writeFile(temporary, raw, { mode: 0o600 });
+		await rename(temporary, sealed);
+		const sealedSha256 = await sha256(sealed);
+		await writeJson(receiptPath, {
+			schemaVersion: SCHEMA_VERSION,
+			reviewerId: parsed.reviewerId,
+			atlasSha256: manifest.atlasSha256,
+			blindSheetSha256: manifest.blindSheetSha256,
+			manifestSha256: manifest.manifestSha256,
+			sourceSha256,
+			sealedSha256
+		});
+		return { sealed, receipt: receiptPath };
+	} catch (error) {
+		await rm(temporary, { force: true });
+		await rm(sealed, { force: true });
+		await rm(receiptPath, { force: true });
+		throw error;
+	}
+}
+
+export async function verifyAndCombine({ python, combineScript, validateScript, runId, runsRoot }) {
+	const paths = runPaths(runId, runsRoot);
+	if (!(await exists(paths.pending)) || (await exists(paths.final)))
+		fail('blind pending run must exist without a final run');
 	try {
 		const manifestPath = path.join(paths.pending, 'blind-review-manifest.json');
 		const context = await readJson(
@@ -223,24 +273,43 @@ export async function verifyAndCombine({
 			fail('answer key atlas_sha256 does not name the exact atlas');
 		const reviewers = [];
 		const reviewerIds = new Set();
-		for (let index = 0; index < verdicts.length; index += 1) {
-			const source = path.resolve(verdicts[index]);
-			const raw = await readFile(source);
+		const submissions = (await readdir(paths.pending)).filter(
+			(name) => name.startsWith('sealed-reviewer-') && name.endsWith('.receipt.json')
+		);
+		if (submissions.length !== 3) fail('exactly three sealed reviewer receipts are required');
+		for (const receiptName of submissions.sort()) {
+			const receiptPath = path.join(paths.pending, receiptName);
+			const receipt = await readJson(receiptPath, 'sealed reviewer receipt');
+			const sealed = path.join(paths.pending, receiptName.replace(/\.receipt\.json$/, '.json'));
+			if (!(await exists(sealed))) fail('sealed reviewer receipt has no sealed verdict');
+			const raw = await readFile(sealed);
 			const verdict = verifiedVerdict(JSON.parse(raw), manifest, answerKey);
+			if (
+				receipt.schemaVersion !== SCHEMA_VERSION ||
+				receipt.reviewerId !== verdict.reviewerId ||
+				receipt.sealedSha256 !== (await sha256(sealed)) ||
+				receipt.sourceSha256 !== createHash('sha256').update(raw).digest('hex') ||
+				receipt.atlasSha256 !== manifest.atlasSha256 ||
+				receipt.blindSheetSha256 !== manifest.blindSheetSha256 ||
+				receipt.manifestSha256 !== manifest.manifestSha256
+			)
+				fail('sealed reviewer verdict or receipt does not verify');
 			if (reviewerIds.has(verdict.reviewerId)) fail('reviewer IDs must be unique');
 			reviewerIds.add(verdict.reviewerId);
-			const sealed = path.join(paths.pending, `sealed-reviewer-${index + 1}.json`);
-			await writeFile(sealed, raw, { mode: 0o600 });
 			reviewers.push({
-				sourceSha256: createHash('sha256').update(raw).digest('hex'),
-				sealed,
+				reviewerId: verdict.reviewerId,
+				receiptFile: path.basename(receiptPath),
+				receiptSha256: await sha256(receiptPath),
+				sourceSha256: receipt.sourceSha256,
+				sealedFile: path.basename(sealed),
+				sealedPath: sealed,
 				sealedSha256: await sha256(sealed)
 			});
 		}
 		const consensus = path.join(paths.pending, 'ted-bot-direction-blind-consensus.json');
 		await command(python, [
 			combineScript,
-			...reviewers.flatMap(({ sealed }) => ['--verdicts', sealed]),
+			...reviewers.flatMap(({ sealedPath }) => ['--verdicts', sealedPath]),
 			'--json-out',
 			consensus
 		]);
@@ -261,7 +330,7 @@ export async function verifyAndCombine({
 			blindSheetSha256: await sha256(blindSheetPath),
 			answerKeySha256: await sha256(keyPath),
 			manifestSha256: manifest.manifestSha256,
-			sourceVerdicts: reviewers,
+			sourceVerdicts: reviewers.map(({ sealedPath: _sealedPath, ...reviewer }) => reviewer),
 			plainConsensusSha256: consensusSha256,
 			hatchValidationSha256: await sha256(validation)
 		};
@@ -284,18 +353,113 @@ export async function publishPetQaRun({ runId, runsRoot, atlas }) {
 		fail('pet-QA pending run must exist without a final run');
 	const metadataPath = path.join(paths.pending, 'ted-bot-pet-qa-run.json');
 	const metadata = await readJson(metadataPath, 'pet-QA run metadata');
-	if (metadata.atlasSha256 !== (await sha256(atlasPath)))
+	const atlasSha256 = await sha256(atlasPath);
+	if (
+		metadata.runId !== runId ||
+		metadata.atlasPath !== atlasPath ||
+		metadata.atlasSha256 !== atlasSha256
+	)
 		fail('atlas changed after pet-QA preparation');
-	for (const artifact of [
-		'ted-bot-atlas-validation.json',
-		'ted-bot-atlas-contact-sheet.png',
-		'ted-bot-direction-qa-sheet.png',
-		'ted-bot-direction-continuity.json',
-		'ted-bot-direction-semantics.json'
-	]) {
-		if (!(await exists(path.join(paths.pending, artifact))))
-			fail(`required pet-QA artifact is missing: ${artifact}`);
+	const artifactPaths = Object.fromEntries(
+		[
+			'ted-bot-atlas-validation.json',
+			'ted-bot-atlas-contact-sheet.png',
+			'ted-bot-direction-qa-sheet.png',
+			'ted-bot-direction-continuity.json',
+			'ted-bot-direction-semantics.json'
+		].map((artifact) => [artifact, path.join(paths.pending, artifact)])
+	);
+	for (const [artifact, artifactPath] of Object.entries(artifactPaths)) {
+		if (!(await exists(artifactPath))) fail(`required pet-QA artifact is missing: ${artifact}`);
 	}
+	const atlasValidation = await readJson(
+		artifactPaths['ted-bot-atlas-validation.json'],
+		'atlas validation'
+	);
+	if (
+		atlasValidation.ok !== true ||
+		atlasValidation.width !== 1536 ||
+		atlasValidation.height !== 2288 ||
+		atlasValidation.columns !== 8 ||
+		atlasValidation.rows !== 11 ||
+		atlasValidation.sprite_version_number !== 2
+	)
+		fail('atlas validation does not attest to the required Codex v2 atlas');
+	const continuity = await readJson(
+		artifactPaths['ted-bot-direction-continuity.json'],
+		'direction continuity'
+	);
+	if (continuity.ok !== true || !Array.isArray(continuity.warnings))
+		fail('direction continuity result is invalid');
+	const semantics = await readJson(
+		artifactPaths['ted-bot-direction-semantics.json'],
+		'direction semantics'
+	);
+	const directions = semantics.directions;
+	if (
+		semantics.atlas_sha256 !== atlasSha256 ||
+		!Array.isArray(directions) ||
+		directions.length !== 16 ||
+		new Set(directions.map((entry) => entry.id)).size !== 16
+	)
+		fail('direction semantics do not attest to all 16 atlas directions');
+	for (const entry of directions) {
+		if (
+			!entry ||
+			typeof entry.expected !== 'string' ||
+			typeof entry.observed !== 'string' ||
+			typeof entry.verdict !== 'string' ||
+			typeof entry.reason !== 'string' ||
+			entry.verdict === 'fail'
+		)
+			fail('direction semantics has an invalid or failed direction verdict');
+	}
+	const assessments = semantics.warningAssessments;
+	if (!Array.isArray(assessments) || assessments.length !== continuity.warnings.length)
+		fail('every continuity warning requires a semantic assessment');
+	for (const warning of continuity.warnings) {
+		if (!assessments.some((entry) => entry.warning === warning && typeof entry.reason === 'string'))
+			fail('a continuity warning has no semantic assessment');
+	}
+	const blindRunsRoot = path.join(paths.pending, 'blind-runs');
+	const blindRuns = (await exists(blindRunsRoot)) ? await readdir(blindRunsRoot) : [];
+	if (blindRuns.length !== 1 || blindRuns[0].startsWith('.'))
+		fail('exactly one published blind run is required');
+	const blindDir = path.join(blindRunsRoot, blindRuns[0]);
+	const envelope = await readJson(
+		path.join(blindDir, 'ted-bot-direction-blind-consensus-envelope.json'),
+		'blind envelope'
+	);
+	const blindValidation = await readJson(
+		path.join(blindDir, 'ted-bot-direction-blind-validation.json'),
+		'blind validation'
+	);
+	if (
+		envelope.atlasSha256 !== atlasSha256 ||
+		!Array.isArray(envelope.sourceVerdicts) ||
+		envelope.sourceVerdicts.length !== 3 ||
+		blindValidation.ok !== true
+	)
+		fail('published blind evidence does not verify against this atlas');
+	for (const reviewer of envelope.sourceVerdicts) {
+		if (
+			!(await exists(path.join(blindDir, reviewer.sealedFile))) ||
+			!(await exists(path.join(blindDir, reviewer.receiptFile))) ||
+			reviewer.sealedSha256 !== (await sha256(path.join(blindDir, reviewer.sealedFile))) ||
+			reviewer.receiptSha256 !== (await sha256(path.join(blindDir, reviewer.receiptFile)))
+		)
+			fail('published blind evidence has a changed sealed reviewer submission');
+	}
+	metadata.blindRunId = blindRuns[0];
+	metadata.artifactSha256 = Object.fromEntries(
+		await Promise.all(
+			Object.entries(artifactPaths).map(async ([name, artifactPath]) => [
+				name,
+				await sha256(artifactPath)
+			])
+		)
+	);
+	await writeJson(metadataPath, metadata);
 	await rename(paths.pending, paths.final);
 	return paths.final;
 }
@@ -320,19 +484,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		let result;
 		if (operation === 'prepare-pet-qa-run') result = await preparePetQaRun(options);
 		else if (operation === 'prepare-blind-run') result = await prepareBlindRun(options);
-		else if (operation === 'verify-and-combine')
-			result = await verifyAndCombine({
-				...options,
-				verdicts: options.verdict
-					? Array.isArray(options.verdict)
-						? options.verdict
-						: [options.verdict]
-					: []
-			});
+		else if (operation === 'seal-reviewer-submission')
+			result = await sealReviewerSubmission(options);
+		else if (operation === 'verify-and-combine') result = await verifyAndCombine(options);
 		else if (operation === 'publish-pet-qa-run') result = await publishPetQaRun(options);
 		else
 			fail(
-				'operation must be prepare-pet-qa-run, prepare-blind-run, verify-and-combine, or publish-pet-qa-run'
+				'operation must be prepare-pet-qa-run, prepare-blind-run, seal-reviewer-submission, verify-and-combine, or publish-pet-qa-run'
 			);
 		console.log(result);
 	} catch (error) {

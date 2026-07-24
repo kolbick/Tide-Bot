@@ -4,9 +4,6 @@ import { defineConfig } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
-	resolve: {
-		conditions: ['browser']
-	},
 	plugins: [
 		sveltekit(),
 		viteStaticCopy({
@@ -30,7 +27,13 @@ export default defineConfig({
 		format: 'es'
 	},
 	test: {
-		environmentMatchGlobs: [['src/lib/components/ted-bot/TedBotPet.test.ts', 'jsdom']]
+		environmentMatchGlobs: [['src/lib/components/ted-bot/TedBotPet.test.ts', 'jsdom']],
+		alias: [
+			{
+				find: /^svelte$/,
+				replacement: new URL('./node_modules/svelte/src/index-client.js', import.meta.url).pathname
+			}
+		]
 	},
 	esbuild: {
 		pure: process.env.ENV === 'dev' ? [] : ['console.log', 'console.debug', 'console.error']

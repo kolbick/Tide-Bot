@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 
-import { prepareBlindRun, preparePetQaRun } from './verify-ted-bot-direction-evidence.mjs';
+import {
+	prepareBlindRun,
+	preparePetQaRun,
+	sealReviewerSubmission
+} from './verify-ted-bot-direction-evidence.mjs';
 
 const fixtureRoot = await mkdtemp(join(tmpdir(), 'ted-bot-evidence-'));
 after(async () => rm(fixtureRoot, { recursive: true, force: true }));
@@ -69,4 +73,52 @@ test('creates a redacted blind-review package and keeps the answer key private',
 	]);
 	await stat(join(pendingDir, 'blind-sheet.png'));
 	await assert.rejects(stat(join(pendingDir, 'key.json')), /ENOENT/);
+});
+
+test('seals a validated reviewer submission so later raw-file changes cannot alter it', async () => {
+	const { atlas, blindSheet, answerKey, dir } = await createFiles('seal');
+	const atlasSha256 = (await import('node:crypto'))
+		.createHash('sha256')
+		.update(await readFile(atlas))
+		.digest('hex');
+	await writeFile(
+		answerKey,
+		JSON.stringify({ atlas_sha256: atlasSha256, pairs: [{ pair: 'pair-1' }] })
+	);
+	const runsRoot = join(dir, 'blind-runs');
+	const pendingDir = await prepareBlindRun({
+		runId: 'release-3-blind',
+		runsRoot,
+		atlas,
+		blindSheet,
+		answerKey
+	});
+	const manifest = JSON.parse(
+		await readFile(join(pendingDir, 'blind-review-manifest.json'), 'utf8')
+	);
+	const rawVerdict = join(dir, 'reviewer.json');
+	await writeFile(
+		rawVerdict,
+		JSON.stringify({
+			schemaVersion: manifest.schemaVersion,
+			reviewerId: 'reviewer-1',
+			atlasSha256: manifest.atlasSha256,
+			blindSheetSha256: manifest.blindSheetSha256,
+			manifestSha256: manifest.manifestSha256,
+			pairs: [{ pair: 'pair-1', A: 'screen-left', B: 'screen-right' }]
+		})
+	);
+	const sealed = await sealReviewerSubmission({
+		runId: 'release-3-blind',
+		runsRoot,
+		verdict: rawVerdict
+	});
+	const sealedBefore = await readFile(sealed.sealed, 'utf8');
+	await writeFile(rawVerdict, '{"changed":true}');
+	assert.equal(await readFile(sealed.sealed, 'utf8'), sealedBefore);
+	assert.equal((await stat(sealed.sealed)).mode & 0o777, 0o600);
+	await assert.rejects(
+		sealReviewerSubmission({ runId: 'release-3-blind', runsRoot, verdict: rawVerdict }),
+		/submission already sealed|invalid schema/i
+	);
 });
