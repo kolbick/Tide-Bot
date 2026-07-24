@@ -230,18 +230,37 @@ node scripts/verify-ted-bot-direction-evidence.mjs prepare-blind-run \
 # The verifier alone creates "$BLIND_RUNS_ROOT/.${BLIND_RUN_ID}.pending" mode
 # 0700. Each independent reviewer receives only its blind-sheet.png and
 # blind-review-manifest.json, never the answer key, labeled direction sheet,
-# atlas, prompts, another verdict, or the final run directory.
+# atlas, prompts, another verdict, or the final run directory. Seal each
+# completed inbox verdict before the atomic combine step; raw inbox files are
+# never passed to Hatch.
+node scripts/verify-ted-bot-direction-evidence.mjs seal-reviewer-submission \
+  --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" \
+  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-1.json"
+node scripts/verify-ted-bot-direction-evidence.mjs seal-reviewer-submission \
+  --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" \
+  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-2.json"
+node scripts/verify-ted-bot-direction-evidence.mjs seal-reviewer-submission \
+  --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" \
+  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-3.json"
 node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine \
   --python "$PYTHON" \
   --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" \
   --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" \
   --run-id "$BLIND_RUN_ID" \
-  --runs-root "$BLIND_RUNS_ROOT" \
-  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-1.json" \
-  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-2.json" \
-  --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-3.json"
+  --runs-root "$BLIND_RUNS_ROOT"
 # An independent visual reviewer writes the required 16-entry semantics JSON
 # only to "$PET_QA_PENDING_DIR/ted-bot-direction-semantics.json".
+# That reviewer also writes "$PET_QA_PENDING_DIR/ted-bot-pet-qa-inspection.json"
+# with schemaVersion "ted-bot-pet-qa-inspection/v1", the exact atlasPath,
+# identical preAtlasSha256/postAtlasSha256, absolute bundled runtimePath,
+# tokenized validatorCommand (including validate_atlas.py, --require-v2, the
+# atlas path, --json-out, and the validator JSON path), validatorResultPath,
+# contactSheetPath, inspector, ISO inspectedAt, and a rubric whose identity,
+# cellAlignment, directionContinuity, and unusedCellTransparency values are all
+# "pass". The verifier seals this manual visual record with every generated
+# artifact; no placeholder or failed rubric can publish.
+node scripts/verify-ted-bot-direction-evidence.mjs seal-pet-qa-artifacts \
+  --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
 node scripts/verify-ted-bot-direction-evidence.mjs publish-pet-qa-run \
   --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
 ~~~
@@ -264,16 +283,16 @@ material; they never receive a final directory.
 
 Each reviewer verdict JSON must have the same schema version, a unique
 `reviewerId`, `atlasSha256`, `blindSheetSha256`, `manifestSha256`, and complete
-pair votes. Release evidence must invoke only the owned atomic
-`verify-and-combine` command, never a raw external
-`combine_direction_blind_verdicts.py` call. In one invocation it re-reads and
-hashes the actual atlas, blind sheet, answer key, manifest, and all three source
-verdicts; checks that the answer key's `atlas_sha256` names the actual atlas;
-validates every attestation and reviewer-ID uniqueness; parses the verified
-votes; writes sealed private verified-vote copies; and calls the required Hatch
-combine script with the explicit bundled `PYTHON` and script path on those
-sealed copies only. It must not pass mutable reviewer files to Hatch after
-verification.
+pair votes. `seal-reviewer-submission` validates each completed inbox file and
+atomically writes its private 0600 copy and receipt before any consensus work.
+Release evidence then invokes only the owned atomic `verify-and-combine`
+command, never a raw external `combine_direction_blind_verdicts.py` call. It
+re-hashes the actual atlas, blind sheet, answer key, manifest, and exactly the
+three sealed submissions/receipts; checks that the answer key's `atlas_sha256`
+names the actual atlas; validates every attestation and reviewer-ID uniqueness;
+and calls the required Hatch combine script with the explicit bundled `PYTHON`
+and script path on sealed copies only. It must not read mutable inbox verdicts
+or pass them to Hatch.
 
 The wrapper writes sealed source copies, plain Hatch-compatible consensus,
 validation, and `ted-bot-direction-blind-consensus-envelope.json` only inside
@@ -306,8 +325,9 @@ validator JSON, contact sheet, direction QA sheet, continuity JSON, blind
 sheet/key/manifest/reviewer material, the published blind subdirectory,
 semantic-review JSON, and final run metadata. After the independent semantic
 review writes `ted-bot-direction-semantics.json` in that outer pending
-directory, invoke `publish-pet-qa-run`. It rehashes the atlas and expected
-artifacts, verifies their run metadata and blind envelope linkage, and
+directory, invoke `seal-pet-qa-artifacts` to write the complete hash manifest,
+then invoke `publish-pet-qa-run`. Publish rehashes the atlas and every sealed
+artifact, parses the exact Hatch/semantic/blind-envelope result contracts, and
 atomically renames the **entire** outer pending directory to the final run
 directory only on success. On error it leaves no final outer directory; it may
 leave only that exact `.pending` directory as clearly nonaccepted diagnostic
@@ -355,10 +375,21 @@ continuity, and unused-cell transparency. In addition, save
 `112.5 down-right`, `135 down-right`, `157.5 down-right`, `180 down`,
 `202.5 down-left`, `225 down-left`, `247.5 down-left`, `270 left`, `292.5
 up-left`, `315 up-left`, and `337.5 up-left`. Each entry records its expected
-direction, observed behavior, `pass`/`fail`/`ambiguous` verdict, and reason;
-diagonals include both horizontal and vertical landmark evidence. Record every
+direction, observed behavior, `pass`/`fail`/`ambiguous` verdict, and reason.
+Every diagonal entry additionally includes a nonempty `landmarks` object with
+both `horizontal` and `vertical` observations; prose alone does not satisfy
+that evidence requirement. Record every
 continuity warning from `ted-bot-direction-continuity.json` and the visual
 assessment that accepts or rejects it.
+
+The owned verifier rejects sparse or substitute release artifacts. The atlas
+result must be the complete Hatch output for the exact WebP atlas: alpha-capable
+mode, zero transparent-RGB residue, all 88 cell measurements, and no validator
+errors or permissive warnings. Contact, direction, and blind sheets must be
+PNG files. The continuity result must include its `reviewRequired`, median,
+warnings, alpha-hole measurements, and the complete 16-pair loop; each blind
+answer key must be the complete 14-pair Hatch schema, including the two hard
+cardinal gates.
 
 This is a hard release gate: all generated artifacts and each reviewer verdict
 are SHA-bound to the pre/post-identical atlas SHA-256; the attestation verifier
@@ -1377,8 +1408,15 @@ BLIND_RUN_ID="$PET_QA_RUN_ID-blind"; BLIND_RUNS_ROOT="$PET_QA_PENDING_DIR/blind-
 node scripts/verify-ted-bot-direction-evidence.mjs prepare-blind-run --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --atlas "$ATLAS" --blind-sheet "$PET_QA_PENDING_DIR/ted-bot-direction-blind-sheet.png" --answer-key "$PET_QA_PENDING_DIR/ted-bot-direction-blind-answer-key.json"
 # Reviewers receive only "$BLIND_RUNS_ROOT/.${BLIND_RUN_ID}.pending/blind-sheet.png" and the redacted manifest.
 # Release evidence must not invoke raw Hatch combine outside this atomic wrapper.
-node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine --python "$PYTHON" --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-1.json" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-2.json" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-3.json"
+node scripts/verify-ted-bot-direction-evidence.mjs seal-reviewer-submission --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-1.json"
+node scripts/verify-ted-bot-direction-evidence.mjs seal-reviewer-submission --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-2.json"
+node scripts/verify-ted-bot-direction-evidence.mjs seal-reviewer-submission --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT" --verdict "$REVIEW_INBOX/ted-bot-direction-blind-verdict-3.json"
+node scripts/verify-ted-bot-direction-evidence.mjs verify-and-combine --python "$PYTHON" --combine-script "$HATCH_PET_SKILL_DIR/scripts/combine_direction_blind_verdicts.py" --validate-script "$HATCH_PET_SKILL_DIR/scripts/validate_direction_blind_verdicts.py" --run-id "$BLIND_RUN_ID" --runs-root "$BLIND_RUNS_ROOT"
 # Independent visual review writes only "$PET_QA_PENDING_DIR/ted-bot-direction-semantics.json".
+# It also writes the required ted-bot-pet-qa-inspection.json acceptance record
+# (exact paths/hashes, bundled runtime, validator command/result, inspector/date,
+# and four passing rubric entries) before sealing the outer run.
+node scripts/verify-ted-bot-direction-evidence.mjs seal-pet-qa-artifacts --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
 node scripts/verify-ted-bot-direction-evidence.mjs publish-pet-qa-run --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
 shasum -a 256 "$ATLAS"
 pytest backend/open_webui/socket/test_companion_presence.py backend/open_webui/socket/test_companion_presence_handlers.py -q

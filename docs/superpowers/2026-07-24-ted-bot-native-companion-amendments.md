@@ -44,8 +44,9 @@ reviewing the approved native-companion plan against Tide-Bot at
   required Hatch `combine_direction_blind_verdicts.py` on sealed verified copies
   and checked by `validate_direction_blind_verdicts.py`. Save a per-direction semantic record
   for all 16 directions with expected direction, observed behavior,
-  `pass`/`fail`/`ambiguous`, and reason (including horizontal/vertical landmark
-  evidence for diagonals). The hard gate rejects a missing/failing/ambiguous
+  `pass`/`fail`/`ambiguous`, and reason. Every diagonal also records a
+  nonempty `landmarks` object with both `horizontal` and `vertical` observations.
+  The hard gate rejects a missing/failing/ambiguous
   blind cardinal, any semantic failure, or an unassessed continuity warning.
   Every artifact and reviewer verdict must identify the exact atlas SHA-256.
   This has not run: lack of a bundled runtime/evidence is a pending release
@@ -57,17 +58,26 @@ reviewing the approved native-companion plan against Tide-Bot at
   atlas SHA, blind-sheet SHA, answer-key SHA, and a canonical self-hash. Blind
   reviewers receive only that manifest plus the blind sheet. Every verdict must
   attest schema version, distinct reviewer ID, atlas/sheet/manifest hashes, and
-  pair votes. Release evidence invokes only its atomic `verify-and-combine`
-  command, never raw Hatch combine/validation: it re-reads/re-hashes atlas, sheet, key,
-  manifest, and all verdicts immediately; checks the key's `atlas_sha256`; then
-  passes sealed parsed verified votes to the required Hatch combine script and
-  invokes the required Hatch validation script in the same invocation using
-  explicit bundled-Python/script paths. Its envelope links every source-verdict
-  hash plus atlas/sheet/key/manifest and both Hatch results to the plain
-  consensus. Any mismatch is a hard pending release gate. The focused
+  pair votes. `seal-reviewer-submission` first validates each inbox verdict and
+  atomically writes a private sealed copy plus receipt. Release evidence invokes
+  only its atomic `verify-and-combine` command, never raw Hatch
+  combine/validation: it re-reads/re-hashes atlas, sheet, key, manifest, and
+  exactly the three sealed submissions/receipts; checks the key's
+  `atlas_sha256`; then passes sealed parsed verified votes to the required Hatch
+  combine script and invokes the required Hatch validation script in the same
+  invocation using explicit bundled-Python/script paths. Its envelope links
+  every source-verdict hash plus atlas/sheet/key/manifest and both Hatch results
+  to the plain consensus. Any mismatch is a hard pending release gate. The focused
   fixture test must mutate each of atlas/sheet/key/manifest/verdicts after
   manifest creation and prove every run fails with no accepted consensus; this
   evidence has not run.
+- The verifier also treats Hatch output as a concrete contract, not a merely
+  nonempty JSON file: atlas validation must retain its exact WebP/alpha,
+  zero-transparent-RGB-residue, 88-cell result; continuity must retain its
+  review flag, median, warnings, alpha-hole data, and full 16-pair loop; and
+  each rendered contact/direction/blind sheet must be a PNG. The blind key must
+  retain all 14 Hatch pairs, including the two hard cardinal gates. Sparse or
+  substitute artifacts are a pending release gate.
 - The test matrix also needs a semantic answer-key case: regenerate a consistent
   key-file hash, manifest key hash, reviewer manifest hash, and verdicts around
   a key whose `atlas_sha256` is wrong. Atomic verification must reject it and
@@ -78,10 +88,15 @@ reviewing the approved native-companion plan against Tide-Bot at
 - The blind transaction is nested inside the required outer `PET_QA_RUN_ID`
   transaction. The verifier creates only a 0700 outer pending run directory;
   every pet QA artifact (validator/contact/direction/continuity/blind/semantic/
-  final metadata) is written there, never at evidence root. An owned
-  `publish-pet-qa-run` revalidates expected artifact/hash linkage and atomically
-  renames the entire outer directory only after the blind subdirectory and
-  semantic review succeed. Pending paths are explicitly nonaccepted diagnostic
+  inspection/final metadata) is written there, never at evidence root. The
+  inspection record is `ted-bot-pet-qa-inspection.json` with exact pre/post
+  atlas hashes, bundled-runtime path, tokenized validator command/result,
+  contact-sheet path, inspector/date, and four passing rubric entries; it is
+  sealed with the generated artifacts. An owned
+  `seal-pet-qa-artifacts` records the complete hash manifest after the blind
+  subdirectory and semantic review succeed; `publish-pet-qa-run` revalidates
+  every sealed artifact/hash linkage before atomically renaming the entire outer
+  directory. Pending paths are explicitly nonaccepted diagnostic
   state. Acceptance cites the published outer run path only; outer publish
   fixtures cover success, mutation/no-current-final, existing-final refusal.
   `PET_QA_RUN_ID` and `BLIND_RUN_ID` share
