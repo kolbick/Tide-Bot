@@ -69,13 +69,15 @@ reviewing the approved native-companion plan against Tide-Bot at
 ## Tests and native boundary
 
 - Keep focused browser-independent Vitest coverage for lifecycle and
-  presence. The current default test environment remains Node. The companion
-  component tests are the deliberate, narrow configured exception: add
-  `@testing-library/svelte`, `@testing-library/jest-dom`, and `jsdom` as
-  development dependencies, update `package-lock.json`, and put
-  `// @vitest-environment jsdom` plus
-  `import '@testing-library/jest-dom/vitest';` at the top of each DOM component
-  test file. Do not make jsdom the global Vitest environment.
+  presence. The current default test environment remains Node. Only
+  DOM-rendering tests (`TedBotPet.test.ts` and `MessageInput.test.ts`) are the
+  deliberate, narrow configured exception: add `@testing-library/svelte`,
+  `@testing-library/jest-dom`, and `jsdom` as development dependencies, update
+  `package-lock.json`, and put `// @vitest-environment jsdom` plus
+  `import '@testing-library/jest-dom/vitest';` at the top of those files.
+  `CompanionPanel.test.ts` remains a Node source/contract test that reads the
+  Svelte source and verifies canonical Chat reuse without rendering it. Do not
+  make jsdom the global Vitest environment.
 - Add authenticated Cypress smoke coverage for companion routing, chrome
   suppression, typed send/stop, confirmation denial, chat synchronization,
   and no duplicate completion request.

@@ -32,6 +32,7 @@
 | --- | --- |
 | src/lib/components/ted-bot/TedBotPet.svelte | Accessible atlas renderer with idle and reduced-motion states. |
 | src/lib/components/ted-bot/CompanionPanel.svelte | Compact transcript, typed composer, status, and full-app action. |
+| static/tide-bot/ted-bot/pet.json | Tracked Ted-Bot v2 package metadata beside the validated spritesheet. |
 | src/lib/ted-bot/presence.ts | Browser presence publisher, subscriber, and wire-payload guards. |
 | src/lib/ted-bot/routes.ts | The single exact `/companion` route predicate used by root and app layouts. |
 | src/routes/(app)/companion/+page.svelte | Authenticated companion route. |
@@ -77,6 +78,7 @@ git commit -m 'docs: record ted-bot companion baseline'
 **Files:**
 - Create: src/lib/components/ted-bot/TedBotPet.svelte
 - Create: src/lib/components/ted-bot/TedBotPet.test.ts
+- Create: static/tide-bot/ted-bot/pet.json
 - Modify: src/lib/components/branding/TedBotMascot.svelte
 - Modify: package.json
 - Modify: package-lock.json
@@ -134,7 +136,13 @@ Expected: FAIL because TedBotPet.svelte does not exist.
 </div>
 ~~~
 
-Add a 6rem by 6.5rem clipped atlas viewport, 4-second stepped idle animation, faster working animation, grayscale offline state, and a prefers-reduced-motion rule that disables animation. Replace the body of TedBotMascot with TedBotPet state="idle" so existing login and empty-chat uses retain their behavior.
+Add a 6rem by 6.5rem clipped atlas viewport, 4-second stepped idle animation, faster working animation, grayscale offline state, and a prefers-reduced-motion rule that disables animation. Replace the body of TedBotMascot with TedBotPet state="idle" so existing login and empty-chat uses retain their behavior. Create `static/tide-bot/ted-bot/pet.json` beside the existing tracked `spritesheet.webp` with the matching Codex v2 metadata:
+
+~~~json
+{
+	"spriteVersionNumber": 2
+}
+~~~
 
 - [ ] **Step 4: Verify and commit**
 
@@ -143,7 +151,7 @@ Run: npx vitest run src/lib/components/ted-bot/TedBotPet.test.ts
 Expected: PASS.
 
 ~~~
-git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte
+git add src/lib/components/ted-bot src/lib/components/branding/TedBotMascot.svelte static/tide-bot/ted-bot/pet.json
 git add package.json package-lock.json
 git commit -m 'feat: add ted-bot companion renderer'
 ~~~
@@ -324,22 +332,35 @@ git commit -m 'feat: publish tide-bot active chat presence'
 
 - [ ] **Step 1: Write the failing canonical-surface tests**
 
-Use the narrow jsdom foundation added in Task 2. Each component test file
-(`CompanionPanel.test.ts` and `MessageInput.test.ts`) begins with the same
-per-file environment and matcher setup; do not add a global jsdom setting.
+Keep `CompanionPanel.test.ts` in Vitest's default Node environment. It is a
+source/contract test, so it reads `CompanionPanel.svelte` and proves canonical
+reuse without attempting to render or mock the canonical component. Only
+`MessageInput.test.ts` is a Task 5 DOM test; it uses the narrow jsdom foundation
+from Task 2 with the per-file directive and matcher setup. Do not add a global
+jsdom setting.
 
 ~~~ts
+// CompanionPanel.test.ts: default Node environment
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { expect, test } from 'vitest';
+
+test('reuses the canonical companion Chat surface without duplicate APIs', async () => {
+	const source = await readFile(
+		fileURLToPath(new URL('./CompanionPanel.svelte', import.meta.url)),
+		'utf8'
+	);
+	expect(source).toContain("from '$lib/components/chat/Chat.svelte'");
+	expect(source).toMatch(/<Chat[\\s\\S]*surface=['\"]companion['\"]/);
+	expect(source).not.toMatch(/from\s+['\"]\$lib\/apis\/(?:openai|tools)['\"]/);
+});
+~~~
+
+~~~ts
+// MessageInput.test.ts
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/svelte';
-
-test('uses the canonical Chat surface for the companion route', async () => {
-	render(CompanionPanel, { chatId: 'chat-1' });
-	expect(Chat).toHaveBeenCalledWith(expect.objectContaining({
-		chatIdProp: 'chat-1',
-		surface: 'companion'
-	}), expect.anything());
-});
 
 test('companion input leaves typed send and stop available while hiding optional controls', () => {
 	render(MessageInput, { mode: 'companion' });
@@ -353,7 +374,8 @@ test('companion input leaves typed send and stop available while hiding optional
 
 Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts
 
-Expected: FAIL because the companion canonical surface and compact input mode do not exist.
+Expected: FAIL because the canonical companion surface, compact input mode, and
+their test contracts do not exist.
 
 - [ ] **Step 3: Reuse the canonical, epoch-protected Chat surface**
 
@@ -381,8 +403,10 @@ event handler.
 
 Run: npx vitest run src/lib/components/ted-bot/CompanionPanel.test.ts src/lib/components/chat/MessageInput.test.ts
 
-Expected: PASS with canonical-surface reuse, typed-only controls, Start New
-race, denied confirmation, and no-duplicate completion coverage.
+Expected: PASS with Node source/contract evidence of canonical-surface reuse
+and no duplicate completion/tool API import, plus jsdom evidence of typed-only
+controls, Start New race, denied confirmation, and no-duplicate completion
+coverage.
 
 ~~~
 git add src/lib/components/ted-bot/CompanionPanel.svelte src/lib/components/ted-bot/CompanionPanel.test.ts src/routes/'(app)'/companion/+page.svelte src/lib/components/chat/Chat.svelte src/lib/components/chat/MessageInput.svelte
