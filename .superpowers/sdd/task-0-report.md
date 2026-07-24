@@ -310,13 +310,15 @@ release.
   live only in the 0700 outer pending run. `publish-pet-qa-run` revalidates the
   complete artifact/hash chain and atomically publishes the entire run; root
   evidence receives only the run root. Pending paths are explicitly nonaccepted
-  diagnostics and cannot be cited as acceptance. `PET_QA_RUN_ID` has the exact
-  nonempty lowercase letters/digits/hyphens, alphanumeric-edge grammar of
-  `BLIND_RUN_ID`; the verifier validates derived-path containment before any
-  creation and refuses malformed/traversal values or pending/final collisions
-  without changing existing directories.
+  diagnostics and cannot be cited as acceptance. `PET_QA_RUN_ID` and
+  `BLIND_RUN_ID` share `^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`; the verifier validates
+  either ID before resolve/join, containment, `exists`, `mkdir`, `rm`, `rename`,
+  or any filesystem operation. Only a valid ID may derive contained exact
+  sibling paths and then check collisions without changing existing directories.
 - The existing Node verifier test contract additionally covers outer publish,
-  mutation/no-current-final, existing-final refusal, and malformed
-  `PET_QA_RUN_ID`/traversal/pending-collision refusals. Acceptance must name the
-  current published `PET_QA_RUN_ID` path, not an inner blind or pending path.
-  This remains a future release gate, not a claim of completed QA.
+  mutation/no-current-final, existing-final refusal, and malformed shared
+  run-ID/traversal/pending-collision refusals. Injected path/filesystem spies
+  must show each invalid ID makes zero resolve/filesystem calls, while a valid
+  ID derives contained exact siblings before collision checks. Acceptance must
+  name the current published `PET_QA_RUN_ID` path, not an inner blind or pending
+  path. This remains a future release gate, not a claim of completed QA.

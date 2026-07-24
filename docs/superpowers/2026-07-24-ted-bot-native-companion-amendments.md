@@ -84,11 +84,13 @@ reviewing the approved native-companion plan against Tide-Bot at
   semantic review succeed. Pending paths are explicitly nonaccepted diagnostic
   state. Acceptance cites the published outer run path only; outer publish
   fixtures cover success, mutation/no-current-final, existing-final refusal.
-  `PET_QA_RUN_ID` uses the exact conservative `BLIND_RUN_ID` grammar
-  (nonempty lowercase letters/digits/hyphens, alphanumeric first/last); before
-  any creation the verifier confirms pending/final containment within the runs
-  root and refuses malformed/traversal values or existing pending/final
-  collisions without changing those directories.
+  `PET_QA_RUN_ID` and `BLIND_RUN_ID` share
+  `^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`. The verifier validates either ID before
+  `path.resolve`, `path.join`, containment, `exists`, `mkdir`, `rm`, `rename`,
+  or any filesystem operation; only a valid ID may derive its exact sibling
+  paths, undergo containment, then have pending/final collisions checked.
+  Spy-backed fixtures prove invalid IDs make zero path/filesystem calls and
+  collisions leave existing directories unchanged.
 
 ## Companion surface and canonical chat flow
 

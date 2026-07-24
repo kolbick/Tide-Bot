@@ -198,8 +198,8 @@ absolute `ATLAS` path is the input to every release-only command:
 
 ~~~
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
-# Required grammar: lowercase letters, digits, and hyphens only; first and last
-# characters are alphanumeric. No generated fallback.
+# Required shared run-ID regex: ^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$
+# No generated fallback.
 PET_QA_RUN_ID="release-<unique-lowercase-id>"
 PET_QA_RUNS_ROOT="$EVIDENCE_DIR/pet-qa-runs"
 node scripts/verify-ted-bot-direction-evidence.mjs prepare-pet-qa-run \
@@ -247,9 +247,13 @@ node scripts/verify-ted-bot-direction-evidence.mjs publish-pet-qa-run \
 ~~~
 
 `scripts/verify-ted-bot-direction-evidence.mjs` uses Node built-ins only and
-owns this provenance boundary. It requires a unique conservative
-`BLIND_RUN_ID` (lowercase letters, digits, and hyphens; begins/ends
-alphanumeric) and rejects an existing final run ID. `prepare-blind-run` hashes
+owns this provenance boundary. Both `BLIND_RUN_ID` and `PET_QA_RUN_ID` use the
+one shared exact regex `^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`. The verifier must
+validate the selected run ID against that regex before calling `path.resolve`,
+`path.join`, a containment check, `exists`, `mkdir`, `rm`, `rename`, or any
+other filesystem operation. Only after a valid ID passes may it derive the
+exact sibling pending/final paths, check containment, and then check collisions.
+It rejects an existing final run ID. `prepare-blind-run` hashes
 the exact atlas, blind sheet, and answer key and creates only the sibling
 `$BLIND_RUNS_ROOT/.${BLIND_RUN_ID}.pending` directory with mode 0700. It writes
 a redacted manifest with `schemaVersion`, `atlasSha256`, `blindSheetSha256`,
@@ -289,16 +293,15 @@ ID, unverifiable manifest, replaced verdict, failed Hatch combine, or envelope
 mismatch. Direct raw Hatch combine is prohibited for release evidence.
 
 The same verifier owns the outer pet-QA transaction. It requires the distinct
-conservative `PET_QA_RUN_ID` with the exact `BLIND_RUN_ID` grammar: it is
-nonempty, uses only lowercase letters, digits, and hyphens, and begins and ends
-alphanumeric. It rejects a dot, path separator, whitespace, uppercase letter,
-or any other malformed value. Before any path creation, it validates that the
-resolved runs root and both derived pending/final paths are contained within
-`$PET_QA_RUNS_ROOT`; traversal or a root-escape attempt is refused. It then
-creates only `$PET_QA_RUNS_ROOT/.${PET_QA_RUN_ID}.pending` mode 0700, safely
-refusing either an existing `$PET_QA_RUNS_ROOT/$PET_QA_RUN_ID` final directory
-or an existing same-run pending directory without changing either. All release
-QA output belongs there:
+conservative `PET_QA_RUN_ID` under that shared regex, rejecting empty, dot,
+path separator or traversal, whitespace, uppercase, and every other malformed
+value before any path or filesystem call. After valid-ID derivation, it verifies
+that the resolved runs root and both exact sibling pending/final paths are
+contained within `$PET_QA_RUNS_ROOT`; a root-escape attempt is refused. It then
+checks collisions and creates only `$PET_QA_RUNS_ROOT/.${PET_QA_RUN_ID}.pending`
+mode 0700, safely refusing either an existing
+`$PET_QA_RUNS_ROOT/$PET_QA_RUN_ID` final directory or an existing same-run
+pending directory without changing either. All release QA output belongs there:
 validator JSON, contact sheet, direction QA sheet, continuity JSON, blind
 sheet/key/manifest/reviewer material, the published blind subdirectory,
 semantic-review JSON, and final run metadata. After the independent semantic
@@ -325,10 +328,14 @@ final directory; and an existing same-run final directory is refused. Extend
 the same focused Node test with outer `publish-pet-qa-run` fixtures for complete
 publish, expected-artifact/hash mutation rejection with no current final run,
 and existing-final refusal; a `.pending` fixture is never accepted. Add
-`prepare-pet-qa-run` refusals for malformed `PET_QA_RUN_ID` values (empty, dot,
-traversal, path separator, whitespace, and uppercase), root-containment escape
-attempts, and existing same-run pending/final collisions, proving that no path
-is created outside the runs root and no colliding directory is changed. Run:
+`prepare-pet-qa-run` and `prepare-blind-run` refusals for each malformed shared
+run-ID value (empty, dot, separator/path traversal, whitespace, and uppercase).
+Use injected `path.resolve`/`path.join` and filesystem spies to prove every
+invalid ID is rejected with zero resolve, join, containment, `exists`, `mkdir`,
+`rm`, `rename`, or other filesystem calls. For valid-ID fixtures, assert the
+verifier derives the exact sibling pending/final paths, performs containment
+next, and checks existing pending/final collisions only afterward, without
+changing a colliding directory. Run:
 
 ~~~
 node --test scripts/verify-ted-bot-direction-evidence.test.mjs
@@ -1357,7 +1364,7 @@ node --test scripts/verify-ted-bot-direction-evidence.test.mjs
 # Release-only: call load_workspace_dependencies; set PYTHON to its exact bundled runtime.
 ATLAS="$PWD/static/tide-bot/ted-bot/spritesheet.webp"; EVIDENCE_DIR="$PWD/docs/superpowers/evidence/2026-07-24-ted-bot-native-companion"; shasum -a 256 "$ATLAS"
 HATCH_PET_SKILL_DIR="/Users/kolbyunderwood/.codex/skills/hatch-pet"
-# PET_QA_RUN_ID grammar: lowercase letters/digits/hyphens only; first/last alphanumeric.
+# Shared PET_QA_RUN_ID/BLIND_RUN_ID regex: ^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$
 PET_QA_RUN_ID="release-<unique-lowercase-id>"; PET_QA_RUNS_ROOT="$EVIDENCE_DIR/pet-qa-runs"
 node scripts/verify-ted-bot-direction-evidence.mjs prepare-pet-qa-run --run-id "$PET_QA_RUN_ID" --runs-root "$PET_QA_RUNS_ROOT" --atlas "$ATLAS"
 PET_QA_PENDING_DIR="$PET_QA_RUNS_ROOT/.${PET_QA_RUN_ID}.pending"; PET_QA_RUN_DIR="$PET_QA_RUNS_ROOT/$PET_QA_RUN_ID"
