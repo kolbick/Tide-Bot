@@ -106,10 +106,12 @@
 	import InputModal from '../common/InputModal.svelte';
 	import Expand from '../icons/Expand.svelte';
 	import QueuedMessageItem from './MessageInput/QueuedMessageItem.svelte';
+	import CompanionTextComposer from './MessageInput/CompanionTextComposer.svelte';
 	import TaskList from './Messages/ResponseMessage/TaskList.svelte';
 
 	const i18n = getContext('i18n');
 
+	export let mode: 'full' | 'companion' = 'full';
 	export let onUpload: Function = (e) => {};
 	export let onChange: Function = () => {};
 	export let onWebSearchToggle: Function = () => {};
@@ -141,6 +143,14 @@
 		(history.currentId && history.messages[history.currentId]?.done != true) ||
 		generating;
 	$: canCompact = !!history?.currentId;
+
+	const handleCompanionSend = (event: CustomEvent<string>) => {
+		dispatch('submit', event.detail);
+	};
+
+	const handleCompanionStop = () => {
+		stopResponse();
+	};
 
 	export let prompt = '';
 	export let files = [];
@@ -1126,6 +1136,11 @@
 	};
 
 	onMount(() => {
+		if (mode === 'companion') {
+			loaded = true;
+			return;
+		}
+
 		suggestions = [
 			{
 				char: '@',
@@ -1328,6 +1343,13 @@
 	});
 </script>
 
+{#if mode === 'companion'}
+	<CompanionTextComposer
+		isGenerating={isActive}
+		on:send={handleCompanionSend}
+		on:stop={handleCompanionStop}
+	/>
+{:else}
 <ToolServersModal bind:show={showTools} {selectedToolIds} />
 <SkillsModal bind:show={showSkills} {selectedSkillIds} />
 
@@ -2415,4 +2437,5 @@
 			</div>
 		</div>
 	</div>
+{/if}
 {/if}
