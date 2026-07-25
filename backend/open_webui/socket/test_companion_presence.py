@@ -129,6 +129,41 @@ async def test_redis_expiry_is_claimed_once_across_workers():
 
 
 @pytest.mark.asyncio
+async def test_memory_store_expires_an_orphaned_subscriber_without_presence():
+    store = MemoryPresenceStore(ttl_seconds=30)
+    await store.subscribe('user-a', 'orphaned-sid', now=0)
+
+    assert await store.expire(now=31) == []
+    assert 'user-a' not in store._subscribers
+    assert 'user-a' not in store._revisions
+
+
+@pytest.mark.asyncio
+async def test_redis_store_expires_an_orphaned_subscriber_without_presence():
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
+    await store.subscribe('user-a', 'orphaned-sid', now=0)
+
+    assert await store.expire(now=31) == []
+    assert await redis.get(store._key('user-a')) is None
+    await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_redis_subscribe_renews_the_subscriber_lease():
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
+    await store.subscribe('user-a', 'live-sid', now=0)
+    await store.subscribe('user-a', 'live-sid', now=20)
+
+    assert await store.expire(now=31) == []
+    assert await redis.get(store._key('user-a')) is not None
+    assert await store.expire(now=51) == []
+    assert await redis.get(store._key('user-a')) is None
+    await redis.aclose()
+
+
+@pytest.mark.asyncio
 async def test_lifespan_cancels_and_awaits_the_expiry_task_on_shutdown():
     started = asyncio.Event()
 

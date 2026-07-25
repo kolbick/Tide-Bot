@@ -10,6 +10,7 @@ from open_webui.socket.companion_presence import (
     CompanionPresenceSocketService,
     MemoryPresenceStore,
     RedisPresenceStore,
+    reap_presence_session,
 )
 from open_webui.utils import chat_access
 
@@ -268,6 +269,30 @@ async def test_redis_revision_metadata_is_removed_after_the_final_subscriber_dis
         )
     ]
     assert remaining == []
+    await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_orphan_reaper_removes_presence_before_session_identity():
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
+    service, _, session_pool, _ = make_service(store=store)
+    session_pool['orphaned-sid'] = {'id': 'user-a', 'role': 'user'}
+    await service.subscribe('orphaned-sid')
+    original_disconnect = service.disconnect
+    identity_was_available = False
+
+    async def observed_disconnect(sid):
+        nonlocal identity_was_available
+        identity_was_available = sid in session_pool
+        return await original_disconnect(sid)
+
+    service.disconnect = observed_disconnect
+    await reap_presence_session(service, session_pool, 'orphaned-sid')
+
+    assert identity_was_available is True
+    assert 'orphaned-sid' not in session_pool
+    assert await redis.get(store._key('user-a')) is None
     await redis.aclose()
 
 

@@ -265,6 +265,19 @@ test('resets the browser revision on reconnect before accepting a fresh subscrip
 	subscriber.destroy();
 });
 
+test('renews a live companion subscription and stops renewing after destroy', () => {
+	const socket = createFakeSocket();
+	const subscriber = createCompanionPresenceSubscriber(socket, vi.fn());
+
+	expect(socket.emitted('companion:presence:subscribe')).toHaveLength(1);
+	vi.advanceTimersByTime(PRESENCE_HEARTBEAT_MS * 3);
+	expect(socket.emitted('companion:presence:subscribe')).toHaveLength(4);
+
+	subscriber.destroy();
+	vi.advanceTimersByTime(PRESENCE_HEARTBEAT_MS);
+	expect(socket.emitted('companion:presence:subscribe')).toHaveLength(4);
+});
+
 test('matches only the dedicated companion pathname', () => {
 	expect(isCompanionRoute('/companion')).toBe(true);
 	expect(isCompanionRoute('/companion/')).toBe(false);

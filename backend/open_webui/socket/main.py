@@ -39,6 +39,7 @@ from open_webui.models.users import UserNameResponse, Users
 from open_webui.socket.companion_presence import (
     CompanionPresenceSocketService,
     create_presence_store,
+    reap_presence_session,
 )
 from open_webui.socket.utils import RedisDict, RedisLock, YdocManager
 from open_webui.tasks import create_task, stop_item_tasks
@@ -230,7 +231,10 @@ async def periodic_session_pool_cleanup():
                 entry = SESSION_POOL.get(sid)
                 if entry and now - entry.get('last_seen_at', 0) > SESSION_POOL_TIMEOUT:
                     log.warning(f'Reaping orphaned session {sid} (user {entry.get("id")})')
-                    del SESSION_POOL[sid]
+                    try:
+                        await reap_presence_session(COMPANION_PRESENCE_SERVICE, SESSION_POOL, sid)
+                    except Exception:
+                        log.exception('Failed to remove companion presence while reaping orphaned session')
             await asyncio.sleep(SESSION_POOL_TIMEOUT)
     finally:
         session_release_func()

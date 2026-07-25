@@ -107,10 +107,16 @@ export const createCompanionPresenceSubscriber = (
 		revision = state.revision;
 		apply(state);
 	};
+	const renew = () => {
+		if (socket.connected) {
+			socket.emit('companion:presence:subscribe');
+		}
+	};
 	const subscribe = () => {
 		revision = -1;
-		socket.emit('companion:presence:subscribe');
+		renew();
 	};
+	const renewalInterval = setInterval(renew, PRESENCE_HEARTBEAT_MS);
 
 	socket.on('connect', subscribe);
 	socket.on('companion:presence:state', onState);
@@ -121,6 +127,7 @@ export const createCompanionPresenceSubscriber = (
 	return {
 		onState,
 		destroy() {
+			clearInterval(renewalInterval);
 			socket.off('connect', subscribe);
 			socket.off('companion:presence:state', onState);
 		}

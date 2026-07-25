@@ -129,7 +129,7 @@ class MemoryPresenceStore:
         self.ttl_seconds = ttl_seconds
         self._entries: dict[str, dict[str, _MemoryEntry]] = defaultdict(dict)
         self._revisions: dict[str, int] = defaultdict(int)
-        self._subscribers: dict[str, set[str]] = defaultdict(set)
+        self._subscribers: dict[str, dict[str, float]] = defaultdict(dict)
         self._lock = asyncio.Lock()
         self._emission_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
@@ -162,6 +162,13 @@ class MemoryPresenceStore:
         self._revisions.pop(user_id, None)
         self._subscribers.pop(user_id, None)
 
+    def _prune_subscribers(self, user_id: str, now: float) -> None:
+        subscribers = self._subscribers.get(user_id)
+        if not subscribers:
+            return
+        for sid in [sid for sid, expires_at in subscribers.items() if expires_at <= now]:
+            del subscribers[sid]
+
     async def update(self, user_id: str, sid: str, presence: PresenceUpdate, *, now: float) -> PresenceState:
         async with self._lock:
             entries = self._entries[user_id]
@@ -177,6 +184,7 @@ class MemoryPresenceStore:
 
     async def clear(self, user_id: str, sid: str, *, now: float) -> PresenceState:
         async with self._lock:
+            self._prune_subscribers(user_id, now)
             entries = self._entries.get(user_id)
             if entries and sid in entries:
                 del entries[sid]
@@ -187,7 +195,8 @@ class MemoryPresenceStore:
 
     async def subscribe(self, user_id: str, sid: str, *, now: float) -> PresenceState:
         async with self._lock:
-            self._subscribers[user_id].add(sid)
+            self._prune_subscribers(user_id, now)
+            self._subscribers[user_id][sid] = now + self.ttl_seconds
             entries = {
                 entry_sid: entry
                 for entry_sid, entry in self._entries.get(user_id, {}).items()
@@ -200,14 +209,18 @@ class MemoryPresenceStore:
 
     async def state(self, user_id: str, *, now: float) -> PresenceState:
         async with self._lock:
+            self._prune_subscribers(user_id, now)
             entries = {sid: entry for sid, entry in self._entries.get(user_id, {}).items() if entry.expires_at > now}
-            return PresenceState(
+            state = PresenceState(
                 active=self._active(entries),
                 revision=self._revisions.get(user_id, 0),
             )
+            self._drop_idle_user(user_id)
+            return state
 
     async def disconnect(self, user_id: str, sid: str, *, now: float) -> PresenceState | None:
         async with self._lock:
+            self._prune_subscribers(user_id, now)
             entries = self._entries.get(user_id)
             had_entry = bool(entries and sid in entries)
             if had_entry:
@@ -215,7 +228,7 @@ class MemoryPresenceStore:
                 self._revisions[user_id] += 1
             subscribers = self._subscribers.get(user_id)
             if subscribers:
-                subscribers.discard(sid)
+                subscribers.pop(sid, None)
             state = self._state(user_id) if had_entry else None
             self._drop_idle_user(user_id)
             return state
@@ -223,15 +236,17 @@ class MemoryPresenceStore:
     async def expire(self, *, now: float) -> list[PresenceExpiry]:
         changes: list[PresenceExpiry] = []
         async with self._lock:
-            for user_id, entries in list(self._entries.items()):
+            user_ids = set(self._entries) | set(self._subscribers)
+            for user_id in user_ids:
+                entries = self._entries.get(user_id, {})
+                self._prune_subscribers(user_id, now)
                 stale = [sid for sid, entry in entries.items() if entry.expires_at <= now]
-                if not stale:
-                    continue
-                for sid in stale:
-                    del entries[sid]
-                self._revisions[user_id] += 1
-                state = self._state(user_id)
-                changes.append(PresenceExpiry(user_id=user_id, state=state))
+                if stale:
+                    for sid in stale:
+                        del entries[sid]
+                    self._revisions[user_id] += 1
+                    state = self._state(user_id)
+                    changes.append(PresenceExpiry(user_id=user_id, state=state))
                 self._drop_idle_user(user_id)
         return changes
 
@@ -274,6 +289,16 @@ for _, entry in ipairs(candidates) do
 end
 """
 
+_REDIS_PRUNE_SUBSCRIBERS = """
+local subscribersChanged = false
+for sid, expiresAt in pairs(state.subscribers) do
+  if type(expiresAt) ~= 'number' or expiresAt <= now then
+    state.subscribers[sid] = nil
+    subscribersChanged = true
+  end
+end
+"""
+
 _REDIS_UPDATE_LUA = (
     """
 local raw = redis.call('GET', KEYS[1])
@@ -282,6 +307,9 @@ if raw then state = cjson.decode(raw) end
 if not state.subscribers then state.subscribers = {} end
 local now = tonumber(ARGV[1])
 local ttl = tonumber(ARGV[2])
+"""
+    + _REDIS_PRUNE_SUBSCRIBERS
+    + """
 for sid, entry in pairs(state.entries) do
   if entry.expiresAt <= now then state.entries[sid] = nil end
 end
@@ -310,6 +338,9 @@ if not raw then return cjson.encode({active = cjson.null, revision = 0}) end
 local state = cjson.decode(raw)
 if not state.subscribers then state.subscribers = {} end
 local now = tonumber(ARGV[1])
+"""
+    + _REDIS_PRUNE_SUBSCRIBERS
+    + """
 if state.entries[ARGV[2]] then
   state.entries[ARGV[2]] = nil
   state.revision = state.revision + 1
@@ -333,7 +364,11 @@ local state = {revision = 0, entries = {}, subscribers = {}}
 if raw then state = cjson.decode(raw) end
 if not state.subscribers then state.subscribers = {} end
 local now = tonumber(ARGV[1])
-state.subscribers[ARGV[2]] = true
+local ttl = tonumber(ARGV[2])
+"""
+    + _REDIS_PRUNE_SUBSCRIBERS
+    + """
+state.subscribers[ARGV[3]] = now + ttl
 """
     + _REDIS_SELECT_ACTIVE
     + """
@@ -347,10 +382,19 @@ _REDIS_STATE_LUA = (
 local raw = redis.call('GET', KEYS[1])
 if not raw then return cjson.encode({active = cjson.null, revision = 0}) end
 local state = cjson.decode(raw)
+if not state.subscribers then state.subscribers = {} end
 local now = tonumber(ARGV[1])
 """
+    + _REDIS_PRUNE_SUBSCRIBERS
     + _REDIS_SELECT_ACTIVE
     + """
+if subscribersChanged then
+  if next(state.entries) == nil and next(state.subscribers) == nil then
+    redis.call('DEL', KEYS[1])
+  else
+    redis.call('SET', KEYS[1], cjson.encode(state))
+  end
+end
 return cjson.encode({active = active, revision = state.revision})
 """
 )
@@ -362,6 +406,9 @@ if not raw then return '' end
 local state = cjson.decode(raw)
 if not state.subscribers then state.subscribers = {} end
 local now = tonumber(ARGV[1])
+"""
+    + _REDIS_PRUNE_SUBSCRIBERS
+    + """
 local hadEntry = state.entries[ARGV[2]] ~= nil
 if hadEntry then
   state.entries[ARGV[2]] = nil
@@ -388,15 +435,18 @@ if not raw then return '' end
 local state = cjson.decode(raw)
 if not state.subscribers then state.subscribers = {} end
 local now = tonumber(ARGV[1])
-local changed = false
+"""
+    + _REDIS_PRUNE_SUBSCRIBERS
+    + """
+local entriesChanged = false
 for sid, entry in pairs(state.entries) do
   if entry.expiresAt <= now then
     state.entries[sid] = nil
-    changed = true
+    entriesChanged = true
   end
 end
-if not changed then return '' end
-state.revision = state.revision + 1
+if not entriesChanged and not subscribersChanged then return '' end
+if entriesChanged then state.revision = state.revision + 1 end
 """
     + _REDIS_SELECT_ACTIVE
     + """
@@ -405,6 +455,7 @@ if next(state.entries) == nil and next(state.subscribers) == nil then
 else
   redis.call('SET', KEYS[1], cjson.encode(state))
 end
+if not entriesChanged then return '' end
 return cjson.encode({active = active, revision = state.revision})
 """
 )
@@ -453,7 +504,14 @@ class RedisPresenceStore:
         return self._decode_state(raw)
 
     async def subscribe(self, user_id: str, sid: str, *, now: float) -> PresenceState:
-        raw = await self.redis.eval(_REDIS_SUBSCRIBE_LUA, 1, self._key(user_id), now, sid)
+        raw = await self.redis.eval(
+            _REDIS_SUBSCRIBE_LUA,
+            1,
+            self._key(user_id),
+            now,
+            self.ttl_seconds,
+            sid,
+        )
         return self._decode_state(raw)
 
     async def state(self, user_id: str, *, now: float) -> PresenceState:
@@ -633,6 +691,14 @@ class CompanionPresenceSocketService:
         while True:
             await asyncio.sleep(PRESENCE_EXPIRY_INTERVAL_SECONDS)
             await self.expire()
+
+
+async def reap_presence_session(service, session_pool, sid: str) -> None:
+    try:
+        if service is not None:
+            await service.disconnect(sid)
+    finally:
+        session_pool.pop(sid, None)
 
 
 def start_presence_expiry_task(app, service: CompanionPresenceSocketService):
