@@ -196,7 +196,10 @@ async def test_clear_emits_active_null_when_the_authenticated_socket_is_the_only
 async def test_redis_clear_keeps_emitted_revisions_monotonic_for_a_connected_subscriber():
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
-    service, sio, _, _ = make_service(store=store)
+    service, sio, session_pool, _ = make_service(store=store)
+    session_pool['sid-companion'] = {'id': 'user-a', 'role': 'user'}
+    await service.subscribe('sid-companion')
+    sio.reset_mock()
 
     first = await service.update('sid-a', payload(chatId='chat-a'))
     cleared = await service.update('sid-a', payload(chatId=None, chatTitle=None))
@@ -214,6 +217,57 @@ async def test_redis_clear_keeps_emitted_revisions_monotonic_for_a_connected_sub
     assert 'chat-a' not in empty_raw_state
     assert 'client-a' not in empty_raw_state
     assert [call.args[1]['revision'] for call in sio.emit.await_args_list] == [1, 2, 3]
+    await service.disconnect('sid-a')
+    await service.disconnect('sid-companion')
+    await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_redis_revision_metadata_is_removed_after_the_final_subscriber_disconnects():
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
+    service, sio, session_pool, _ = make_service(store=store)
+    session_pool['sid-companion'] = {'id': 'user-a', 'role': 'user'}
+
+    await service.subscribe('sid-companion')
+    sio.reset_mock()
+    first = await service.update('sid-a', payload(chatId='chat-a'))
+    cleared = await service.update('sid-a', payload(chatId=None, chatTitle=None))
+    await service.disconnect('sid-a')
+
+    session_pool['sid-c'] = {'id': 'user-a', 'role': 'user'}
+    resumed = await service.update('sid-c', payload(clientId='client-c', chatId='chat-b'))
+    cleared_again = await service.update(
+        'sid-c',
+        payload(clientId='client-c', chatId=None, chatTitle=None),
+    )
+
+    assert [
+        first['revision'],
+        cleared['revision'],
+        resumed['revision'],
+        cleared_again['revision'],
+    ] == [1, 2, 3, 4]
+    assert [call.args[1]['revision'] for call in sio.emit.await_args_list] == [1, 2, 3, 4]
+    empty_raw_state = await redis.get(store._key('user-a'))
+    assert empty_raw_state is not None
+    assert 'chat-a' not in empty_raw_state
+    assert 'chat-b' not in empty_raw_state
+    assert 'client-a' not in empty_raw_state
+    assert 'client-c' not in empty_raw_state
+
+    await service.disconnect('sid-c')
+    assert await redis.get(store._key('user-a')) is not None
+    await service.disconnect('sid-companion')
+
+    remaining = [
+        key
+        async for key in redis.scan_iter(
+            match='test:companion_presence:*',
+            count=100,
+        )
+    ]
+    assert remaining == []
     await redis.aclose()
 
 
