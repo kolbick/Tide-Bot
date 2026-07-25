@@ -1345,6 +1345,7 @@
 
 {#if mode === 'companion'}
 	<CompanionTextComposer
+		{chatId}
 		isGenerating={isActive}
 		on:send={handleCompanionSend}
 		on:stop={handleCompanionStop}

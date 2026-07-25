@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 
+	export let chatId = '';
 	export let isGenerating = false;
 
 	const dispatch = createEventDispatcher<{
@@ -9,6 +10,12 @@
 	}>();
 
 	let text = '';
+	let activeChatId = chatId;
+
+	$: if (chatId !== activeChatId) {
+		activeChatId = chatId;
+		text = '';
+	}
 
 	const send = () => {
 		if (!text.trim()) {

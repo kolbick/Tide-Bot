@@ -18,6 +18,8 @@ test('delegates companion typing to the presentation-only composer through canon
 	expect(source).toMatch(
 		/const handleCompanionSend = \(event: CustomEvent<string>\) => {\s*dispatch\('submit', event\.detail\);\s*}/
 	);
+	expect(source).toMatch(/const handleCompanionStop = \(\) => {\s*stopResponse\(\);\s*}/);
+	expect(source).toMatch(/<CompanionTextComposer[\s\S]*(?:chatId={chatId}|{chatId})/);
 });
 
 test('keeps optional input controls and global listeners outside companion mode', async () => {

@@ -56,12 +56,28 @@ test('invalidates every chat-id transition and component destruction', () => {
 	expect(source).toMatch(/onDestroy\(\(\) => {[\s\S]*?chatLifecycle\.destroy\(\);[\s\S]*?}\)/);
 });
 
+test('denies pending confirmation and clears stale dialog state on chat transition', () => {
+	const navigationReset = section(
+		'$: if (chatIdProp !== lifecycleChatId)',
+		'$: if (embedded && embeddedDraftKey'
+	);
+	const confirmationReset = section('const clearEventConfirmationState', 'let selectedModels');
+
+	expect(navigationReset).toMatch(
+		/chatLifecycle\.resetForNavigation\(\);\s*clearEventConfirmationState\(\);/
+	);
+	expect(confirmationReset).toMatch(/showEventConfirmation = false/);
+	expect(confirmationReset).toMatch(/eventConfirmationInput = false/);
+	expect(confirmationReset).toMatch(/eventConfirmationInputValue = ''/);
+	expect(confirmationReset).toMatch(/eventCallback = null/);
+});
+
 test('registers and settles every canonical event callback through one-shot wrappers', () => {
 	const wrappedAssignments =
 		source.match(/eventCallback\s*=\s*chatLifecycle\.registerPendingEventCallback\(/g) ?? [];
 	const allAssignments = source.match(/eventCallback\s*=/g) ?? [];
 	expect(wrappedAssignments).toHaveLength(5);
-	expect(allAssignments).toHaveLength(wrappedAssignments.length);
+	expect(allAssignments).toHaveLength(wrappedAssignments.length + 1);
 
 	const eventHandler = section('const chatEventHandler', 'const onMessageHandler');
 	const embeddedHandlers = section('const onMessageHandler', 'const savedModelIds');

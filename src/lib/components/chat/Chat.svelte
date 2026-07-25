@@ -168,6 +168,18 @@
 	let eventCallback: PendingEventCallback | null = null;
 	let processingQueueChats = new Set<string>();
 
+	const clearEventConfirmationState = () => {
+		showEventConfirmation = false;
+		eventConfirmationTitle = '';
+		eventConfirmationMessage = '';
+		eventConfirmationInput = false;
+		eventConfirmationInputPlaceholder = '';
+		eventConfirmationInputValue = '';
+		eventConfirmationInputType = '';
+		eventConfirmationInputOptions = [];
+		eventCallback = null;
+	};
+
 	let selectedModels = [''];
 	let atSelectedModel: Model | undefined;
 	let selectedModelIds = [];
@@ -406,6 +418,7 @@
 		generationController = null;
 		generating = false;
 		chatLifecycle.resetForNavigation();
+		clearEventConfirmationState();
 		processingQueueChats.clear();
 
 		if (chatIdProp) {
