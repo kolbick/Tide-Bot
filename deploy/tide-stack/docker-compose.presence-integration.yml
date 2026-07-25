@@ -11,6 +11,9 @@ x-presence-worker: &presence-worker
     ENABLE_SIGNUP: 'true'
     ENABLE_VERSION_UPDATE_CHECK: 'false'
     ENABLE_COMMUNITY_SHARING: 'false'
+    OFFLINE_MODE: 'true'
+    RAG_EMBEDDING_MODEL: ''
+    BYPASS_EMBEDDING_AND_RETRIEVAL: 'true'
     ENABLE_WEBSOCKET_SUPPORT: 'true'
     WEBSOCKET_MANAGER: redis
     WEBSOCKET_REDIS_URL: redis://presence-redis:6379/0
@@ -94,3 +97,4 @@ volumes:
 networks:
   presence-integration:
     driver: bridge
+    internal: true
