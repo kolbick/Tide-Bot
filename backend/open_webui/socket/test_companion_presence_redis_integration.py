@@ -152,6 +152,46 @@ async def _wait_for(predicate, *, timeout: float = 10):
         await asyncio.sleep(0.05)
 
 
+def _assert_shared_presence_sequences(worker_a_states, worker_b_states):
+    assert len(worker_a_states) == 2
+    assert worker_a_states == worker_b_states
+    revisions = [state['revision'] for state in worker_a_states]
+    assert revisions in ([1, 2], [2, 2])
+    if revisions == [2, 2]:
+        assert worker_a_states[0] == worker_a_states[1]
+
+
+def test_shared_stream_contract_accepts_only_documented_coalescing():
+    revision_one = {'active': {'clientId': 'worker-a'}, 'revision': 1}
+    revision_two = {'active': {'clientId': 'worker-b'}, 'revision': 2}
+
+    _assert_shared_presence_sequences(
+        [revision_one, revision_two],
+        [revision_one, revision_two],
+    )
+    _assert_shared_presence_sequences(
+        [revision_two, revision_two],
+        [revision_two, revision_two],
+    )
+
+
+def test_shared_stream_contract_rejects_missing_or_different_events():
+    revision_one = {'active': {'clientId': 'worker-a'}, 'revision': 1}
+    revision_two = {'active': {'clientId': 'worker-b'}, 'revision': 2}
+    invalid_sequences = [
+        ([revision_two], [revision_two]),
+        ([revision_one, revision_two], [revision_two, revision_two]),
+        ([revision_two, revision_one], [revision_two, revision_one]),
+    ]
+
+    for worker_a, worker_b in invalid_sequences:
+        try:
+            _assert_shared_presence_sequences(worker_a, worker_b)
+        except AssertionError:
+            continue
+        raise AssertionError('invalid shared presence streams were accepted')
+
+
 async def run_integration() -> None:
     worker_a = os.environ['PRESENCE_WORKER_A_URL']
     worker_b = os.environ['PRESENCE_WORKER_B_URL']
@@ -181,15 +221,19 @@ async def run_integration() -> None:
         revisions = sorted([first.get('revision'), second.get('revision')])
         assert first.get('ok') and second.get('ok')
         assert revisions == [1, 2]
-        await _wait_for(
-            lambda: (
-                any(state['revision'] == 2 for state in admin_a.states)
-                and any(state['revision'] == 2 for state in admin_b.states)
-            )
-        )
-        for client in (admin_a, admin_b):
-            stream = [state['revision'] for state in client.states]
-            assert stream == sorted(stream)
+        await _wait_for(lambda: len(admin_a.states) >= 2 and len(admin_b.states) >= 2)
+        await asyncio.sleep(0.25)
+        _assert_shared_presence_sequences(admin_a.states, admin_b.states)
+        final_state = admin_a.states[-1]
+        assert final_state['revision'] == 2
+        assert final_state['active'] == {
+            'clientId': 'admin-worker-b',
+            'chatId': admin_chat_id,
+            'chatTitle': 'Authorized integration chat',
+            'deviceLabel': 'Integration worker',
+            'isFocused': True,
+            'focusedAt': 20,
+        }
         assert other_user.states == []
         print('ASSERT shared-cross-worker-revision-stream PASS', flush=True)
         print('ASSERT user-room-isolation PASS', flush=True)

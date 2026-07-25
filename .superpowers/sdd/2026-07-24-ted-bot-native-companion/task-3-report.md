@@ -79,3 +79,52 @@ No `uv run` command was used and `uv.lock` was not modified.
 - None blocking Task 3.
 - The real worker processes take several minutes to become healthy on the current machine, but the harness uses a bounded 300-second wait and completed successfully.
 - The repository-wide diagnostic baseline was intentionally not used as a Task 3 regression signal; verification remained scoped per `AGENTS.md`.
+
+## Fix round 1 of 5
+
+### Review findings addressed
+
+1. Made wrapper cleanup unconditional after the private temporary directory is created.
+   - All setup, inventory, Compose execution, teardown, and inspection now run inside an outer `try/finally`.
+   - Compose down, project-resource inspection, and post-run Tide-Bot inventory failures are captured independently.
+   - The primary integration/startup failure remains the thrown error when cleanup also fails.
+   - Private temporary files are removed in the outer guaranteed cleanup even when initial inventory, Compose, teardown, or later inspection fails.
+   - Added `scripts/run-companion-presence-redis-integration.test.mjs` with injected inventory and multi-cleanup failures.
+2. Strengthened the real two-worker shared-stream assertion.
+   - The test waits until both authenticated clients have received the expected two events.
+   - It compares both complete revision/payload sequences for equality.
+   - It accepts only the documented normal `[1, 2]` or coalesced `[2, 2]` forms, with duplicate payload equality required for coalescing.
+   - It asserts the final canonical revision-2 payload in full, so missing, differing, forged-title, or wrong-active-client events fail.
+
+### Red evidence
+
+- Wrapper cleanup:
+  - Command: `node --test scripts/run-companion-presence-redis-integration.test.mjs`
+  - Result: `0 passed, 2 failed`.
+  - Inventory failure left `tedbot-presence-it-cleanup-inventory-*` behind.
+  - Combined primary/cleanup failure surfaced `inspect container resources failed with exit 43` instead of `start isolated presence stack failed`.
+- Shared stream:
+  - Command: `PYTHONPATH=backend /tmp/tedbot-presence-task3-venv/bin/python -m pytest backend/open_webui/socket/test_companion_presence_redis_integration.py -q`
+  - Result: `2 failed`; `_assert_shared_presence_sequences` did not exist, so the reviewed runtime assertions had no exact shared-sequence contract.
+
+### Green and final verification
+
+- `node --test scripts/run-companion-presence-redis-integration.test.mjs`
+  - Result: `2 passed`.
+- `PYTHONPATH=backend /tmp/tedbot-presence-task3-venv/bin/python -m pytest backend/open_webui/socket/test_companion_presence_redis_integration.py -q`
+  - Result: `2 passed`.
+- `RUN_ID=review1-$(date +%s) npx -y -p node@22.18.0 node scripts/run-companion-presence-redis-integration.mjs`
+  - Result: exit 0.
+  - Assertions: exact shared cross-worker revision/payload stream PASS; user-room isolation PASS; disconnect promotion PASS; real-handler authorization PASS; namespace empty PASS; namespaced teardown PASS; pre-existing Tide-Bot resources untouched PASS.
+- Prettier, Ruff format, Node syntax, and `git diff --check`
+  - Result: PASS.
+
+### Fix-round commits
+
+- Planned scoped fix commit: `fix: harden presence integration cleanup`
+- The resulting hash is returned in the task handoff.
+
+### Remaining concerns after fix round 1
+
+- None blocking.
+- The integration workers still require several minutes for a cold health start on this machine; the bounded harness completed successfully.
