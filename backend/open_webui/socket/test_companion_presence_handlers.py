@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock
 
+import fakeredis.aioredis
 import pytest
-from open_webui.socket.companion_presence import CompanionPresenceSocketService, MemoryPresenceStore
+from open_webui.socket.companion_presence import (
+    CompanionPresenceSocketService,
+    MemoryPresenceStore,
+    RedisPresenceStore,
+)
 from open_webui.utils import chat_access
 
 
@@ -21,7 +27,7 @@ def payload(**changes):
     return data
 
 
-def make_service(*, readable_chat=...):
+def make_service(*, readable_chat=..., store=None):
     sio = AsyncMock()
     session_pool = {
         'sid-a': {'id': 'user-a', 'role': 'user'},
@@ -32,7 +38,7 @@ def make_service(*, readable_chat=...):
     service = CompanionPresenceSocketService(
         sio=sio,
         session_pool=session_pool,
-        store=MemoryPresenceStore(ttl_seconds=30),
+        store=store or MemoryPresenceStore(ttl_seconds=30),
         get_readable_chat=get_readable_chat,
         db_factory=AsyncContextManager(None),
         clock=lambda: 10,
@@ -184,6 +190,31 @@ async def test_clear_emits_active_null_when_the_authenticated_socket_is_the_only
         {'active': None, 'revision': 2},
         room='user:user-a',
     )
+
+
+@pytest.mark.asyncio
+async def test_redis_clear_keeps_emitted_revisions_monotonic_for_a_connected_subscriber():
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
+    service, sio, _, _ = make_service(store=store)
+
+    first = await service.update('sid-a', payload(chatId='chat-a'))
+    cleared = await service.update('sid-a', payload(chatId=None, chatTitle=None))
+    empty_state = await store.state('user-a', now=10)
+    empty_raw_state = await redis.get(store._key('user-a'))
+    third = await service.update('sid-a', payload(chatId='chat-b'))
+
+    assert [first['revision'], cleared['revision'], third['revision']] == [1, 2, 3]
+    assert empty_state.active is None
+    assert empty_state.revision == 2
+    assert empty_raw_state is not None
+    empty_raw_data = json.loads(empty_raw_state)
+    assert empty_raw_data['revision'] == 2
+    assert not empty_raw_data['entries']
+    assert 'chat-a' not in empty_raw_state
+    assert 'client-a' not in empty_raw_state
+    assert [call.args[1]['revision'] for call in sio.emit.await_args_list] == [1, 2, 3]
+    await redis.aclose()
 
 
 @pytest.mark.asyncio

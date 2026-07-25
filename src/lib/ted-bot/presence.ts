@@ -48,6 +48,9 @@ export const createMainPresencePublisher = ({
 	let destroyed = false;
 
 	const publish = () => {
+		if (!socket.connected) {
+			return;
+		}
 		socket.emit('companion:presence:update', { ...presence });
 	};
 	const handleConnect = () => {

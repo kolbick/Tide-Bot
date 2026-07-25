@@ -285,11 +285,7 @@ state.revision = state.revision + 1
 """
     + _REDIS_SELECT_ACTIVE
     + """
-if next(state.entries) == nil then
-  redis.call('DEL', KEYS[1])
-else
-  redis.call('SET', KEYS[1], cjson.encode(state))
-end
+redis.call('SET', KEYS[1], cjson.encode(state))
 return cjson.encode({active = active, revision = state.revision})
 """
 )
@@ -312,11 +308,7 @@ state.revision = state.revision + 1
 """
     + _REDIS_SELECT_ACTIVE
     + """
-if next(state.entries) == nil then
-  redis.call('DEL', KEYS[1])
-else
-  redis.call('SET', KEYS[1], cjson.encode(state))
-end
+redis.call('SET', KEYS[1], cjson.encode(state))
 return cjson.encode({active = active, revision = state.revision})
 """
 )
