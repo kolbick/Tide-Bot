@@ -128,8 +128,62 @@ async def test_update_rejects_unauthenticated_and_malformed_payloads():
 
     assert await service.update('missing-sid', payload()) == {'ok': False, 'error': 'authentication_required'}
     assert await service.update('sid-a', payload(secret='token')) == {'ok': False, 'error': 'invalid_payload'}
+    assert await service.update('sid-a', payload(chatId=None)) == {'ok': False, 'error': 'invalid_payload'}
+    assert await service.update('sid-a', payload(chatTitle=None)) == {'ok': False, 'error': 'invalid_payload'}
     get_readable_chat.assert_not_awaited()
     sio.emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_only_the_authenticated_socket_without_chat_authorization():
+    service, sio, session_pool, get_readable_chat = make_service()
+    session_pool['sid-c'] = {'id': 'user-a', 'role': 'user'}
+    await service.update('sid-a', payload(clientId='client-a', focusedAt=10))
+    await service.update('sid-c', payload(clientId='client-c', focusedAt=20))
+    sio.reset_mock()
+    get_readable_chat.reset_mock()
+
+    result = await service.update(
+        'sid-c',
+        payload(
+            clientId='client-a',
+            chatId=None,
+            chatTitle=None,
+        ),
+    )
+
+    assert result == {'ok': True, 'revision': 3}
+    get_readable_chat.assert_not_awaited()
+    sio.emit.assert_awaited_once_with(
+        'companion:presence:state',
+        {
+            'active': payload(
+                clientId='client-a',
+                chatTitle='Canonical database title',
+                focusedAt=10,
+            ),
+            'revision': 3,
+        },
+        room='user:user-a',
+    )
+
+
+@pytest.mark.asyncio
+async def test_clear_emits_active_null_when_the_authenticated_socket_is_the_only_presence():
+    service, sio, _, get_readable_chat = make_service()
+    await service.update('sid-a', payload())
+    sio.reset_mock()
+    get_readable_chat.reset_mock()
+
+    result = await service.update('sid-a', payload(chatId=None, chatTitle=None))
+
+    assert result == {'ok': True, 'revision': 2}
+    get_readable_chat.assert_not_awaited()
+    sio.emit.assert_awaited_once_with(
+        'companion:presence:state',
+        {'active': None, 'revision': 2},
+        room='user:user-a',
+    )
 
 
 @pytest.mark.asyncio

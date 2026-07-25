@@ -28,8 +28,8 @@ _PRESENCE_FIELDS = frozenset((*_FIELD_LIMITS, 'isFocused', 'focusedAt'))
 @dataclass(frozen=True)
 class PresenceUpdate:
     clientId: str
-    chatId: str
-    chatTitle: str
+    chatId: str | None
+    chatTitle: str | None
     deviceLabel: str
     isFocused: bool
     focusedAt: float
@@ -68,9 +68,16 @@ def validate_presence_update(data: Any) -> PresenceUpdate:
     if missing:
         raise ValueError(f'missing field: {sorted(missing)[0]}')
 
+    clears_presence = data['chatId'] is None and data['chatTitle'] is None
+    if (data['chatId'] is None) != (data['chatTitle'] is None):
+        raise ValueError('chatId and chatTitle must both be null or strings')
+
     values: dict[str, Any] = {}
     for field, limit in _FIELD_LIMITS.items():
         value = data[field]
+        if clears_presence and field in ('chatId', 'chatTitle'):
+            values[field] = None
+            continue
         if not isinstance(value, str) or (field in ('clientId', 'chatId') and not value):
             raise ValueError(f'{field} must be a valid string')
         if len(value) > limit:
@@ -462,6 +469,13 @@ class CompanionPresenceSocketService:
         now = self.clock()
         if not self._consume_rate_limit(sid, now):
             return {'ok': False, 'error': 'rate_limited'}
+
+        if presence.chatId is None:
+            state = await self.store.disconnect(session['id'], sid, now=now)
+            if state is None:
+                state = await self.store.state(session['id'], now=now)
+            await self._emit(session['id'], state)
+            return {'ok': True, 'revision': state.revision}
 
         if self.get_readable_chat is None:
             from open_webui.utils.chat_access import get_readable_chat
