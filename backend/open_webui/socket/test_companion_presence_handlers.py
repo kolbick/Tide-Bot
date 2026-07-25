@@ -28,12 +28,13 @@ def payload(**changes):
     return data
 
 
-def make_service(*, readable_chat=..., store=None):
+def make_service(*, readable_chat=..., store=None, session_pool=None):
     sio = AsyncMock()
-    session_pool = {
-        'sid-a': {'id': 'user-a', 'role': 'user'},
-        'sid-b': {'id': 'user-b', 'role': 'user'},
-    }
+    if session_pool is None:
+        session_pool = {
+            'sid-a': {'id': 'user-a', 'role': 'user'},
+            'sid-b': {'id': 'user-b', 'role': 'user'},
+        }
     chat = SimpleChat(id='chat-a', title='Canonical database title')
     get_readable_chat = AsyncMock(return_value=chat if readable_chat is ... else readable_chat)
     service = CompanionPresenceSocketService(
@@ -65,6 +66,22 @@ class AsyncContextManager:
 
     def __call__(self):
         return self
+
+
+class RedisDictCompatibleSessionPool:
+    """Test the RedisDict mapping contract without importing its optional Yjs dependency."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+
+    def __contains__(self, key):
+        return key in self.data
+
+    def __delitem__(self, key):
+        del self.data[key]
 
 
 @pytest.mark.asyncio
@@ -276,8 +293,10 @@ async def test_redis_revision_metadata_is_removed_after_the_final_subscriber_dis
 async def test_orphan_reaper_removes_presence_before_session_identity():
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     store = RedisPresenceStore(redis=redis, key_prefix='test:', ttl_seconds=30)
-    service, _, session_pool, _ = make_service(store=store)
-    session_pool['orphaned-sid'] = {'id': 'user-a', 'role': 'user'}
+    session_pool = RedisDictCompatibleSessionPool(
+        {'orphaned-sid': {'id': 'user-a', 'role': 'user'}},
+    )
+    service, _, _, _ = make_service(store=store, session_pool=session_pool)
     await service.subscribe('orphaned-sid')
     original_disconnect = service.disconnect
     identity_was_available = False
@@ -294,6 +313,20 @@ async def test_orphan_reaper_removes_presence_before_session_identity():
     assert 'orphaned-sid' not in session_pool
     assert await redis.get(store._key('user-a')) is None
     await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_orphan_reaper_deletes_redis_session_when_presence_cleanup_raises():
+    session_pool = RedisDictCompatibleSessionPool(
+        {'orphaned-sid': {'id': 'user-a', 'role': 'user'}},
+    )
+    service, _, _, _ = make_service(session_pool=session_pool)
+    service.disconnect = AsyncMock(side_effect=RuntimeError('presence cleanup failed'))
+
+    with pytest.raises(RuntimeError, match='presence cleanup failed'):
+        await reap_presence_session(service, session_pool, 'orphaned-sid')
+
+    assert 'orphaned-sid' not in session_pool
 
 
 @pytest.mark.asyncio

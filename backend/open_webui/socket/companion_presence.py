@@ -698,7 +698,10 @@ async def reap_presence_session(service, session_pool, sid: str) -> None:
         if service is not None:
             await service.disconnect(sid)
     finally:
-        session_pool.pop(sid, None)
+        try:
+            del session_pool[sid]
+        except KeyError:
+            pass
 
 
 def start_presence_expiry_task(app, service: CompanionPresenceSocketService):
