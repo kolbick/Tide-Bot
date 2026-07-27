@@ -1,0 +1,13 @@
+# Tauri desktop shell: only the resolver-written artifacts are untracked.
+# Hand-edited fallbacks for the capability/provenance are disallowed.
+# Test fixtures under tests/fixtures/ are tracked by the integration tests
+# (companion_url_test.rs uses a stale-nonce pair to prove rejection).
+/src-tauri/capabilities/companion.json
+/src-tauri/generated/
+/src-tauri/target/
+/src-tauri/.cargo/config.toml
+node_modules/
+.package-lock.json
+/src-tauri/gen/
+/src-tauri/icons/icon.ico
+/src-tauri/icons/icon.icns

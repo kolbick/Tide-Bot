@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "tide-bot-desktop-origins/v1",
+  "resolverSha256": "eacd8d15f99d679a783eebc38be5c1eafbe5e60279b55b2e290ad76490f7b06d",
+  "templateSha256": "9df78d5534f70ddd5186a63c2a8c324682da5f0719f5bef4bedc03489fff2d5d",
+  "capabilitySha256": "feb1d7e358a70ca52c86d6151cb6c483defb44380122c60f62c6173e1a7c554e",
+  "normalizedOriginsHash": "d51961f140fbb8248bf30bc6bc4f8b8a5dad7847d58e37eb1ad92162102ed11a",
+  "generationNonce": "OLD-NONCE-FROM-PRIOR-PREPARE"
+}

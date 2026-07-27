@@ -1,0 +1,22 @@
+{
+	"name": "tide-bot-desktop",
+	"private": true,
+	"version": "0.1.0",
+	"description": "Tide-Bot native companion Tauri shell.",
+	"type": "module",
+	"engines": {
+		"node": "22.18.0"
+	},
+	"scripts": {
+		"tauri": "node scripts/build-desktop.mjs",
+		"test:tauri:generated": "node scripts/build-desktop.mjs test-tauri-generated",
+		"build:debug": "node scripts/build-desktop.mjs build-debug",
+		"build:windows": "node scripts/build-desktop.mjs build-windows"
+	},
+	"dependencies": {
+		"@tauri-apps/api": "2.1.1"
+	},
+	"devDependencies": {
+		"@tauri-apps/cli": "2.1.0"
+	}
+}

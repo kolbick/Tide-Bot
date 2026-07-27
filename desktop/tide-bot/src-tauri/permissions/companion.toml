@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-show-main-window"
+description = "Allow only the show_main_window command. The companion window must not run an unconstrained command surface."
+commands.allow = ["show_main_window"]
