@@ -11,6 +11,7 @@
 		"tauri": "node scripts/build-desktop.mjs",
 		"test:tauri:generated": "node scripts/build-desktop.mjs test-tauri-generated",
 		"build:debug": "node scripts/build-desktop.mjs build-debug",
+		"build:macos": "node scripts/build-desktop.mjs build-macos",
 		"build:windows": "node scripts/build-desktop.mjs build-windows"
 	},
 	"dependencies": {

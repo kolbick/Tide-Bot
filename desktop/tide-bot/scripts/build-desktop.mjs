@@ -125,9 +125,9 @@ export async function runBuildDesktop({ argv = process.argv, env = process.env, 
     const args = argv.slice(2);
     const command = args[0];
     if (!command) {
-        fail('usage: node build-desktop.mjs <test-tauri-generated|build-debug|build-windows>');
+        fail('usage: node build-desktop.mjs <test-tauri-generated|build-debug|build-windows|build-macos>');
     }
-    if (!['test-tauri-generated', 'build-debug', 'build-windows'].includes(command)) {
+    if (!['test-tauri-generated', 'build-debug', 'build-windows', 'build-macos'].includes(command)) {
         fail(`unknown subcommand: ${command}`);
     }
     if (!existsSync(SRC_TAURI_DIR)) {
@@ -181,7 +181,23 @@ export async function runBuildDesktop({ argv = process.argv, env = process.env, 
         if (exit !== 0) fail(`build-windows failed with exit ${exit}`);
         return { exit: 0, command, prepared };
     }
-    fail(`unknown subcommand: ${command}`);
+    if (command === 'build-macos') {
+        // The macOS bundle target triple is whatever the host is. On Apple
+        // Silicon it would be aarch64-apple-darwin; on Intel Macs it is
+        // x86_64-apple-darwin. tauri-build does not need an explicit
+        // --target when building for the host, so we omit it and let
+        // cargo pick the default. This keeps a single build command
+        // usable on both Mac architectures.
+        const exit = invokeCargo({
+            cargo,
+            env: augmentedEnv,
+            args: ['build', '--release'],
+            cwd: SRC_TAURI_DIR,
+            label: 'build-macos'
+        });
+        if (exit !== 0) fail(`build-macos failed with exit ${exit}`);
+        return { exit: 0, command, prepared };
+    }
 }
 
 if (process.argv[1] === __filename) {
