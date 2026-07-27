@@ -118,14 +118,21 @@ TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN=https://tidebot.example \
 TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN=https://tidebot.example \
   npm run build:debug
 
+# Local macOS release build (produces a Mach-O binary; bundle separately)
+TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN=https://tide-bot.com \
+  npm run build:macos
+# produces src-tauri/target/release/tide-bot
+# then bundle to a real .app:
+unset CI  # CI=1 in many shells makes the tauri CLI reject --bundles
+cd src-tauri
+TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN=https://tide-bot.com \
+  TIDE_BOT_DESKTOP_GENERATION_NONCE=$(cat generated/desktop-origin-provenance.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["generationNonce"])') \
+  npx @tauri-apps/cli build --bundles app
+# produces src-tauri/target/release/bundle/macos/Tide-Bot.app
+
 # Windows release — the GitHub Actions workflow handles this; do NOT
 # run build:windows on macOS. See .github/workflows/ted-bot-windows.yml.
 ```
-
-Node `--test` runner scripts (no aggregate npm script — invoke each directly):
-
-```bash
-node --test scripts/run-companion-cypress.test.mjs
 node --test scripts/run-companion-presence-redis-integration.test.mjs
 node --test scripts/validate-ted-bot-pet.test.mjs
 node --test scripts/verify-ted-bot-direction-evidence.test.mjs
