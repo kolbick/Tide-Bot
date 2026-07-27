@@ -101,6 +101,12 @@ jobs:
         working-directory: desktop/tide-bot
         run: npm ci
 
+      - name: Install root node dependencies
+        run: npm ci
+
+      - name: Build frontend (produces build/ for Tauri frontendDist)
+        run: npm run build
+
       - name: Pre-build lint smoke (tracked launcher only)
         working-directory: desktop/tide-bot
         run: node --check scripts/build-desktop.mjs && node --check scripts/desktop-origins.mjs
