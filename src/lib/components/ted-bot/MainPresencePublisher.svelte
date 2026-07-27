@@ -5,6 +5,7 @@
 
 	import { chatId, chatTitle, socket } from '$lib/stores';
 	import { createMainPresencePublisher } from '$lib/ted-bot/presence';
+	import { emitMainPresence } from '$lib/ted-bot/tauriBridge';
 
 	const CLIENT_ID_STORAGE_KEY = 'ted-bot-main-presence-client-id';
 
@@ -19,14 +20,37 @@
 		let currentChatTitle = '';
 		let hasChatId = false;
 		let hasChatTitle = false;
+		let isGenerating = false;
 		let currentSocket: Socket | null = null;
 		let publisher: ReturnType<typeof createMainPresencePublisher> | null = null;
 
+		const publishTauriBridge = () => {
+			emitMainPresence({
+				chatId: currentChatId || null,
+				chatTitle: currentChatId ? currentChatTitle || null : null,
+				isGenerating
+			});
+		};
 		const publishChat = () => {
+			publishTauriBridge();
 			if (!publisher || !hasChatId || !hasChatTitle) {
 				return;
 			}
 			publisher.setChat(currentChatId || null, currentChatId ? currentChatTitle || null : null);
+		};
+		// Independent of Chat.svelte's internal `generating` state — reuses the
+		// same 'chat:active' socket event Chat.svelte itself listens to, so this
+		// needs no changes to that file at all.
+		const handleSocketEvent = (event: { chat_id?: string; data?: { type?: string; data?: { active?: boolean } } }) => {
+			if (event?.data?.type !== 'chat:active' || event.chat_id !== currentChatId) {
+				return;
+			}
+			const nextGenerating = Boolean(event.data?.data?.active);
+			if (nextGenerating === isGenerating) {
+				return;
+			}
+			isGenerating = nextGenerating;
+			publishTauriBridge();
 		};
 		const publishFocus = () => {
 			publisher?.setFocused(document.hasFocus() && document.visibilityState === 'visible');
@@ -47,7 +71,9 @@
 				return;
 			}
 			publisher?.destroy();
+			currentSocket?.off('events', handleSocketEvent);
 			currentSocket = value;
+			currentSocket?.on('events', handleSocketEvent);
 			publisher = value
 				? createMainPresencePublisher({
 						socket: value,
@@ -55,6 +81,7 @@
 						deviceLabel: 'Tide-Bot Browser'
 					})
 				: null;
+			isGenerating = false;
 			publishChat();
 			publishFocus();
 		});
@@ -70,6 +97,7 @@
 			unsubscribeSocket();
 			unsubscribeChatId();
 			unsubscribeChatTitle();
+			currentSocket?.off('events', handleSocketEvent);
 			publisher?.destroy();
 		};
 	});
