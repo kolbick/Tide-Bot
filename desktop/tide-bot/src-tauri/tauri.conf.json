@@ -17,20 +17,7 @@
 				"scope": []
 			}
 		},
-		"windows": [
-			{
-				"label": "main",
-				"title": "Tide-Bot",
-				"width": 1280,
-				"height": 800,
-				"minWidth": 800,
-				"minHeight": 600,
-				"resizable": true,
-				"fullscreen": false,
-				"visible": true,
-				"decorations": true
-			}
-		],
+		"windows": [],
 		"trayIcon": {
 			"id": "tide-bot-main-tray",
 			"iconPath": "icons/tray.png",

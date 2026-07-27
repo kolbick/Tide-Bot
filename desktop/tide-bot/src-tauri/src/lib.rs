@@ -18,6 +18,7 @@ pub mod placement;
 pub use origin::{
     configured_auth_url,
     configured_companion_url,
+    configured_main_url,
     configured_remote_urls_json,
     parse_for_fixtures,
     CapabilitiesFixture,
@@ -67,6 +68,27 @@ fn companion_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWind
         .skip_taskbar(true)
         .inner_size(380.0, 520.0)
         .title("Ted-Bot")
+        .build()
+}
+
+/// The main window previously relied on `tauri.conf.json`'s static window
+/// declaration, which loads the bundled `frontendDist` build from Tauri's
+/// local asset origin. Every API/socket call in that build is relative
+/// (`WEBUI_BASE_URL` is empty in production), so a locally-loaded main
+/// window can never reach the real backend — it always hits Open WebUI's
+/// "Backend Required" guard. Building it here with the same verified
+/// `WebviewUrl::External` origin already used for `companion_window` and
+/// `sign_out` fixes that: the page is genuinely served from the production
+/// origin, so its relative calls resolve there too.
+fn main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
+    let url = origin::configured_main_url()?;
+    WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::External(url))
+        .title("Tide-Bot")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(800.0, 600.0)
+        .resizable(true)
+        .decorations(true)
+        .visible(true)
         .build()
 }
 
@@ -199,6 +221,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            let _ = main_window(&handle)?;
             let _ = companion_window(&handle)?;
 
             let bounds = placement::detect_initial_monitor(&handle);

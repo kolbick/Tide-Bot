@@ -160,6 +160,13 @@ pub fn configured_auth_url() -> tauri::Result<url::Url> {
 	url::Url::parse(&format!("{}/auth", parsed.canonical_origin)).map_err(|error| tauri::Error::AssetNotFound(error.to_string()))
 }
 
+pub fn configured_main_url() -> tauri::Result<url::Url> {
+	let remote = COMPILED_REMOTE.as_ref().map_err(|error| tauri::Error::AssetNotFound(error.clone()))?;
+	let origin = remote.urls.first().ok_or_else(|| tauri::Error::AssetNotFound("production origin missing".into()))?;
+	let parsed = parse_origin_string(origin).map_err(tauri::Error::AssetNotFound)?;
+	url::Url::parse(&format!("{}/", parsed.canonical_origin)).map_err(|error| tauri::Error::AssetNotFound(error.to_string()))
+}
+
 pub fn configured_remote_urls_json() -> Value {
 	match &*COMPILED_REMOTE {
 		Ok(remote) => serde_json::json!(remote.urls),
