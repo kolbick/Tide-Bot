@@ -14,6 +14,20 @@ is granted. Tray controls (Show Tide-Bot, Show or Hide Ted-Bot, Always on
 Top, Sign Out, Quit) and window-close lifecycle are implemented in native
 Rust and are not webview permissions.
 
+The companion's **Open Tide-Bot** control calls the native
+`show_main_window` command only inside Tauri. In a browser or during SSR it
+falls back to navigating to `/`; no Tauri bridge is required for browser use.
+
+## Release evidence
+
+The Windows workflow is `.github/workflows/ted-bot-windows.yml`. It requires
+the non-secret repository variable `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN`,
+uploads an unsigned artifact with checksums and generated-config metadata, and
+does not treat a local macOS debug build as Windows acceptance. Manual Windows
+install/session/lock/tray/sign-out checks and fresh Hatch Pet v2 acceptance from
+the actual Tauri app remain required. See
+`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md`.
+
 ## Required inputs
 
 | Environment variable | Required | Notes |
