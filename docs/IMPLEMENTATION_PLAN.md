@@ -85,3 +85,17 @@ evidence.
 **Release checkpoint:** no visible upstream or Kolb-Bot identity remains,
 required licensing remains, source and runtime acceptance are fresh, and the
 stack is operationally documented.
+
+## Native companion status
+
+The Tauri shell and native-or-browser main-window action are implemented under
+`desktop/tide-bot/` and `src/lib/ted-bot/openMainWindow.ts`. Focused capability,
+provenance, placement, URL, native action, and debug-build checks pass under
+the pinned Node 22.18.0 toolchain plus Rust stable. This is implementation
+evidence, not a production release claim.
+
+Release remains gated on provisioning the real desktop production origin,
+green Windows artifact workflow output, downloaded-artifact manual Windows
+acceptance, and fresh visual/runtime Hatch Pet v2 evidence from the actual
+Tauri application. See
+`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md`.

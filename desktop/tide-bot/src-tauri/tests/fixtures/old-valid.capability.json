@@ -1,0 +1,9 @@
+{
+	"identifier": "companion",
+	"description": "Controlled older-fresh fixture used only by tests/fixtures. The provenance accompanying this file uses a nonce that does not match the test's expected nonce; the fixture must therefore be rejected.",
+	"windows": ["companion"],
+	"permissions": ["allow-show-main-window"],
+	"remote": {
+		"urls": ["https://tidebot.example"]
+	}
+}

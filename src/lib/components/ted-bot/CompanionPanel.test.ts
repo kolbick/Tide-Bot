@@ -29,3 +29,10 @@ test('subscribes the authenticated companion route to authorized active-chat pre
 	expect(source).toMatch(/<CompanionPanel\s+chatId={activeChatId}/);
 	expect(source).not.toMatch(/getChatById|fetch\(|\$lib\/apis/);
 });
+
+test('exposes a labelled native-or-browser action for the main window', async () => {
+	const source = await readSource('./CompanionPanel.svelte');
+	expect(source).toContain("from '$lib/ted-bot/openMainWindow'");
+	expect(source).toContain('openMainWindow');
+	expect(source).toMatch(/aria-label=.*(?:main window|Tide-Bot)/i);
+});

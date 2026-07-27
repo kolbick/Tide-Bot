@@ -1,0 +1,225 @@
+name: ted-bot-windows
+
+# Reproducible Windows artifact build for the Tide-Bot native companion.
+# This workflow:
+#   * runs only on manual dispatch or a protected release-branch push,
+#   * uses windows-latest with the pinned Node 22.18.0 toolchain,
+#   * installs Rust stable with the MSVC default host triple so cargo can drive
+#     the x86_64-pc-windows-msvc target that desktop/tide-bot's build:windows
+#     script invokes,
+#   * requires the GitHub repository variable TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN
+#     (a non-secret, environment-scoped input) and forwards it as the same-named
+#     environment variable to desktop/tide-bot's tracked build launcher,
+#   * accepts the optional TIDE_BOT_DESKTOP_DEV_ORIGIN only when the workflow
+#     dispatch explicitly chose "loopback dev artifact"; release workflow runs
+#     leave it unset,
+#   * fails before compilation if the required variable is missing or either
+#     origin resolver validation fails (the launcher's own resolver rejects
+#     bad input; the workflow adds an explicit pre-check for the missing
+#     required case),
+#   * uploads the unsigned Windows artifact, a checksum file, and a metadata
+#     summary that records the origin values, generation nonce, and the
+#     SHA-256 of the compiled companion capability and provenance JSON.
+# The workflow never holds the origin in source or in a repository secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dev_artifact:
+        description: >-
+          Build an intentionally-loopback dev artifact. Only set when the
+          release engineer is deliberately producing a dev build; release
+          workflow runs leave this unchecked.
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches:
+      - 'release/**'
+    paths:
+      - '.github/workflows/ted-bot-windows.yml'
+      - 'desktop/tide-bot/**'
+      - 'src/lib/ted-bot/openMainWindow.ts'
+      - 'src/lib/ted-bot/openMainWindow.test.ts'
+      - 'src/lib/components/ted-bot/CompanionPanel.svelte'
+
+concurrency:
+  group: ted-bot-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22.18.0'
+
+jobs:
+  build-windows:
+    name: Build Tide-Bot Windows artifact
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Preflight required origin variable
+        shell: pwsh
+        env:
+          REQUIRED_ORIGIN: ${{ vars.TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:REQUIRED_ORIGIN)) {
+            Write-Error 'TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN is not provisioned as a repository variable. Configure the protected release workflow/repository settings before rebuilding.'
+            exit 1
+          }
+          Write-Host "Preflight: TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN is provisioned ($($env:REQUIRED_ORIGIN.Length) chars)."
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Node 22.18.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          check-latest: false
+
+      - name: Install Rust stable with MSVC default host
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/tide-bot/src-tauri/target
+          key: ${{ runner.os }}-cargo-ted-bot-windows-${{ hashFiles('desktop/tide-bot/src-tauri/Cargo.lock', 'desktop/tide-bot/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ted-bot-windows-
+
+      - name: Install desktop node dependencies
+        working-directory: desktop/tide-bot
+        run: npm ci
+
+      - name: Pre-build lint smoke (tracked launcher only)
+        working-directory: desktop/tide-bot
+        run: node --check scripts/build-desktop.mjs && node --check scripts/desktop-origins.mjs
+
+      - name: Build Windows artifact
+        working-directory: desktop/tide-bot
+        env:
+          TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN: ${{ vars.TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN }}
+          TIDE_BOT_DESKTOP_DEV_ORIGIN: ${{ vars.TIDE_BOT_DESKTOP_DEV_ORIGIN }}
+          DEV_ARTIFACT: ${{ inputs.dev_artifact }}
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -or $env:DEV_ARTIFACT -ne 'true') {
+            if (-not [string]::IsNullOrWhiteSpace($env:TIDE_BOT_DESKTOP_DEV_ORIGIN)) {
+              Write-Error 'TIDE_BOT_DESKTOP_DEV_ORIGIN is set but this is not an explicitly requested loopback-dev artifact.'
+              exit 1
+            }
+          }
+          npm run build:windows
+
+      - name: Collect build artifacts and metadata
+        shell: pwsh
+        env:
+          PRODUCTION_ORIGIN: ${{ vars.TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN }}
+          DEV_ORIGIN: ${{ vars.TIDE_BOT_DESKTOP_DEV_ORIGIN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repoRoot = Resolve-Path "${{ github.workspace }}"
+          $tauriDir = Join-Path $repoRoot 'desktop/tide-bot/src-tauri'
+          $releaseDir = Join-Path $tauriDir 'target/x86_64-pc-windows-msvc/release'
+          $artifactDir = Join-Path $repoRoot 'desktop/tide-bot/dist/ted-bot-windows'
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          $exes = Get-ChildItem -Path $releaseDir -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue
+          if (-not $exes) {
+            Write-Error "No .exe found under $releaseDir"
+            exit 1
+          }
+          foreach ($exe in $exes) {
+            Copy-Item -Path $exe.FullName -Destination $artifactDir -Force
+          }
+
+          $capabilityPath = Join-Path $tauriDir 'capabilities/companion.json'
+          $provenancePath = Join-Path $tauriDir 'generated/desktop-origin-provenance.json'
+          foreach ($path in @($capabilityPath, $provenancePath)) {
+            if (-not (Test-Path $path)) {
+              Write-Error "Expected generated artifact missing: $path"
+              exit 1
+            }
+            Copy-Item -Path $path -Destination $artifactDir -Force
+          }
+
+          $capabilitySha = (Get-FileHash -Algorithm SHA256 -Path $capabilityPath).Hash.ToLower()
+          $provenanceSha = (Get-FileHash -Algorithm SHA256 -Path $provenancePath).Hash.ToLower()
+          $provenanceBytes = Get-Content -Raw -Path $provenancePath
+          try {
+            $provenance = $provenanceBytes | ConvertFrom-Json
+          } catch {
+            Write-Error "Failed to parse provenance JSON: $($_.Exception.Message)"
+            exit 1
+          }
+          $generationNonce = $provenance.generationNonce
+          if ([string]::IsNullOrWhiteSpace($generationNonce)) {
+            Write-Error 'Provenance JSON missing generationNonce'
+            exit 1
+          }
+
+          # Write checksums for every shipped binary.
+          $checksumFile = Join-Path $artifactDir 'ted-bot-windows.sha256'
+          Set-Content -Path $checksumFile -Value '' -Encoding ASCII
+          $checksumLines = @()
+          foreach ($exe in $exes) {
+            $dest = Get-ChildItem -Path $artifactDir -Filter $exe.Name | Select-Object -First 1
+            $sha = (Get-FileHash -Algorithm SHA256 -Path $dest.FullName).Hash.ToLower()
+            $checksumLines += "$sha  $($dest.Name)"
+          }
+          $checksumLines -join "`n" | Out-File -FilePath $checksumFile -Encoding ASCII -NoNewline
+          Out-File -FilePath $checksumFile -Append -Encoding ASCII -NoNewline
+
+          # Metadata summary. The origins are written for traceability; the
+          # workflow never logs them to a public surface unless the runner
+          # has been deliberately configured to expose the artifact metadata.
+          $metadata = [ordered]@{
+            schemaVersion = 'ted-bot-windows-metadata/v1'
+            workflowRun = $env:GITHUB_RUN_ID
+            workflowRunAttempt = $env:GITHUB_RUN_ATTEMPT
+            workflowSha = $env:GITHUB_SHA
+            eventName = $env:GITHUB_EVENT_NAME
+            ref = $env:GITHUB_REF
+            generatedAt = (Get-Date).ToString('o')
+            productionOriginLength = $env:PRODUCTION_ORIGIN.Length
+            devOriginLength = if ($env:DEV_ORIGIN) { $env:DEV_ORIGIN.Length } else { 0 }
+            generationNonce = $generationNonce
+            capabilitySha256 = $capabilitySha
+            provenanceSha256 = $provenanceSha
+            companionSha256 = $capabilitySha
+            binaries = @(
+              foreach ($exe in $exes) {
+                $dest = Get-ChildItem -Path $artifactDir -Filter $exe.Name | Select-Object -First 1
+                [ordered]@{
+                  name = $dest.Name
+                  sizeBytes = $dest.Length
+                  sha256 = (Get-FileHash -Algorithm SHA256 -Path $dest.FullName).Hash.ToLower()
+                }
+              }
+            )
+          }
+          $metadataJson = $metadata | ConvertTo-Json -Depth 6
+          Set-Content -Path (Join-Path $artifactDir 'ted-bot-windows-metadata.json') -Value $metadataJson -Encoding UTF8
+
+          Write-Host "Capability SHA-256: $capabilitySha"
+          Write-Host "Provenance SHA-256: $provenanceSha"
+          Write-Host "Generation nonce: $generationNonce"
+          Write-Host "Binary count: $(@($exes).Count)"
+
+      - name: Upload unsigned Windows artifact, checksum, and metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: ted-bot-windows-artifact
+          path: desktop/tide-bot/dist/ted-bot-windows
+          if-no-files-found: error
+          retention-days: 14

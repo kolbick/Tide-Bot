@@ -102,3 +102,49 @@ Before an actual production release, verify the server has the required producti
 - Do not claim the public site is updated until the live domain is rechecked in an authenticated browser after deployment.
 - The local administrator account was created directly in the persistent Tide-Bot data volume; do not
   copy a production database, session, or user data into the test stack.
+
+## Native desktop companion (Tauri)
+
+The Tauri-based native companion is the supported path for keeping a typed
+Tide-Bot session usable when the main browser window is minimized. Browser
+Picture-in-Picture is not an equivalent substitute. The companion ships on
+macOS and Windows; build, signing, and acceptance evidence live in
+`desktop/tide-bot/`.
+
+### Origin provisioning
+
+The desktop build is bound to its companion URL at compile time. The origin
+is provisioned per-build through the non-secret repository variable
+`TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` (Settings → Secrets and variables →
+Actions → Variables). It is never a secret and is never written to source.
+The optional loopback-only `TIDE_BOT_DESKTOP_DEV_ORIGIN` is reserved for an
+intentionally loopback development artifact; the release workflow and
+protected-branch pushes reject it. The build launcher
+(`desktop/tide-bot/scripts/build-desktop.mjs`) revalidates both inputs
+through the tracked resolver before compiling, and the Cargo `build.rs`
+re-hashes the resolver, template, and generated capability/provenance
+before they are embedded in the binary. Any drift fails the build.
+
+### Windows artifact workflow
+
+A reproducible GitHub Actions workflow at
+`.github/workflows/ted-bot-windows.yml` builds the unsigned Windows
+artifact on `windows-latest`. It accepts manual dispatch (with an optional
+loopback-dev flag) and pushes to protected `release/**` branches. It pins
+Node 22.18.0, Rust stable with the MSVC default host triple, and forwards
+`TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` (and the optional dev origin) to
+`desktop/tide-bot`'s `npm run build:windows`. The workflow fails before
+compilation if the required variable is absent or invalid, refuses a dev
+origin on a release push, uploads the unsigned binary alongside a SHA-256
+checksum file and a `ted-bot-windows-metadata.json` summary, and never
+records the resolved origin values to runner output.
+
+### Acceptance state
+
+Local macOS debug evidence is a development convenience only. It is not
+Windows acceptance and not a real production deployment. The unprovisioned
+real production origin, the downloaded Windows artifact's manual install /
+sign-in / minimize / lock / tray / sign-out results, and a fresh actual
+Tauri Hatch Pet v2 visual/runtime acceptance are external/pending in this
+checkout and are tracked in
+`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md`.
