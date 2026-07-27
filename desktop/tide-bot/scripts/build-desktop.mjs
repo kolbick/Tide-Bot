@@ -39,15 +39,29 @@ const FORBIDDEN_ENV = [
 ];
 
 function findCargo() {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const cargoHome = process.env.CARGO_HOME || path.join(home, '.cargo');
     const candidates = [
         process.env.CARGO_BIN,
-        path.join(process.env.HOME ?? '', '.cargo', 'bin', 'cargo'),
+        path.join(cargoHome, 'bin', 'cargo'),
+        path.join(cargoHome, 'bin', 'cargo.exe'),
         '/usr/local/cargo/bin/cargo',
+        '/usr/local/cargo/bin/cargo.exe',
         '/opt/homebrew/bin/cargo',
         '/usr/bin/cargo'
     ].filter(Boolean);
     for (const candidate of candidates) {
         if (existsSync(candidate)) return candidate;
+    }
+    // Fall back to PATH lookup so the GitHub Actions runner (which installs
+    // rustup to %USERPROFILE%\.cargo\bin and adds it to PATH) can find cargo
+    // regardless of the exact home directory layout.
+    const pathDirs = (process.env.PATH || '').split(path.delimiter);
+    for (const dir of pathDirs) {
+        for (const name of ['cargo', 'cargo.exe']) {
+            const full = path.join(dir, name);
+            if (existsSync(full)) return full;
+        }
     }
     return null;
 }
