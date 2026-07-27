@@ -1,0 +1,159 @@
+name: tedbot-companion-cypress
+
+services:
+  fake-openai:
+    image: ${FAKE_OPENAI_IMAGE:?generated fixture image tag required}
+    build:
+      context: ./cypress-fake-openai
+      dockerfile: Dockerfile
+    restart: 'no'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8081/health').then((r) => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - companion-cypress
+
+  tide-bot:
+    image: tide-bot:local
+    restart: 'no'
+    depends_on:
+      fake-openai:
+        condition: service_healthy
+    environment:
+      WEBUI_NAME: Tide-Bot
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?generated private test secret required}
+      DATABASE_URL: sqlite:////app/backend/data/companion-cypress.db
+      DATA_DIR: /app/backend/data
+      ENABLE_SIGNUP: 'true'
+      DEFAULT_USER_ROLE: user
+      ENABLE_LOGIN_FORM: 'true'
+      ENABLE_VERSION_UPDATE_CHECK: 'false'
+      ENABLE_COMMUNITY_SHARING: 'false'
+      OFFLINE_MODE: 'true'
+      RAG_EMBEDDING_MODEL: ''
+      BYPASS_EMBEDDING_AND_RETRIEVAL: 'true'
+      ENABLE_OLLAMA_API: 'false'
+      OLLAMA_API_BASE_URL: ''
+      OLLAMA_BASE_URL: ''
+      OLLAMA_BASE_URLS: ''
+      OLLAMA_API_CONFIGS: ''
+      ENABLE_OPENAI_API: 'true'
+      OPENAI_API_BASE_URL: ''
+      OPENAI_API_BASE_URLS: http://fake-openai:8081/v1
+      OPENAI_API_KEY: ''
+      OPENAI_API_KEYS: tedbot-cypress-inert-key
+      OPENAI_API_CONFIGS: '{}'
+      DEFAULT_MODELS: tedbot-cypress-model
+      ENABLE_WEB_SEARCH: 'true'
+      ENABLE_WEB_SEARCH_CONFIRMATION: 'true'
+      WEB_SEARCH_ENGINE: ''
+      GOOGLE_PSE_API_KEY: ''
+      GOOGLE_PSE_ENGINE_ID: ''
+      BRAVE_SEARCH_API_KEY: ''
+      KAGI_SEARCH_API_KEY: ''
+      MOJEEK_SEARCH_API_KEY: ''
+      BOCHA_SEARCH_API_KEY: ''
+      SEARCHAPI_API_KEY: ''
+      SERPAPI_API_KEY: ''
+      SERPER_API_KEY: ''
+      SERPLY_API_KEY: ''
+      SERPSTACK_API_KEY: ''
+      BING_SEARCH_V7_ENDPOINT: ''
+      BING_SEARCH_V7_SUBSCRIPTION_KEY: ''
+      AZURE_AI_SEARCH_API_KEY: ''
+      EXTERNAL_WEB_SEARCH_URL: ''
+      EXTERNAL_WEB_SEARCH_API_KEY: ''
+      YANDEX_WEB_SEARCH_API_KEY: ''
+      OLLAMA_CLOUD_API_KEY: ''
+      ENABLE_OAUTH_SIGNUP: ''
+      OAUTH_AUTO_REDIRECT: ''
+      OAUTH_CLIENT_ID: ''
+      OAUTH_CLIENT_SECRET: ''
+      GOOGLE_CLIENT_ID: ''
+      GOOGLE_CLIENT_SECRET: ''
+      MICROSOFT_CLIENT_ID: ''
+      MICROSOFT_CLIENT_SECRET: ''
+      GITHUB_CLIENT_ID: ''
+      GITHUB_CLIENT_SECRET: ''
+      FEISHU_CLIENT_ID: ''
+      FEISHU_CLIENT_SECRET: ''
+      ENABLE_LDAP: ''
+      LDAP_SERVER_HOST: ''
+      LDAP_APP_DN: ''
+      LDAP_APP_PASSWORD: ''
+      TERMINAL_SERVER_CONNECTIONS: '[]'
+      TERMINAL_PROXY_HEADERS: '{}'
+      ENABLE_TERMINAL: ''
+      CPTR_API_BASE_URL: ''
+      CPTR_API_KEY: ''
+      TIDE_CPTR_GATE_TOKEN: ''
+      CPTR_GATEWAY_URL: ''
+      CPTR_GATEWAY_API_KEY: ''
+      CORS_ALLOW_ORIGIN: http://127.0.0.1:${APP_HOST_PORT};http://localhost:${APP_HOST_PORT}
+    volumes:
+      - ../../build:/app/build:ro
+      - ../../backend/open_webui:/app/backend/open_webui:ro
+      - companion-cypress-data:/app/backend/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:8080/health'', timeout=5)"'
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+    networks:
+      - companion-cypress
+
+  # Docker will not publish a port from an `internal` network, so the app and the
+  # fake model keep zero egress and this fixed TCP forwarder is the only member of
+  # both networks. It holds no credentials and can reach only the two isolated
+  # upstreams compiled into its source.
+  loopback-gateway:
+    image: ${GATEWAY_IMAGE:?generated fixture image tag required}
+    build:
+      context: ./cypress-loopback-gateway
+      dockerfile: Dockerfile
+    restart: 'no'
+    depends_on:
+      fake-openai:
+        condition: service_healthy
+      tide-bot:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${APP_HOST_PORT:?generated app port required}:8080'
+      - '127.0.0.1:${FIXTURE_STATUS_PORT:?generated fixture port required}:8081'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "const s=require('node:net');Promise.all([8080,8081].map((p)=>new Promise((res,rej)=>{const c=s.createConnection({host:'127.0.0.1',port:p},()=>{c.end();res()});c.on('error',rej)}))).catch(()=>process.exit(1))"
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - companion-cypress
+      - companion-cypress-ingress
+
+volumes:
+  companion-cypress-data:
+
+networks:
+  companion-cypress:
+    driver: bridge
+    internal: true
+  companion-cypress-ingress:
+    driver: bridge

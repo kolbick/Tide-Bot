@@ -7,10 +7,17 @@ const readSource = (relativePath: string) =>
 
 test('reuses the canonical companion Chat surface without duplicate APIs', async () => {
 	const source = await readSource('./CompanionPanel.svelte');
+	const canonicalChat = await readSource('../chat/Chat.svelte');
 
 	expect(source).toContain("from '$lib/components/chat/Chat.svelte'");
 	expect(source).toMatch(/<Chat[\s\S]*chatIdProp={chatId}[\s\S]*surface=['"]companion['"]/);
 	expect(source).not.toMatch(/from\s+['"]\$lib\/apis\/(?:openai|tools)['"]/);
+	expect(canonicalChat).toContain(
+		"import WebSearchConfirmDialog from '../common/ConfirmDialog.svelte'"
+	);
+	expect(canonicalChat).toMatch(
+		/<WebSearchConfirmDialog[\s\S]*title={\$i18n\.t\('Use Web Search\?'\)}[\s\S]*on:cancel=/
+	);
 });
 
 test('subscribes the authenticated companion route to authorized active-chat presence', async () => {
