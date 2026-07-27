@@ -100,6 +100,22 @@ test('workflow: npm ci under desktop/tide-bot', () => {
 	assert.equal(ciStep['working-directory'], 'desktop/tide-bot');
 });
 
+test('workflow: root npm ci and frontend build precede tauri build', () => {
+	const steps = wf.jobs['build-windows'].steps;
+	const find = (n) => steps.findIndex((s) => s.name === n);
+	const rootCi = find('Install root node dependencies');
+	const frontendBuild = find('Build frontend (produces build/ for Tauri frontendDist)');
+	const tauriBuild = find('Build Windows artifact');
+	assert.ok(rootCi >= 0, 'Install root node dependencies step required');
+	assert.ok(frontendBuild >= 0, 'Build frontend step required');
+	assert.ok(rootCi < tauriBuild, 'root npm ci must precede tauri build');
+	assert.ok(frontendBuild < tauriBuild, 'frontend build must precede tauri build');
+	const rootCiStep = steps[rootCi];
+	const frontendStep = steps[frontendBuild];
+	assert.match(rootCiStep.run, /npm ci/);
+	assert.match(frontendStep.run, /npm run build/);
+});
+
 test('workflow: cargo cache key includes Cargo.lock', () => {
 	const cacheStep = wf.jobs['build-windows'].steps.find(
 		(s) => s.name === 'Cache cargo registry and target'
