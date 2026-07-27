@@ -113,13 +113,15 @@ macOS and Windows; build, signing, and acceptance evidence live in
 
 ### Origin provisioning
 
-The desktop build is bound to its companion URL at compile time. The origin
-is provisioned per-build through the non-secret repository variable
-`TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN` (Settings → Secrets and variables →
-Actions → Variables). It is never a secret and is never written to source.
-The optional loopback-only `TIDE_BOT_DESKTOP_DEV_ORIGIN` is reserved for an
-intentionally loopback development artifact; the release workflow and
-protected-branch pushes reject it. The build launcher
+`tide-bot.com` is served via Cloudflare. The desktop build is bound to this
+origin at compile time, and the value is provisioned per-build through the
+non-secret repository variable `TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN`
+(Settings → Secrets and variables → Actions → Variables). It is never a
+secret and is never written to source. For a Tide-Bot release build the
+value is `https://tide-bot.com`. The optional loopback-only
+`TIDE_BOT_DESKTOP_DEV_ORIGIN` is reserved for an intentionally loopback
+development artifact; the release workflow and protected-branch pushes
+reject it. The build launcher
 (`desktop/tide-bot/scripts/build-desktop.mjs`) revalidates both inputs
 through the tracked resolver before compiling, and the Cargo `build.rs`
 re-hashes the resolver, template, and generated capability/provenance
@@ -139,12 +141,33 @@ origin on a release push, uploads the unsigned binary alongside a SHA-256
 checksum file and a `ted-bot-windows-metadata.json` summary, and never
 records the resolved origin values to runner output.
 
-### Acceptance state
+### Acceptance state (as of 2026-07-27)
 
-Local macOS debug evidence is a development convenience only. It is not
-Windows acceptance and not a real production deployment. The unprovisioned
-real production origin, the downloaded Windows artifact's manual install /
-sign-in / minimize / lock / tray / sign-out results, and a fresh actual
-Tauri Hatch Pet v2 visual/runtime acceptance are external/pending in this
-checkout and are tracked in
-`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md`.
+The Windows release artifact is **built and downloaded**. Run
+[30295334507](https://github.com/kolbick/Tide-Bot/actions/runs/30295334507)
+produced `tide-bot.exe` (101 MB, PE32+ x86-64 GUI) with SHA-256
+`81a99f69ce83cf1a31a445dee305e3b9ca7c01f2fcb61b380fb88435345f5579`, baked
+with `https://tide-bot.com` as the production origin. All five build fixes
+landed on `origin/main`; the workflow now produces a clean artifact from a
+cold start in ~15 minutes.
+
+Local macOS debug evidence remains a development convenience only. The
+remaining external gates are:
+
+- **Manual Windows artifact acceptance** — run `tide-bot.exe` on a Windows
+  box with a non-production test account; exercise sign-in, main-window
+  hide, typed companion chat, active-chat sync, denied chat confirmation,
+  disconnect/reconnect, sign-out, OS lock/unlock, tray menu, keyboard
+  navigation, reduced motion, and uninstall. Record OS build and binary
+  checksum.
+- **Real Tauri macOS runtime acceptance** — sign-in, minimized main
+  window, typed chat, active-chat sync, sign-out, lock behavior, tray
+  actions, keyboard navigation, reduced motion, and uninstall. Run
+  separately from the debug compilation.
+- **Fresh Hatch Pet v2 visual/runtime acceptance** from the actual Tauri
+  app, via the required direction-evidence pipeline. Browser or local
+  macOS-only evidence does not replace this gate.
+
+Full evidence, digests, and the build-fix chain are in
+`docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md` and
+`docs/TED_BOT_NATIVE_COMPANION_HANDOFF_2026-07-27.md`.
