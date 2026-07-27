@@ -117,8 +117,12 @@
 	import Image from '../common/Image.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import EmbeddedChatHistoryDropdown from './EmbeddedChatHistoryDropdown.svelte';
+	import { createChatLifecycleBinding, type PendingEventCallback } from './chatLifecycleBinding';
 
-	export let chatIdProp = '';
+	type ChatSurface = 'full' | 'note' | 'companion';
+
+	export let chatIdProp: string | null | undefined = '';
+	export let surface: ChatSurface = 'full';
 	export let embedded = false;
 	export let embeddedTitle = '';
 	export let embeddedChats = [];
@@ -160,7 +164,21 @@
 	let eventConfirmationInputValue = '';
 	let eventConfirmationInputType = '';
 	let eventConfirmationInputOptions: ({ label?: string; value: string } | string)[] = [];
-	let eventCallback = null;
+	const chatLifecycle = createChatLifecycleBinding();
+	let eventCallback: PendingEventCallback | null = null;
+	let processingQueueChats = new Set<string>();
+
+	const clearEventConfirmationState = () => {
+		showEventConfirmation = false;
+		eventConfirmationTitle = '';
+		eventConfirmationMessage = '';
+		eventConfirmationInput = false;
+		eventConfirmationInputPlaceholder = '';
+		eventConfirmationInputValue = '';
+		eventConfirmationInputType = '';
+		eventConfirmationInputOptions = [];
+		eventCallback = null;
+	};
 
 	let selectedModels = [''];
 	let atSelectedModel: Model | undefined;
@@ -368,6 +386,7 @@
 	let files = [];
 	let params = {};
 	let loadedChatIdProp = '';
+	let lifecycleChatId: string | null | undefined = undefined;
 	let currentDraftKey = '';
 
 	const mergeFiles = (current, incoming) => {
@@ -393,12 +412,24 @@
 		});
 	};
 
-	$: if (chatIdProp && chatIdProp !== loadedChatIdProp) {
+	$: if (chatIdProp !== lifecycleChatId) {
+		lifecycleChatId = chatIdProp;
+		generationController?.abort();
+		generationController = null;
+		generating = false;
+		chatLifecycle.resetForNavigation();
+		clearEventConfirmationState();
+		processingQueueChats.clear();
+
+		if (chatIdProp) {
 		noteChatDebug('chatIdProp changed; loading linked chat', {
 			previousChatIdProp: loadedChatIdProp
 		});
 		loadedChatIdProp = chatIdProp;
 		navigateHandler();
+		} else {
+			loadedChatIdProp = '';
+		}
 	}
 
 	$: if (embedded && embeddedDraftKey && embeddedDraftKey !== currentDraftKey) {
@@ -423,7 +454,11 @@
 		}
 
 		clearTimeout(saveControlsTimer);
-		await saveControls();
+		let savedControlsResponse: any = null;
+		const prepareNavigation = chatLifecycle.capture('load', () => {
+			if (savedControlsResponse) {
+				chat = savedControlsResponse;
+			}
 		loading = true;
 
 		prompt = '';
@@ -435,20 +470,35 @@
 		selectedFilterIds = [];
 		webSearchEnabled = false;
 		imageGenerationEnabled = false;
+		});
+		savedControlsResponse = await saveControls({ updateLoadedChat: false });
+		if (!(await prepareNavigation.continueIfCurrent())) {
+			return;
+		}
 
 		const storageChatInput = sessionStorage.getItem(
 			`chat-input${chatIdProp ? `-${chatIdProp}` : ''}`
 		);
 
+		const loadedChatContinuation = chatLifecycle.capture('load', () => {
+			noteChatDebug('loadChat completed inside navigateHandler');
+		});
 		const loaded = chatIdProp ? await loadChat() : false;
-		noteChatDebug('loadChat completed inside navigateHandler', { loaded });
+		if (!(await loadedChatContinuation.continueIfCurrent())) {
+			return;
+		}
+		noteChatDebug('loadChat result inside navigateHandler', { loaded });
+
 		if (loaded) {
-			await tick();
+			const renderLoadedChat = chatLifecycle.capture('load', () => {
 			loading = false;
 			noteChatDebug('embedded chat loading false');
 			window.setTimeout(() => scrollToBottom(), 0);
-
+			});
 			await tick();
+			if (!(await renderLoadedChat.continueIfCurrent())) {
+				return;
+			}
 
 			// Mark chat read when initially loading it
 			if (chatIdProp && !$temporaryChatEnabled) {
@@ -458,10 +508,7 @@
 			// Process any queued requests if the chat is idle
 			const lastMessage = history.currentId ? history.messages[history.currentId] : null;
 			const isIdle = !lastMessage || lastMessage.role !== 'assistant' || lastMessage.done;
-			if (isIdle) {
-				await processNextInQueue(chatIdProp);
-			}
-
+			const restoreDraft = chatLifecycle.capture('load', async () => {
 			if (storageChatInput) {
 				try {
 					const input = JSON.parse(storageChatInput);
@@ -483,14 +530,24 @@
 
 			const chatInput = document.getElementById('chat-input');
 			chatInput?.focus();
-		} else if (!embedded) {
+			});
+			if (isIdle && chatIdProp) {
+				await processNextInQueue(chatIdProp);
+			}
+			await restoreDraft.continueIfCurrent();
+		} else {
+			const handleFailedLoad = chatLifecycle.capture('load', async () => {
+				if (!embedded && surface !== 'companion') {
 			await goto('/');
 		} else {
 			loading = false;
-			console.warn('[note-chat] embedded load failed; clearing spinner', {
+					console.warn('[note-chat] embedded or companion load failed; clearing spinner', {
 				chatIdProp,
 				activeChatId: $chatId
 			});
+		}
+			});
+			await handleFailedLoad.continueIfCurrent();
 		}
 	};
 
@@ -969,7 +1026,7 @@
 						toast.info(toastContent);
 					}
 				} else if (type === 'confirmation') {
-					eventCallback = cb;
+					eventCallback = chatLifecycle.registerPendingEventCallback(cb);
 
 					eventConfirmationInput = false;
 					showEventConfirmation = true;
@@ -978,21 +1035,21 @@
 					eventConfirmationTitle = data.title;
 					eventConfirmationMessage = data.message;
 				} else if (type === 'execute') {
-					eventCallback = cb;
+					eventCallback = chatLifecycle.registerPendingEventCallback(cb);
+					const executeCallback = eventCallback;
 
 					try {
 						// Use Function constructor to evaluate code in a safer way
 						const asyncFunction = new Function(`return (async () => { ${data.code} })()`);
 						const result = await asyncFunction(); // Await the result of the async function
 
-						if (cb) {
-							cb(result);
-						}
+						executeCallback.settle(result);
 					} catch (error) {
 						console.error('Error executing code:', error);
+						executeCallback.settle(false);
 					}
 				} else if (type === 'input') {
-					eventCallback = cb;
+					eventCallback = chatLifecycle.registerPendingEventCallback(cb);
 
 					eventConfirmationInput = true;
 					showEventConfirmation = true;
@@ -1053,12 +1110,12 @@
 					eventConfirmationInput = false;
 					eventConfirmationTitle = $i18n.t('Confirm Prompt from Embed');
 					eventConfirmationMessage = prompt;
-					eventCallback = async (confirmed: boolean) => {
+					eventCallback = chatLifecycle.registerPendingEventCallback(async (confirmed: boolean) => {
 						if (confirmed) {
 							await tick();
 							submitHandler(prompt);
 						}
-					};
+					});
 					showEventConfirmation = true;
 				}
 			}
@@ -1086,12 +1143,12 @@
 					eventConfirmationInput = false;
 					eventConfirmationTitle = $i18n.t('Confirm Prompt from Embed');
 					eventConfirmationMessage = event.data.text;
-					eventCallback = async (confirmed: boolean) => {
+					eventCallback = chatLifecycle.registerPendingEventCallback(async (confirmed: boolean) => {
 						if (confirmed) {
 							await tick();
 							submitHandler(event.data.text);
 						}
-					};
+					});
 					showEventConfirmation = true;
 				}
 			}
@@ -1278,6 +1335,14 @@
 				console.error(e);
 			}
 		};
+	});
+
+	onDestroy(() => {
+		generationController?.abort();
+		generationController = null;
+		generating = false;
+		processingQueueChats.clear();
+		chatLifecycle.destroy();
 	});
 
 	// File upload functions
@@ -1686,7 +1751,7 @@
 		await showCallOverlay.set(false);
 		await showArtifacts.set(false);
 
-		if (!embedded && $page.url.pathname.includes('/c/')) {
+		if (!embedded && surface !== 'companion' && $page.url.pathname.includes('/c/')) {
 			window.history.replaceState(history.state, '', `/`);
 		}
 
@@ -1824,17 +1889,21 @@
 			temporaryChatEnabled.set(false);
 		}
 
-		chat = await getChatById(localStorage.token, $chatId).catch(async (error) => {
+		let loadedChat: any = null;
+		const chatResponseContinuation = chatLifecycle.capture('load', () => {
+			chat = loadedChat;
+		});
+		loadedChat = await getChatById(localStorage.token, $chatId).catch((error) => {
 			console.error('[note-chat] getChatById failed', {
 				chatIdProp,
 				activeChatId: $chatId,
 				error
 			});
-			if (!embedded) {
-				await goto('/');
-			}
 			return null;
 		});
+		if (!(await chatResponseContinuation.continueIfCurrent())) {
+			return false;
+		}
 		noteChatDebug('getChatById completed', {
 			found: !!chat,
 			chatId: chat?.id,
@@ -1843,7 +1912,11 @@
 		});
 
 		if (chat) {
-			tags = await getTagsById(localStorage.token, $chatId).catch(async (error) => {
+			let loadedTags: any[] = [];
+			const tagsContinuation = chatLifecycle.capture('load', () => {
+				tags = loadedTags;
+			});
+			loadedTags = await getTagsById(localStorage.token, $chatId).catch(async (error) => {
 				console.warn('[note-chat] getTagsById failed; continuing without tags', {
 					chatIdProp,
 					activeChatId: $chatId,
@@ -1851,6 +1924,9 @@
 				});
 				return [];
 			});
+			if (!(await tagsContinuation.continueIfCurrent())) {
+				return false;
+			}
 			noteChatDebug('getTagsById completed', { tagCount: tags?.length ?? 0 });
 
 			const chatContent = chat.chat;
@@ -1903,8 +1979,7 @@
 				serverContextUsage = chat?.context_usage ?? null;
 
 				autoScroll = true;
-				await tick();
-
+				const historyRenderContinuation = chatLifecycle.capture('load', () => {
 				// Mark all non-current assistant messages as done
 				if (history.currentId) {
 					for (const message of Object.values(history.messages)) {
@@ -1918,28 +1993,23 @@
 						}
 					}
 				}
+				});
+				await tick();
+				if (!(await historyRenderContinuation.continueIfCurrent())) {
+					return false;
+				}
 
 				// Reconcile active tasks with message state:
 				// If the response is already done, remaining tasks are just background
 				// work (follow-ups, title gen) that shouldn't block the input.
 				const activeTaskIds = taskIds;
 				const currentMessage = history.currentId ? history.messages[history.currentId] : null;
-				const pendingTaskIds = await getTaskIdsByChatId(localStorage.token, $chatId)
-					.then((res) => res?.task_ids ?? [])
-					.catch((error) => {
-						console.warn('[note-chat] getTaskIdsByChatId failed; continuing without tasks', {
-							chatIdProp,
-							activeChatId: $chatId,
-							error
-						});
-						return [];
-					});
-				noteChatDebug('task reconciliation completed', {
-					pendingTaskCount: pendingTaskIds.length,
-					hasCurrentMessage: !!currentMessage
-				});
+				let pendingTaskIds: string[] = [];
+				let taskStateCurrent = true;
+				const taskContinuation = chatLifecycle.capture('load', () => {
 				if (taskIds !== activeTaskIds) {
 					noteChatDebug('task ids changed during load; aborting stale load');
+						taskStateCurrent = false;
 					return;
 				}
 				const responseComplete = currentMessage?.role === 'assistant' && currentMessage?.done;
@@ -1953,10 +2023,32 @@
 						currentMessage.done = true;
 					}
 				}
+				});
+				pendingTaskIds = await getTaskIdsByChatId(localStorage.token, $chatId)
+					.then((res) => res?.task_ids ?? [])
+					.catch((error) => {
+						console.warn('[note-chat] getTaskIdsByChatId failed; continuing without tasks', {
+							chatIdProp,
+							activeChatId: $chatId,
+							error
+						});
+						return [];
+					});
+				noteChatDebug('task reconciliation completed', {
+					pendingTaskCount: pendingTaskIds.length,
+					hasCurrentMessage: !!currentMessage
+				});
+				if (!(await taskContinuation.continueIfCurrent()) || !taskStateCurrent) {
+					return false;
+				}
 
+				let loadSettled = false;
+				const settleLoad = chatLifecycle.capture('load', () => {
+					loadSettled = true;
+				});
 				await tick();
-
-				return true;
+				await settleLoad.continueIfCurrent();
+				return loadSettled;
 			} else {
 				console.warn('[note-chat] chat response missing chat payload', {
 					chatIdProp,
@@ -2020,8 +2112,6 @@
 		}
 	};
 
-	let processingQueueChats = new Set<string>();
-
 	const processNextInQueue = async (targetChatId: string) => {
 		if (processingQueueChats.has(targetChatId)) return;
 
@@ -2029,6 +2119,9 @@
 		if (!queue || queue.length === 0) return;
 
 		processingQueueChats.add(targetChatId);
+		const queueContinuation = chatLifecycle.capture('queue', () => {
+			processingQueueChats.delete(targetChatId);
+		});
 		try {
 			const combinedPrompt = queue.map((m) => m.prompt).join('\n\n');
 			const combinedFiles = queue.flatMap((m) => m.files);
@@ -2040,7 +2133,9 @@
 
 			await submitPrompt(combinedPrompt, combinedFiles);
 		} finally {
-			processingQueueChats.delete(targetChatId);
+			// Current queue settlement deletes through the lifecycle binding.
+			// Navigation and destroy clear stale in-flight markers synchronously.
+			await queueContinuation.continueIfCurrent();
 		}
 	};
 
@@ -2253,7 +2348,11 @@
 		}
 
 		if (error) {
+			const errorContinuation = chatLifecycle.capture('completion', () => {});
 			await handleOpenAIError(error, message);
+			if (!(await errorContinuation.continueIfCurrent())) {
+				return;
+			}
 		}
 
 		if (sources && !message?.sources) {
@@ -2312,8 +2411,13 @@
 			}
 
 			if ($settings.responseAutoPlayback && !$showCallOverlay) {
-				await tick();
+				const autoplayContinuation = chatLifecycle.capture('completion', () => {
 				document.getElementById(`speak-button-${message.id}`)?.click();
+				});
+				await tick();
+				if (!(await autoplayContinuation.continueIfCurrent())) {
+					return;
+				}
 			}
 
 			// Emit chat event for TTS (only when call overlay is active)
@@ -2329,7 +2433,7 @@
 
 			history.messages[message.id] = message;
 
-			await tick();
+			const renderCompletion = chatLifecycle.capture('completion', () => {
 			if (autoScroll) {
 				scrollToBottom();
 			}
@@ -2343,17 +2447,28 @@
 				message.id,
 				createMessagesList(history, message.id)
 			);
+			});
+			await tick();
+			if (!(await renderCompletion.continueIfCurrent())) {
+				return;
+			}
 
 			// Process next queued request if any
+			const queueContinuation = chatLifecycle.capture('completion', () => {});
 			await processNextInQueue(chatId);
+			if (!(await queueContinuation.continueIfCurrent())) {
+				return;
+			}
 		}
 
 		console.log(data);
-		await tick();
-
+		const finalRender = chatLifecycle.capture('completion', () => {
 		if (autoScroll) {
 			scheduleScrollToBottom();
 		}
+		});
+		await tick();
+		await finalRender.continueIfCurrent();
 	};
 
 	//////////////////////////
@@ -2969,7 +3084,63 @@
 		// Only send terminal_id if the model has terminal capability enabled
 		const terminalEnabled = model.info?.meta?.capabilities?.terminal ?? true;
 
-		const res = await generateOpenAIChatCompletion(
+		let completionResponse: any = null;
+		let completionError: any = null;
+		let createdChatId: string | null = null;
+		const completionContinuation = chatLifecycle.capture('completion', () => {
+			const res = completionResponse;
+
+			if (completionError) {
+				console.log(completionError);
+
+				let errorMessage = completionError;
+				if (completionError?.error?.message) {
+					errorMessage = completionError.error.message;
+				} else if (completionError?.message) {
+					errorMessage = completionError.message;
+				}
+
+				if (typeof errorMessage === 'object') {
+					errorMessage = $i18n.t(`Uh-oh! There was an issue with the response.`);
+				}
+
+				toast.error(`${errorMessage}`);
+				responseMessage.error = {
+					content: completionError
+				};
+
+				responseMessage.done = true;
+
+				history.messages[responseMessageId] = responseMessage;
+				history.currentId = responseMessageId;
+			}
+
+			if (res) {
+				if (res.error) {
+					void handleOpenAIError(res.error, responseMessage);
+				} else {
+					// Backend returns task_ids (multi-model) or task_id (single model)
+					const newTaskIds = res.task_ids ?? (res.task_id ? [res.task_id] : []);
+					if (newTaskIds.length > 0) {
+						taskIds = [...(taskIds ?? []), ...newTaskIds];
+					}
+
+					// Backend returns chat_id for new chats — set store + URL.
+					// Only update if the user hasn't navigated to a different chat
+					// while the request was in flight (prevents overwriting $chatId
+					// and causing spurious toast notifications / state duplication).
+					if (res.chat_id && $chatId !== res.chat_id && $chatId === _chatId) {
+						chatId.set(res.chat_id);
+						if (!$temporaryChatEnabled && !embedded && surface !== 'companion') {
+							window.history.replaceState(history.state, '', `/c/${res.chat_id}`);
+							createdChatId = res.chat_id;
+						}
+					}
+				}
+			}
+		});
+
+		completionResponse = await generateOpenAIChatCompletion(
 			localStorage.token,
 			{
 				stream: stream,
@@ -3038,69 +3209,39 @@
 					: {})
 			},
 			`${WEBUI_BASE_URL}/api`
-		).catch(async (error) => {
-			console.log(error);
-
-			let errorMessage = error;
-			if (error?.error?.message) {
-				errorMessage = error.error.message;
-			} else if (error?.message) {
-				errorMessage = error.message;
-			}
-
-			if (typeof errorMessage === 'object') {
-				errorMessage = $i18n.t(`Uh-oh! There was an issue with the response.`);
-			}
-
-			toast.error(`${errorMessage}`);
-			responseMessage.error = {
-				content: error
-			};
-
-			responseMessage.done = true;
-
-			history.messages[responseMessageId] = responseMessage;
-			history.currentId = responseMessageId;
-
+		).catch((error) => {
+			completionError = error;
 			return null;
 		});
 
-		if (res) {
-			if (res.error) {
-				await handleOpenAIError(res.error, responseMessage);
-			} else {
-				// Backend returns task_ids (multi-model) or task_id (single model)
-				const newTaskIds = res.task_ids ?? (res.task_id ? [res.task_id] : []);
-				if (newTaskIds.length > 0) {
-					taskIds = [...(taskIds ?? []), ...newTaskIds];
+		if (!(await completionContinuation.continueIfCurrent())) {
+			return;
 				}
 
-				// Backend returns chat_id for new chats — set store + URL.
-				// Only update if the user hasn't navigated to a different chat
-				// while the request was in flight (prevents overwriting $chatId
-				// and causing spurious toast notifications / state duplication).
-				if (res.chat_id && $chatId !== res.chat_id && $chatId === _chatId) {
-					await chatId.set(res.chat_id);
-					if (!$temporaryChatEnabled && !embedded) {
-						window.history.replaceState(history.state, '', `/c/${res.chat_id}`);
-						await refreshChatList(localStorage.token);
-
+		if (createdChatId) {
+			const newChatId = createdChatId;
+			const persistNewChat = chatLifecycle.capture('completion', async () => {
 						// Persist chat-level params (system prompt, advanced
 						// params) that the backend doesn't receive in the
 						// chat completion request.  Files are now persisted
 						// by the backend at chat creation time.
 						if (Object.keys(params).length > 0) {
-							await updateChatById(localStorage.token, res.chat_id, {
+					await updateChatById(localStorage.token, newChatId, {
 								params: params
 							});
 						}
-					}
-				}
+			});
+			await refreshChatList(localStorage.token);
+			if (!(await persistNewChat.continueIfCurrent())) {
+				return;
 			}
 		}
 
-		await tick();
+		const scrollAfterCompletion = chatLifecycle.capture('completion', () => {
 		scrollToBottom();
+		});
+		await tick();
+		await scrollAfterCompletion.continueIfCurrent();
 	};
 
 	const handleOpenAIError = async (error, responseMessage) => {
@@ -3146,21 +3287,9 @@
 	};
 
 	const stopResponse = async (processQueue = true) => {
-		if (taskIds) {
-			if ($chatId) {
-				await stopTasksByChatId(localStorage.token, $chatId).catch((error) => {
-					toast.error(`${error}`);
-					return null;
-				});
-			} else {
-				for (const taskId of taskIds) {
-					const res = await stopTask(localStorage.token, taskId).catch((error) => {
-						toast.error(`${error}`);
-						return null;
-					});
-				}
-			}
-
+		const hadTaskIds = Boolean(taskIds);
+		const stopContinuation = chatLifecycle.capture('stop', async () => {
+			if (hadTaskIds) {
 			taskIds = null;
 
 			const responseMessage = history.messages[history.currentId];
@@ -3187,6 +3316,25 @@
 		if (processQueue) {
 			await processNextInQueue($chatId);
 		}
+		});
+
+		if (taskIds) {
+			if ($chatId) {
+				await stopTasksByChatId(localStorage.token, $chatId).catch((error) => {
+					toast.error(`${error}`);
+					return null;
+				});
+			} else {
+				for (const taskId of taskIds) {
+					const res = await stopTask(localStorage.token, taskId).catch((error) => {
+						toast.error(`${error}`);
+						return null;
+					});
+				}
+			}
+		}
+
+		await stopContinuation.continueIfCurrent();
 	};
 
 	const submitMessage = async (parentId, prompt) => {
@@ -3293,30 +3441,64 @@
 
 		try {
 			generating = true;
-			const [res, controller] = await generateMoACompletion(
+			let completionResponse: Response | null = null;
+			let completionController: AbortController | null = null;
+			let canReadStream = false;
+			const mergeCompletion = chatLifecycle.capture('completion', () => {
+				if (
+					completionResponse?.ok &&
+					completionResponse.body &&
+					generating &&
+					completionController
+				) {
+					generationController = completionController as AbortController;
+					canReadStream = true;
+				} else {
+					console.error(completionResponse);
+				}
+			});
+			const moaCompletion = await generateMoACompletion(
 				localStorage.token,
 				message.model ?? '',
 				message.parentId ? history.messages[message.parentId].content : '',
 				responses
 			);
+			completionResponse = moaCompletion[0] as Response | null;
+			completionController = moaCompletion[1] as AbortController;
 
-			if (res && res.ok && res.body && generating) {
-				generationController = controller as AbortController;
+			if (!(await mergeCompletion.continueIfCurrent()) || !canReadStream) {
+				return;
+			}
+
+			const streamContinuation = chatLifecycle.capture('completion', () => {});
+			const responseBody = completionResponse?.body;
+			if (!responseBody) {
+				return;
+			}
 				const textStream = await createOpenAITextStream(
-					res.body,
+				responseBody,
 					Boolean($settings?.splitLargeChunks ?? false)
 				);
-				for await (const update of textStream) {
-					const { value, done, sources, error, usage } = update;
+			if (!(await streamContinuation.continueIfCurrent())) {
+				return;
+			}
+
+			const iterator = textStream[Symbol.asyncIterator]();
+			while (true) {
+				let nextUpdate: Awaited<ReturnType<typeof iterator.next>>;
+				const updateContinuation = chatLifecycle.capture('completion', () => {
+					if (nextUpdate.done) {
+						return;
+					}
+
+					const { value, done, error } = nextUpdate.value;
 					if (error || done) {
 						generating = false;
 						generationController = null;
-						break;
+						return;
 					}
 
-					if (mergedResponse.content == '' && value == '\n') {
-						continue;
-					} else {
+					if (mergedResponse.content !== '' || value !== '\n') {
 						mergedResponse.content += value;
 						history.messages[messageId] = message;
 					}
@@ -3324,12 +3506,20 @@
 					if (autoScroll) {
 						scheduleScrollToBottom();
 					}
+				});
+				nextUpdate = await iterator.next();
+				if (!(await updateContinuation.continueIfCurrent())) {
+					return;
+				}
+				if (nextUpdate.done || !generating) {
+					break;
+				}
 				}
 
+			const saveMergedResponse = chatLifecycle.capture('completion', async () => {
 				await saveChatHandler(_chatId, history);
-			} else {
-				console.error(res);
-			}
+			});
+			await saveMergedResponse.continueIfCurrent();
 		} catch (e) {
 			console.error(e);
 		}
@@ -3358,7 +3548,7 @@
 			_chatId = chat.id;
 			await chatId.set(_chatId);
 
-			if (!embedded) {
+			if (!embedded && surface !== 'companion') {
 				window.history.replaceState(history.state, '', `/c/${_chatId}`);
 			}
 
@@ -3392,7 +3582,7 @@
 		}
 	};
 
-	const saveControls = async () => {
+	const saveControls = async ({ updateLoadedChat = true } = {}) => {
 		if (!$chatId || $temporaryChatEnabled) return;
 		const loaded = chat?.chat ?? {};
 		if (equal(params, loaded.params ?? {}) && equal(chatFiles, loaded.files ?? [])) return;
@@ -3405,7 +3595,8 @@
 			return null;
 		});
 		// Refresh the dedupe baseline so a later revert still saves.
-		if (res) chat = res;
+		if (res && updateLoadedChat) chat = res;
+		return res;
 	};
 
 	const MAX_DRAFT_LENGTH = 5000;
@@ -3555,15 +3746,15 @@
 	inputOptions={eventConfirmationInputOptions}
 	on:confirm={(e) => {
 		if (eventConfirmationInput) {
-			eventCallback(e.detail);
+			eventCallback?.settle(e.detail);
 		} else if (e.detail) {
-			eventCallback(e.detail);
+			eventCallback?.settle(e.detail);
 		} else {
-			eventCallback(true);
+			eventCallback?.settle(true);
 		}
 	}}
 	on:cancel={() => {
-		eventCallback(false);
+		eventCallback?.settle(false);
 	}}
 />
 
@@ -3571,7 +3762,8 @@
 	class="{embedded
 		? 'h-full'
 		: 'h-screen max-h-[100dvh]'} transition-width duration-200 ease-in-out {$showSidebar &&
-	!embedded
+	!embedded &&
+	surface !== 'companion'
 		? '  md:max-w-[calc(100%-var(--sidebar-width))]'
 		: ' '} w-full max-w-full flex flex-col"
 	id={chatContainerId}
@@ -3601,7 +3793,9 @@
 
 			<PaneGroup direction="horizontal" class="w-full h-full">
 				<Pane defaultSize={50} minSize={30} class="h-full flex relative max-w-full flex-col">
+					{#if surface !== 'companion'}
 					<FilesOverlay show={dragged} />
+					{/if}
 					{#if embedded}
 						<div
 							class="h-10 shrink-0 flex items-center justify-between gap-2 border-b border-gray-50/80 px-3 text-gray-700 dark:border-gray-850/40 dark:text-gray-200"
@@ -3629,7 +3823,7 @@
 								</button>
 							</Tooltip>
 						</div>
-					{:else}
+					{:else if surface !== 'companion'}
 						<Navbar
 							bind:this={navbarElement}
 							{readOnly}
@@ -3692,7 +3886,7 @@
 						/>
 					{/if}
 					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
-						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+						{#if surface === 'companion' || ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
 								id="messages-container"
@@ -3717,7 +3911,9 @@
 										}}
 										bind:selectedModels
 										{atSelectedModel}
-										className={embedded ? 'h-full flex pt-4' : 'h-full flex pt-18'}
+										className={embedded || surface === 'companion'
+											? 'h-full flex pt-4'
+											: 'h-full flex pt-18'}
 										{sendMessage}
 										{showMessage}
 										{submitMessage}
@@ -3727,7 +3923,7 @@
 										{chatActionHandler}
 										{addMessages}
 										forkHandler={generating || taskIds?.length ? null : handleForkChat}
-										topPadding={!embedded}
+										topPadding={!embedded && surface !== 'companion'}
 										bottomPadding={files.length > 0}
 										{onSelect}
 										{onInsertToNote}
@@ -3747,6 +3943,7 @@
 									class=" pb-2 {dragged ? 'z-0' : 'z-10'}"
 								>
 									<MessageInput
+										mode={surface === 'companion' ? 'companion' : 'full'}
 										bind:this={messageInput}
 										{history}
 										{taskIds}
@@ -3863,6 +4060,7 @@
 								{/if}
 								<div id={embedded ? messageInputDropzoneId : undefined} class="pb-2 z-10">
 									<MessageInput
+										mode="full"
 										bind:this={messageInput}
 										{history}
 										{taskIds}
@@ -3948,7 +4146,7 @@
 					</div>
 				</Pane>
 
-				{#if !embedded}
+				{#if !embedded && surface !== 'companion'}
 					<ChatControls
 						bind:this={controlPaneComponent}
 						bind:history

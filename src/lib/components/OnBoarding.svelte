@@ -23,7 +23,10 @@
 			playOnInteractionRegistered = true;
 
 			const playOnInteraction = () => {
-				videoElement.play().catch(() => {});
+				// This runs from a document listener, so it outlives the overlay: the
+				// click that dismisses onboarding destroys the video and nulls the
+				// binding before this fires.
+				videoElement?.play().catch(() => {});
 				document.removeEventListener('click', playOnInteraction);
 				document.removeEventListener('touchstart', playOnInteraction);
 				playOnInteractionRegistered = false;

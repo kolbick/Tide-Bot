@@ -47,7 +47,9 @@
 	import AccountPending from '$lib/components/layout/Overlay/AccountPending.svelte';
 	import UpdateInfoToast from '$lib/components/layout/UpdateInfoToast.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import MainPresencePublisher from '$lib/components/ted-bot/MainPresencePublisher.svelte';
 	import { loadKeybindings, matchKeybinding, Shortcut } from '$lib/shortcuts';
+	import { isCompanionRoute } from '$lib/ted-bot/routes';
 
 	const i18n = getContext('i18n');
 
@@ -57,6 +59,7 @@
 
 	let version;
 	let handledSettingsUrl = '';
+	$: isCompanionPage = isCompanionRoute($page.url.pathname);
 
 	const clearChatInputStorage = () => {
 		const chatInputKeys = Object.keys(localStorage).filter((key) => key.startsWith('chat-input'));
@@ -248,6 +251,9 @@
 
 		const setupKeyboardShortcuts = () => {
 			document.addEventListener('keydown', async (event) => {
+				if (isCompanionPage) {
+					return;
+				}
 				const shortcut = matchKeybinding(event);
 				if (shortcut === Shortcut.SEARCH) {
 					console.log('Shortcut triggered: SEARCH');
@@ -385,8 +391,11 @@
 	};
 </script>
 
-<SettingsModal bind:show={$showSettings} />
-<ChangelogModal bind:show={$showChangelog} />
+{#if !isCompanionPage}
+	<MainPresencePublisher />
+	<SettingsModal bind:show={$showSettings} />
+	<ChangelogModal bind:show={$showChangelog} />
+{/if}
 
 {#if version && compareVersion(version.latest, version.current) && ($settings?.showUpdateToast ?? true)}
 	<div class=" absolute bottom-8 right-8 z-50" in:fade={{ duration: 100 }}>
@@ -406,7 +415,9 @@
 			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
 		>
 			{#if !['user', 'admin'].includes($user?.role)}
-				<AccountPending />
+				{#if !isCompanionPage}
+					<AccountPending />
+				{/if}
 			{:else}
 				{#if localDBChats.length > 0}
 					<div class="fixed w-full h-full flex z-50">
@@ -463,7 +474,9 @@
 					</div>
 				{/if}
 
-				<Sidebar />
+				{#if !isCompanionPage}
+					<Sidebar />
+				{/if}
 
 				{#if loaded}
 					<slot />

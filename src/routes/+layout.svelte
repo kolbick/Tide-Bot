@@ -75,6 +75,7 @@
 	import NotificationToast from '$lib/components/NotificationToast.svelte';
 	import AppSidebar from '$lib/components/app/AppSidebar.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import { isCompanionRoute } from '$lib/ted-bot/routes';
 	import { getOutputText } from '$lib/components/chat/Messages/structuredOutput';
 	import { getUserSettings } from '$lib/apis/users';
 	import dayjs from 'dayjs';
@@ -107,6 +108,7 @@
 	const bc = new BroadcastChannel('active-tab-channel');
 
 	let loaded = false;
+	$: isCompanionPage = isCompanionRoute($page.url.pathname);
 	let tokenTimer = null;
 	let isAuthRedirectInProgress = false;
 
@@ -1290,9 +1292,11 @@
 {#if loaded}
 	{#if $isApp}
 		<div class="flex flex-row h-screen">
-			<AppSidebar />
+			{#if !isCompanionPage}
+				<AppSidebar />
+			{/if}
 
-			<div class="w-full flex-1 max-w-[calc(100%-4.5rem)]">
+			<div class="w-full flex-1 {isCompanionPage ? '' : 'max-w-[calc(100%-4.5rem)]'}">
 				<slot />
 			</div>
 		</div>
