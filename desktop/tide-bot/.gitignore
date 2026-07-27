@@ -9,5 +9,8 @@
 node_modules/
 .package-lock.json
 /src-tauri/gen/
-/src-tauri/icons/icon.ico
+# /src-tauri/icons/icon.ico is intentionally TRACKED. The Tauri Windows build
+# requires a real multi-size .ico file to embed in the .exe resource.
+# The companion macOS build uses the .png files via tauri.conf.json, so the
+# (rarely-needed) icon.icns remains untracked.
 /src-tauri/icons/icon.icns
