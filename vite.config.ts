@@ -21,7 +21,17 @@ export default defineConfig({
 		APP_BUILD_HASH: JSON.stringify(process.env.APP_BUILD_HASH || 'dev-build')
 	},
 	build: {
-		sourcemap: true
+		sourcemap: true,
+		rollupOptions: {
+			// CompanionPanel.svelte dynamically imports @tauri-apps/api/core
+			// to call the native show_main_window command. In the browser
+			// (and in this static build) the import target is not available,
+			// so externalize the Tauri runtime API. The dynamic import is
+			// gated behind a 'window.__TAURI_INTERNALS__' guard and never
+			// executes outside a Tauri webview; in a normal browser the
+			// openMainWindow fallback navigates to '/' instead.
+			external: [/^@tauri-apps\/api/]
+		}
 	},
 	worker: {
 		format: 'es'
