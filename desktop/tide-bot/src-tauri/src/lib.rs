@@ -59,14 +59,20 @@ fn show_main_window(app: AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The companion is the pet itself, not a chat panel with a pet badge in the
+/// corner — transparent so only the sprite is visible, no background box,
+/// no title bar. Sized to the pet plus a little padding, not a full chat
+/// panel's dimensions.
 fn companion_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
     let url = origin::configured_companion_url()?;
     WebviewWindowBuilder::new(app, COMPANION_LABEL, WebviewUrl::External(url))
         .decorations(false)
+        .transparent(true)
+        .shadow(false)
         .always_on_top(true)
         .resizable(false)
         .skip_taskbar(true)
-        .inner_size(380.0, 520.0)
+        .inner_size(160.0, 180.0)
         .title("Ted-Bot")
         .build()
 }
