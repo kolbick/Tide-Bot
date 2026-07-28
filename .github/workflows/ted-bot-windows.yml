@@ -105,6 +105,12 @@ jobs:
         run: npm ci
 
       - name: Build frontend (produces build/ for Tauri frontendDist)
+        # The Vite chunk-rendering phase peaks just under Node's default ~4GB
+        # heap on this runner and has already OOM'd ("Ineffective mark-compacts
+        # near heap limit") at 3847MB. Raise the ceiling so a build that is
+        # merely large does not fail intermittently on heap pressure alone.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
       - name: Pre-build lint smoke (tracked launcher only)
