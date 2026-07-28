@@ -86,10 +86,28 @@
 </script>
 
 <svelte:head>
+	<!--
+		app.css paints an opaque themed background via `.dark body` and
+		`.light body, :root:not(.dark) body` — both with !important — plus a
+		body::before texture overlay. A bare `body { background: transparent }`
+		loses the specificity fight (class+element beats element), so these
+		selectors have to match or exceed it. Without this the transparent
+		Tauri window still shows a solid rectangle behind the sprite.
+	-->
 	<style>
 		html,
-		body {
+		body,
+		.dark body,
+		.light body,
+		:root:not(.dark) body {
 			background: transparent !important;
+			background-image: none !important;
+		}
+
+		body::before,
+		body::after {
+			display: none !important;
+			content: none !important;
 		}
 	</style>
 </svelte:head>

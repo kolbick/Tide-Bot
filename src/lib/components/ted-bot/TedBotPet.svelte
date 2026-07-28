@@ -42,7 +42,6 @@
 		height: 6.5rem;
 		overflow: hidden;
 		flex: none;
-		border-bottom: 1px solid rgb(83 216 236 / 25%);
 	}
 
 	.ted-bot-pet img {
