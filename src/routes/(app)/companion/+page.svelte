@@ -32,6 +32,59 @@
 		openMainWindow({ invoke, navigate });
 	}
 
+	// Dragging is driven explicitly rather than via `data-tauri-drag-region`.
+	// That attribute is handled by a script Tauri injects into the webview,
+	// and it did not take effect for this window — which loads a remote
+	// production origin rather than the bundled frontend. Calling
+	// startDragging() ourselves uses the same permission
+	// (core:window:allow-start-dragging) and does not depend on that
+	// injection.
+	//
+	// startDragging() hands the drag to the OS, and the webview never
+	// delivers a click afterwards. So a press does not drag immediately:
+	// it waits for the pointer to travel past a small threshold. A press
+	// released without crossing it is a click (open the main window); a
+	// press that crosses it becomes a window drag.
+	const DRAG_THRESHOLD_PX = 4;
+	let pressOrigin: { x: number; y: number } | null = null;
+	let dragStarted = false;
+
+	function handlePointerDown(event: PointerEvent) {
+		if (event.button !== 0) {
+			return;
+		}
+		pressOrigin = { x: event.screenX, y: event.screenY };
+		dragStarted = false;
+	}
+
+	async function handlePointerMove(event: PointerEvent) {
+		if (!pressOrigin || dragStarted) {
+			return;
+		}
+		const travelled = Math.hypot(
+			event.screenX - pressOrigin.x,
+			event.screenY - pressOrigin.y
+		);
+		if (travelled < DRAG_THRESHOLD_PX) {
+			return;
+		}
+		dragStarted = true;
+		if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+			return;
+		}
+		const { getCurrentWindow } = await import('@tauri-apps/api/window');
+		await getCurrentWindow().startDragging();
+	}
+
+	function handlePointerUp() {
+		const wasDrag = dragStarted;
+		pressOrigin = null;
+		dragStarted = false;
+		if (!wasDrag) {
+			handleClick();
+		}
+	}
+
 	// There is no title bar and the window is skip_taskbar, so right-click is
 	// the only way to put the pet away from the pet itself. It stays
 	// restorable from the tray ("Show or Hide Ted-Bot").
@@ -123,13 +176,9 @@
 		}
 
 		/*
-			Tauri decides whether a mousedown starts a window drag by checking
-			whether the event's target element carries data-tauri-drag-region.
-			It does not walk up the tree — so a mousedown landing on the sprite
-			<img> (the entire visible surface of this window) is not a drag.
-			Making the pet's own elements transparent to pointer events lets
-			every press land on the wrapper that does carry the attribute,
-			which is what makes the whole dog draggable.
+			Keep presses off the sprite's own elements so every pointer event
+			lands on the wrapper that carries the drag/click handlers, rather
+			than on the <img> that covers the whole window.
 		*/
 		.ted-bot-pet,
 		.ted-bot-pet * {
@@ -143,17 +192,23 @@
 	data-tauri-drag-region
 >
 	<!--
-		Not a <button>: Tauri's drag-region click-vs-drag distinction (a plain
-		click still fires; a click-and-move drags the window instead) is
-		unreliable on native interactive elements. A div with explicit a11y
-		semantics avoids that conflict.
+		Pointer handlers rather than on:click — a press that travels becomes a
+		window drag and must not also fire a click. See the threshold logic in
+		the script block. data-tauri-drag-region is kept as a harmless fallback
+		in case the injected handler is available.
 	-->
 	<div
 		class="flex cursor-pointer items-center justify-center bg-transparent"
 		data-tauri-drag-region
 		role="button"
 		tabindex="0"
-		on:click={handleClick}
+		on:pointerdown={handlePointerDown}
+		on:pointermove={handlePointerMove}
+		on:pointerup={handlePointerUp}
+		on:pointerleave={() => {
+			pressOrigin = null;
+			dragStarted = false;
+		}}
 		on:keydown={(event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
