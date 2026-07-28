@@ -44,8 +44,11 @@ pub struct SignOutOutcome {
 }
 
 /// The single command exposed to the companion window. Surfaces only when the
-/// companion capability is granted; the capability is the unprefixed
-/// `allow-show-main-window` and the permission is exactly that one entry.
+/// companion capability is granted; the custom-command permission is the
+/// unprefixed `allow-show-main-window` and remains the only entry that grants
+/// a command. The capability also carries `core:window:allow-start-dragging`
+/// and `core:window:allow-hide`, which let the borderless window be moved and
+/// hidden but expose no commands.
 #[tauri::command]
 fn show_main_window(app: AppHandle) -> tauri::Result<()> {
     let main = app

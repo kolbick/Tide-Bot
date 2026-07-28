@@ -127,8 +127,19 @@ fn validate_provenance(manifest_dir: &str) -> Result<(String, String), ExitCode>
         .get("permissions")
         .and_then(serde_json::Value::as_array)
         .map(|items| items.iter().filter_map(serde_json::Value::as_str).collect::<Vec<_>>());
-    if permissions.as_deref() != Some(["allow-show-main-window"].as_slice()) {
-        return Err(fail("capability.permissions must be exactly [\"allow-show-main-window\"]"));
+    // The two core:window entries are scoped to the companion window by
+    // capability.windows. They are what allow a borderless, title-bar-less
+    // window to be moved and hidden at all, and add no command surface —
+    // the custom-command allowlist is still exactly ["show_main_window"].
+    const ALLOWED_PERMISSIONS: [&str; 3] = [
+        "allow-show-main-window",
+        "core:window:allow-start-dragging",
+        "core:window:allow-hide",
+    ];
+    if permissions.as_deref() != Some(ALLOWED_PERMISSIONS.as_slice()) {
+        return Err(fail(
+            "capability.permissions must be exactly [\"allow-show-main-window\", \"core:window:allow-start-dragging\", \"core:window:allow-hide\"]",
+        ));
     }
     let remote_urls: Vec<String> = capability
         .get("remote")

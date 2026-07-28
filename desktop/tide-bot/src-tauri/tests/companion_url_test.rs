@@ -70,7 +70,11 @@ fn approved_capability_text(urls: &[String]) -> String {
         "identifier": "companion",
         "description": "Approved companion capability (test fixture)",
         "windows": ["companion"],
-        "permissions": ["allow-show-main-window"],
+        "permissions": [
+            "allow-show-main-window",
+            "core:window:allow-start-dragging",
+            "core:window:allow-hide"
+        ],
         "remote": { "urls": urls },
     });
     serde_json::to_string_pretty(&capability).unwrap()
