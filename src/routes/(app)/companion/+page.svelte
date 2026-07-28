@@ -32,6 +32,18 @@
 		openMainWindow({ invoke, navigate });
 	}
 
+	// There is no title bar and the window is skip_taskbar, so right-click is
+	// the only way to put the pet away from the pet itself. It stays
+	// restorable from the tray ("Show or Hide Ted-Bot").
+	async function handleHide(event: MouseEvent) {
+		event.preventDefault();
+		if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+			return;
+		}
+		const { getCurrentWindow } = await import('@tauri-apps/api/window');
+		await getCurrentWindow().hide();
+	}
+
 	onMount(() => {
 		let currentSocket: Socket | null = null;
 		let subscriber: ReturnType<typeof createCompanionPresenceSubscriber> | null = null;
@@ -109,6 +121,20 @@
 			display: none !important;
 			content: none !important;
 		}
+
+		/*
+			Tauri decides whether a mousedown starts a window drag by checking
+			whether the event's target element carries data-tauri-drag-region.
+			It does not walk up the tree — so a mousedown landing on the sprite
+			<img> (the entire visible surface of this window) is not a drag.
+			Making the pet's own elements transparent to pointer events lets
+			every press land on the wrapper that does carry the attribute,
+			which is what makes the whole dog draggable.
+		*/
+		.ted-bot-pet,
+		.ted-bot-pet * {
+			pointer-events: none !important;
+		}
 	</style>
 </svelte:head>
 
@@ -134,6 +160,8 @@
 				handleClick();
 			}
 		}}
+		on:contextmenu={handleHide}
+		title="Drag to move · Click to open Tide-Bot · Right-click to hide"
 		aria-label="Open Tide-Bot"
 	>
 		<TedBotPet state={petState} interactive={true} />

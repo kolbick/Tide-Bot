@@ -172,10 +172,19 @@ fn companion_capability_has_exact_remote_scope_and_one_custom_command() {
         serde_json::json!(["companion"]),
         "capability.windows must be exactly [\"companion\"]"
     );
+    // The two core:window entries are scoped to the companion window by
+    // capability.windows and are what allow a borderless, title-bar-less
+    // window to be moved and hidden by the user at all. They grant no
+    // command surface — the custom-command allowlist below is still
+    // exactly ["show_main_window"].
     assert_eq!(
         capability["permissions"],
-        serde_json::json!(["allow-show-main-window"]),
-        "capability.permissions must be exactly [\"allow-show-main-window\"]"
+        serde_json::json!([
+            "allow-show-main-window",
+            "core:window:allow-start-dragging",
+            "core:window:allow-hide"
+        ]),
+        "capability.permissions must be exactly the show-main-window command plus the two window-scoped move/hide permissions"
     );
     assert_remote_urls_match_compiled(&capability);
 

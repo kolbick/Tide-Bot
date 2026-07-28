@@ -101,7 +101,18 @@ pub fn parse_for_fixtures(
 	}
 	let capability: CapabilitiesFixture = serde_json::from_str(capability_bytes)
 		.map_err(|error| format!("capability JSON is invalid: {error}"))?;
-	if capability.windows != ["companion"] || capability.permissions != ["allow-show-main-window"] {
+	// The companion is a borderless, transparent window with no title bar, so
+	// the two core:window permissions below are what let the user move it and
+	// put it away at all — dragging by its own content and hiding itself.
+	// Both are scoped to the companion window by the capability's `windows`
+	// list and neither widens the command surface, which is what this check
+	// exists to constrain.
+	const ALLOWED_PERMISSIONS: [&str; 3] = [
+		"allow-show-main-window",
+		"core:window:allow-start-dragging",
+		"core:window:allow-hide",
+	];
+	if capability.windows != ["companion"] || capability.permissions != ALLOWED_PERMISSIONS {
 		return Err("capability scope is not companion-only".into());
 	}
 	let provenance: ProvenanceFixture = serde_json::from_str(provenance_bytes)
