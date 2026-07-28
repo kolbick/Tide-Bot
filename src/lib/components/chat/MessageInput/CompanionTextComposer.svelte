@@ -41,7 +41,7 @@
 	></textarea>
 	{#if isGenerating}
 		<button
-			class="min-h-11 rounded-full border border-gray-200 px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-hidden focus:ring-2 focus:ring-gray-400 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+			class="min-h-11 shrink-0 whitespace-nowrap rounded-full border border-gray-200 px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-hidden focus:ring-2 focus:ring-gray-400 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
 			type="button"
 			aria-label="Stop response"
 			on:click={() => dispatch('stop')}
@@ -50,7 +50,7 @@
 		</button>
 	{/if}
 	<button
-		class="min-h-11 rounded-full bg-gray-900 px-4 text-sm font-medium text-white transition hover:bg-black focus:outline-hidden focus:ring-2 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
+		class="min-h-11 shrink-0 whitespace-nowrap rounded-full bg-gray-900 px-4 text-sm font-medium text-white transition hover:bg-black focus:outline-hidden focus:ring-2 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
 		type="submit"
 		aria-label="Send message"
 		disabled={!text.trim()}
