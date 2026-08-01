@@ -1803,6 +1803,23 @@ def _strip_think_tags(text: str, state: dict) -> str:
     return ''.join(out)
 
 
+def _flush_think_tags(state: dict) -> str:
+    """
+    Release any text withheld by _strip_think_tags() as a lookback margin
+    against a <think>/</think> tag split across chunks. Must be called once
+    the underlying text is known to be complete (end of stream, or the full
+    string in the non-streaming case) — otherwise a short trailing answer
+    (e.g. "OK.") can be held back forever and never emitted.
+    """
+    if state.get('in_think'):
+        # Reasoning block never closed; nothing safe to surface.
+        state['buffer'] = ''
+        return ''
+    flushed = state.get('buffer', '')
+    state['buffer'] = ''
+    return flushed
+
+
 async def _strip_think_tags_from_stream(body_iterator):
     state = {'buffer': '', 'in_think': False}
     async for chunk in body_iterator:
@@ -1816,6 +1833,9 @@ async def _strip_think_tags_from_stream(body_iterator):
 
             data_string = line[5:].strip()
             if data_string == '[DONE]':
+                tail = _flush_think_tags(state)
+                if tail:
+                    yield f'data: {json.dumps({"choices": [{"index": 0, "delta": {"content": tail}}]})}\n\n'.encode()
                 yield b'data: [DONE]\n\n'
                 continue
 
@@ -1829,16 +1849,28 @@ async def _strip_think_tags_from_stream(body_iterator):
                 delta = choice.get('delta') or {}
                 if isinstance(delta.get('content'), str):
                     delta['content'] = _strip_think_tags(delta['content'], state)
+                if choice.get('finish_reason'):
+                    tail = _flush_think_tags(state)
+                    if tail:
+                        delta['content'] = delta.get('content', '') + tail
+                choice['delta'] = delta
 
             yield f'data: {json.dumps(obj)}\n\n'.encode()
 
+    # Stream ended without an explicit finish_reason/[DONE] chunk carrying
+    # the flush (defensive; shouldn't normally trigger).
+    tail = _flush_think_tags(state)
+    if tail:
+        yield f'data: {json.dumps({"choices": [{"index": 0, "delta": {"content": tail}}]})}\n\n'.encode()
+
 
 def _strip_think_tags_from_response(response_data: dict) -> dict:
-    state = {'buffer': '', 'in_think': False}
     for choice in response_data.get('choices', []) or []:
         message = choice.get('message') or {}
         if isinstance(message.get('content'), str):
-            message['content'] = _strip_think_tags(message['content'], state)
+            state = {'buffer': '', 'in_think': False}
+            stripped = _strip_think_tags(message['content'], state)
+            message['content'] = stripped + _flush_think_tags(state)
     return response_data
 
 
