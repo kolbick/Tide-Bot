@@ -504,15 +504,17 @@
 						.catch((error) => {
 							console.error(error);
 							toast.error(`${error}`);
+							return null;
 						});
 
-					if (url) {
-						audioCache.set(content, new Audio(url));
-					}
+					// Always record a cache entry (even on failure) so
+					// monitorAndPlayAudio doesn't re-queue this chunk forever.
+					audioCache.set(content, url ? new Audio(url) : false);
 				} else if ($config.audio.tts.engine !== '') {
 					const res = await synthesizeOpenAISpeech(localStorage.token, getVoiceId(), content).catch(
 						(error) => {
 							console.error(error);
+							toast.error(`${error}`);
 							return null;
 						}
 					);
@@ -521,12 +523,16 @@
 						const blob = await res.blob();
 						const blobUrl = URL.createObjectURL(blob);
 						audioCache.set(content, new Audio(blobUrl));
+					} else {
+						audioCache.set(content, false);
 					}
 				} else {
 					audioCache.set(content, true);
 				}
 			} catch (error) {
 				console.error('Error synthesizing speech:', error);
+				toast.error(`${error}`);
+				audioCache.set(content, false);
 			}
 		}
 
@@ -540,6 +546,13 @@
 			if (messages[id] && messages[id].length > 0) {
 				// Retrieve the next content string from the queue
 				const content = messages[id].shift(); // Dequeues the content for playing
+
+				if (audioCache.has(content) && audioCache.get(content) === false) {
+					// TTS/audio generation failed for this chunk (already surfaced via
+					// toast in fetchAudio) — skip it instead of re-queuing forever.
+					console.warn(`Skipping unplayable audio for content: ${content}`);
+					continue;
+				}
 
 				if (audioCache.has(content)) {
 					// If content is available in the cache, play it
