@@ -1756,6 +1756,123 @@ app.state.CHAT_COMPLETION_HANDLER = chat_completion
 
 ##################################
 #
+# Voice-Compatible Chat Completions Endpoint
+#
+# Thin wrapper around chat_completion() that strips <think>...</think>
+# reasoning spans from the output. Reasoning models (e.g. MiniMax-M3)
+# emit these inline in `content` rather than a separate field, so a
+# text-to-speech consumer (e.g. an ElevenLabs custom-LLM integration)
+# would otherwise read the model's internal reasoning aloud verbatim.
+#
+##################################
+
+
+def _strip_think_tags(text: str, state: dict) -> str:
+    """
+    Incrementally remove <think>...</think> spans from streamed text,
+    carrying partial-tag state in `state` across calls so a tag split
+    across chunk boundaries is still caught.
+    """
+    buffer = state.get('buffer', '') + text
+    in_think = state.get('in_think', False)
+    out = []
+
+    while True:
+        if not in_think:
+            idx = buffer.find('<think>')
+            if idx == -1:
+                keep_tail = len('<think>') - 1
+                safe_len = max(0, len(buffer) - keep_tail)
+                out.append(buffer[:safe_len])
+                buffer = buffer[safe_len:]
+                break
+            out.append(buffer[:idx])
+            buffer = buffer[idx + len('<think>') :]
+            in_think = True
+        else:
+            idx = buffer.find('</think>')
+            if idx == -1:
+                keep_tail = len('</think>') - 1
+                buffer = buffer[max(0, len(buffer) - keep_tail) :]
+                break
+            buffer = buffer[idx + len('</think>') :]
+            in_think = False
+
+    state['buffer'] = buffer
+    state['in_think'] = in_think
+    return ''.join(out)
+
+
+async def _strip_think_tags_from_stream(body_iterator):
+    state = {'buffer': '', 'in_think': False}
+    async for chunk in body_iterator:
+        if isinstance(chunk, bytes):
+            chunk = chunk.decode('utf-8', errors='ignore')
+
+        for line in chunk.strip().split('\n'):
+            line = line.strip()
+            if not line or not line.startswith('data:'):
+                continue
+
+            data_string = line[5:].strip()
+            if data_string == '[DONE]':
+                yield b'data: [DONE]\n\n'
+                continue
+
+            try:
+                obj = json.loads(data_string)
+            except ValueError:
+                yield f'{line}\n\n'.encode()
+                continue
+
+            for choice in obj.get('choices', []) or []:
+                delta = choice.get('delta') or {}
+                if isinstance(delta.get('content'), str):
+                    delta['content'] = _strip_think_tags(delta['content'], state)
+
+            yield f'data: {json.dumps(obj)}\n\n'.encode()
+
+
+def _strip_think_tags_from_response(response_data: dict) -> dict:
+    state = {'buffer': '', 'in_think': False}
+    for choice in response_data.get('choices', []) or []:
+        message = choice.get('message') or {}
+        if isinstance(message.get('content'), str):
+            message['content'] = _strip_think_tags(message['content'], state)
+    return response_data
+
+
+@app.post('/api/v1/voice/chat/completions')
+async def voice_chat_completion(
+    request: Request,
+    form_data: dict,
+    user=Depends(get_verified_user),
+):
+    """
+    Reasoning-stripped alias of /api/chat/completions for TTS/voice
+    consumers. Routes through the canonical chat_completion() pipeline
+    unchanged, then removes <think>...</think> spans from the result.
+    """
+    response = await chat_completion(request, form_data, user)
+
+    if isinstance(response, StreamingResponse):
+        return StreamingResponse(
+            _strip_think_tags_from_stream(response.body_iterator),
+            media_type='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            },
+        )
+    elif isinstance(response, dict):
+        return _strip_think_tags_from_response(response)
+    else:
+        # Passthrough for error responses (JSONResponse, PlainTextResponse, etc.)
+        return response
+
+
+##################################
+#
 # Anthropic Messages API Compatible Endpoint
 #
 ##################################
