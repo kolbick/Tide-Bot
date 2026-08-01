@@ -405,10 +405,6 @@ async def _tts_elevenlabs(request, payload, file_path, file_body_path, user):
     if not voice_id:
         raise HTTPException(status_code=400, detail='Invalid voice id')
 
-    available_voices = await get_available_voices(request)
-    if available_voices and voice_id not in available_voices:
-        raise HTTPException(status_code=400, detail='Invalid voice id')
-
     r = None
     try:
         session = await get_session()
