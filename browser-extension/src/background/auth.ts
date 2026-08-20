@@ -67,6 +67,7 @@ interface BrowserAuthOptions {
 	clock?: () => number;
 	sleep?: (milliseconds: number) => Promise<void>;
 	openVerification?: (url: string) => Promise<unknown>;
+	closeVerification?: (tabId: number) => Promise<unknown>;
 }
 
 const defaultStorage = () => (globalThis as any).chrome.storage.local as StorageArea;
@@ -75,6 +76,10 @@ const defaultExtensionVersion = () =>
 const defaultOpenVerification = (url: string) => {
 	const tabs = (globalThis as any).chrome?.tabs;
 	return tabs?.create ? (tabs.create({ url }) as Promise<unknown>) : Promise.resolve();
+};
+const defaultCloseVerification = (tabId: number) => {
+	const tabs = (globalThis as any).chrome?.tabs;
+	return tabs?.remove ? (tabs.remove(tabId) as Promise<unknown>) : Promise.resolve();
 };
 
 const isString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -129,11 +134,13 @@ export class BrowserAuth {
 	private readonly clock: () => number;
 	private readonly sleep: (milliseconds: number) => Promise<void>;
 	private readonly openVerification: (url: string) => Promise<unknown>;
+	private readonly closeVerification: (tabId: number) => Promise<unknown>;
 	private credential: StoredCredential | null = null;
 	private accessToken: string | null = null;
 	private accessExpiresAt = 0;
 	private pendingPairing: PendingPairing | null = null;
 	private refreshPromise: Promise<string> | null = null;
+	private verificationTabId: number | null = null;
 
 	constructor(options: BrowserAuthOptions = {}) {
 		this.storage = options.storage ?? defaultStorage();
@@ -145,6 +152,7 @@ export class BrowserAuth {
 			options.sleep ??
 			((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
 		this.openVerification = options.openVerification ?? defaultOpenVerification;
+		this.closeVerification = options.closeVerification ?? defaultCloseVerification;
 	}
 
 	status() {
@@ -153,6 +161,34 @@ export class BrowserAuth {
 			serverOrigin: this.credential?.serverOrigin ?? this.configuredOrigin,
 			deviceId: this.credential?.deviceId ?? null
 		};
+	}
+
+	/**
+	 * Pair straight from the user's signed-in Tide-Bot session.
+	 *
+	 * Host permissions let this request carry the tide-bot.com session cookie,
+	 * so the packaged extension can prove identity without the verification
+	 * tab. The session is used once, here, and never stored: what gets kept is
+	 * the same scoped, revocable device credential the code flow produces.
+	 * Callers fall back to beginPairing when this is refused.
+	 */
+	async claimWithSession(deviceLabel: string) {
+		const label = deviceLabel.trim();
+		if (!label || label.length > 80) throw new BrowserAuthError('invalid_device_label');
+		const response = await this.fetcher(`${this.configuredOrigin}${API_PATH}/pairing/claim`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				device_label: label,
+				origin: this.configuredOrigin,
+				extension_version: this.extensionVersion
+			}),
+			credentials: 'include',
+			cache: 'no-store',
+			redirect: 'error'
+		});
+		if (!response.ok) throw new BrowserAuthError(await errorCode(response));
+		await this.applyTokenResponse(await response.json(), null);
 	}
 
 	async beginPairing(deviceLabel: string) {
@@ -179,7 +215,13 @@ export class BrowserAuth {
 			...(value as PairingResponse),
 			expiresAt: this.clock() + value.expires_in * 1_000
 		};
-		await this.openVerification(value.verification_uri);
+		const opened = await this.openVerification(value.verification_uri);
+		// Remembered so approval can put the user back where they started
+		// instead of stranding them on the verification tab.
+		this.verificationTabId =
+			typeof (opened as { id?: unknown } | null)?.id === 'number'
+				? ((opened as { id: number }).id)
+				: null;
 		return {
 			deviceCode: value.device_code,
 			verificationUri: value.verification_uri,
@@ -207,10 +249,22 @@ export class BrowserAuth {
 			const token = await response.json();
 			await this.applyTokenResponse(token, null);
 			this.pendingPairing = null;
+			await this.closeVerificationTab();
 			return;
 		}
 		this.pendingPairing = null;
 		throw new BrowserAuthError('expired_token');
+	}
+
+	private async closeVerificationTab() {
+		const tabId = this.verificationTabId;
+		this.verificationTabId = null;
+		if (tabId === null) return;
+		try {
+			await this.closeVerification(tabId);
+		} catch {
+			// The user may have already closed it; pairing still succeeded.
+		}
 	}
 
 	async restore(): Promise<boolean> {

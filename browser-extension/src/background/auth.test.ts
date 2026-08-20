@@ -25,6 +25,78 @@ const response = (status: number, body: unknown) =>
 	});
 
 describe('BrowserAuth', () => {
+	it('pairs from the signed-in session without opening a verification tab', async () => {
+		const mock = createChromeMock();
+		const fetcher = vi.fn().mockResolvedValue(response(200, tokenResponse()));
+		const openVerification = vi.fn();
+		const auth = new BrowserAuth({
+			storage: mock.chrome.storage.local,
+			fetcher,
+			openVerification,
+			clock: () => 1_000_000
+		});
+
+		await auth.claimWithSession('My Chrome');
+
+		expect(openVerification).not.toHaveBeenCalled();
+		expect(auth.status()).toMatchObject({ paired: true, deviceId: 'device-a' });
+		const [url, init] = fetcher.mock.calls[0];
+		expect(url).toBe('https://tide-bot.com/api/v1/browser-extension/pairing/claim');
+		expect(init).toMatchObject({ method: 'POST', credentials: 'include' });
+		// Only the scoped device credential is persisted, never the session.
+		expect(mock.storageData.tideBotAuth).toEqual({
+			serverOrigin: 'https://tide-bot.com',
+			deviceId: 'device-a',
+			refreshToken: 'opaque-refresh-token-a',
+			tokenFamilyId: 'family-a'
+		});
+	});
+
+	it('surfaces a refused session claim so the caller can fall back to the code flow', async () => {
+		const mock = createChromeMock();
+		const auth = new BrowserAuth({
+			storage: mock.chrome.storage.local,
+			fetcher: vi.fn().mockResolvedValue(response(403, { detail: 'browser_extension_untrusted_caller' }))
+		});
+
+		await expect(auth.claimWithSession('My Chrome')).rejects.toMatchObject({
+			code: 'browser_extension_untrusted_caller'
+		});
+		expect(auth.status().paired).toBe(false);
+		expect(mock.storageData).toEqual({});
+	});
+
+	it('closes the verification tab once approval completes', async () => {
+		const mock = createChromeMock();
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(
+				response(200, {
+					grant_id: 'grant-a',
+					device_code: 'ABCD-2345',
+					verifier: 'private-verifier-value-that-never-leaves-memory',
+					verification_uri: 'https://tide-bot.com/browser-extension/pair?grant_id=grant-a',
+					interval: 2,
+					expires_in: 300
+				})
+			)
+			.mockResolvedValueOnce(response(200, tokenResponse()));
+		const closeVerification = vi.fn().mockResolvedValue(undefined);
+		const auth = new BrowserAuth({
+			storage: mock.chrome.storage.local,
+			fetcher,
+			openVerification: () => Promise.resolve({ id: 4242 }),
+			closeVerification,
+			clock: () => 1_000_000,
+			sleep: vi.fn()
+		});
+
+		await auth.beginPairing('My Chrome');
+		await auth.pollPairing();
+
+		expect(closeVerification).toHaveBeenCalledWith(4242);
+	});
+
 	it('keeps access and pairing secrets in memory while storing only the opaque device credential', async () => {
 		const mock = createChromeMock();
 		const fetcher = vi

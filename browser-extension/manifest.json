@@ -5,6 +5,7 @@
 	"description": "Secure, single-tab browser control for your private Tide-Bot assistant.",
 	"version": "0.1.0",
 	"minimum_chrome_version": "120",
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqB2CcPTgxwmulXUQaeRtuzd6ghoNW5TWFkURnhNKC8Gz9CdrM5RC1WGvtuh0cp2KzM2ZSLXa7JEs9fhBY+YSaNTWCW3gkzwZmQj5KHorKfqKQOp3quQWL81nIVqbj/QhvaJ3ZxxxJITwgoma9PLpe7jkPgiknT45lWxFdBlC3EpocaJGtbhghLXCeIQKfk85ua0Ol9F23fYncjekAOvxHH8tQYr2xZufQoioNc1Gogc/2y68e3hDdiZCBTTwWP3Xg5OKRFOu7Ep9TTD3J/J0nVMSODLikFK532F/de4v9kKKcovHex4czGn+aarjqfDgx71ndjpbjCfh82pynjC78wIDAQAB",
 	"permissions": [
 		"activeTab",
 		"alarms",

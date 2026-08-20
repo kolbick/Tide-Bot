@@ -6,6 +6,8 @@ Tide-Bot authorizes the user, models, chat, devices, workflows, schedules, and s
 
 Pairing grants are short lived and single use. Tide-Bot stores keyed hashes of refresh credentials; the extension stores one opaque device credential in `chrome.storage.local`. Access tokens are short lived and memory only. Refresh credentials rotate, and reuse of an already rotated credential triggers replay detection and revocation.
 
+Pairing has two paths that end in the same scoped, revocable device credential. When the browser already holds a signed-in Tide-Bot session, the packaged extension claims a device directly from that session, so no verification tab is needed; the session authorizes that one request and is never stored by the extension. Only the pinned extension origin may claim, which is what stops another installed extension from minting a device against the same session. Anything else — a session that is not signed in, or a build whose origin does not match — falls back to the device-code flow, where approval happens on a Tide-Bot page the user can see.
+
 The runtime accepts a fixed allowlist of browser commands. DOM actions use semantic handles or bounded accessible targets, not raw CSS selectors from the model. Debugger access is limited to `Page.enable`, `Runtime.enable`, `Network.enable`, and `Page.captureScreenshot`. `Runtime.evaluate` and arbitrary Chrome DevTools Protocol methods are denied.
 
 ## Chrome permission explanations
@@ -46,6 +48,8 @@ The extension does not sell data, use it for advertising, or share it with an in
 ## Origin and authorization policy
 
 The production build embeds `https://tide-bot.com`. Pairing, token refresh, socket join, and command routing all compare the approved origin. Credentials in URLs, paths, queries, fragments, insecure production custom origins, and origin changes are rejected.
+
+The extension's own identity is pinned too. `manifest.json` carries a fixed public `key`, so Chrome derives the same extension id for every install, and the server allows session claiming only from that `chrome-extension://` origin. The manifest key is a public key: it fixes the id and is not a signing secret. Changing it changes the extension id, which invalidates claiming until the server allowlist is updated to match.
 
 The administrator setting for custom origins is locked by default, and custom origins are admin-only. When unlocked in production, a custom server must use HTTPS. Development and test builds may use loopback HTTP. Existing devices are checked against the current origin policy whenever they refresh.
 

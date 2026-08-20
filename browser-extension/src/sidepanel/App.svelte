@@ -134,7 +134,8 @@
 		error = '';
 		try {
 			const value = await api.beginPairing('My Chrome');
-			pairingCode = value.deviceCode ?? '';
+			// A session claim pairs outright, so there is no code to read off.
+			pairingCode = value.claimed ? '' : (value.deviceCode ?? '');
 		} catch (cause: any) {
 			pairing = false;
 			error = cause?.code ?? 'Pairing failed';

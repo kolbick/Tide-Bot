@@ -198,36 +198,43 @@ chromeApi.runtime.onMessage.addListener(
 			return;
 		}
 		if (message?.type === 'tide-bot:pair:start' && typeof message.label === 'string') {
-			void auth
-				.beginPairing(message.label)
-				.then((pairing) => {
-					sendResponse({ ok: true, ...pairing });
-					void auth
+			const label = message.label;
+			const errorCodeOf = (error: unknown, fallback: string) =>
+				typeof error === 'object' && error !== null && 'code' in error
+					? (error as { code: string }).code
+					: fallback;
+			const finishPairing = async () => {
+				await transport.connect();
+				await syncSchedules();
+				await chromeApi.runtime.sendMessage({ type: 'tide-bot:pairing:complete' });
+			};
+			void (async () => {
+				// One click when the browser already holds a Tide-Bot session;
+				// the verification tab is only for when it does not.
+				try {
+					await auth.claimWithSession(label);
+					sendResponse({ ok: true, claimed: true });
+					await finishPairing();
+					return;
+				} catch {
+					// Fall through to the device-code flow.
+				}
+				try {
+					const pairing = await auth.beginPairing(label);
+					sendResponse({ ok: true, claimed: false, ...pairing });
+					auth
 						.pollPairing()
-						.then(async () => {
-							await transport.connect();
-							await syncSchedules();
-							await chromeApi.runtime.sendMessage({ type: 'tide-bot:pairing:complete' });
-						})
+						.then(finishPairing)
 						.catch((error) =>
 							chromeApi.runtime.sendMessage({
 								type: 'tide-bot:pairing:error',
-								code:
-									typeof error === 'object' && error !== null && 'code' in error
-										? (error as { code: string }).code
-										: 'pairing_failed'
+								code: errorCodeOf(error, 'pairing_failed')
 							})
 						);
-				})
-				.catch((error) =>
-					sendResponse({
-						ok: false,
-						error:
-							typeof error === 'object' && error !== null && 'code' in error
-								? (error as { code: string }).code
-								: 'pairing_failed'
-					})
-				);
+				} catch (error) {
+					sendResponse({ ok: false, error: errorCodeOf(error, 'pairing_failed') });
+				}
+			})();
 			return true;
 		}
 		if (message?.type === 'tide-bot:reconnect') {

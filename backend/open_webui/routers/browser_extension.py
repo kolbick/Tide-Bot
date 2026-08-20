@@ -54,6 +54,12 @@ DEFAULT_SERVER_ORIGIN = 'https://tide-bot.com'
 BROWSER_EXTENSION_ARCHIVE = STATIC_DIR / 'browser-extension' / 'tide-bot-browser-extension.zip'
 PAIRING_TTL_SECONDS = 300
 PAIRING_POLL_INTERVAL_SECONDS = 2
+MAX_DEVICE_LABEL_ATTEMPTS = 5
+
+# Chrome derives this id from the public `key` pinned in the extension manifest,
+# so it is identical for every install of the packaged extension. Session-based
+# claiming is restricted to it; anything else must use the device-code flow.
+BROWSER_EXTENSION_ID = 'pjaanipaolcckdgfjjekkmfnelbkfbaa'
 
 _redis = get_redis_client()
 _pairing_start_ip_limiter = RateLimiter(_redis, limit=10, window=300, bucket_size=30)
@@ -81,6 +87,20 @@ async def get_browser_extension_runtime_settings() -> BrowserExtensionRuntimeSet
 
 
 class PairingStartForm(BaseModel):
+    device_label: str = Field(min_length=1, max_length=80)
+    origin: str = Field(min_length=1, max_length=512)
+    extension_version: str = Field(min_length=1, max_length=40)
+
+    @field_validator('device_label')
+    @classmethod
+    def validate_device_label(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('Device label must not be blank')
+        return value
+
+
+class PairingClaimForm(BaseModel):
     device_label: str = Field(min_length=1, max_length=80)
     origin: str = Field(min_length=1, max_length=512)
     extension_version: str = Field(min_length=1, max_length=40)
@@ -414,6 +434,10 @@ def _secret_matches(stored_hash: str, supplied: str) -> bool:
     return hmac.compare_digest(stored_hash, supplied_hash)
 
 
+def _allowed_extension_origins() -> set[str]:
+    return {f'chrome-extension://{BROWSER_EXTENSION_ID}'}
+
+
 def _sha256_file(path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as archive:
@@ -438,6 +462,82 @@ def _token_response(
         token_family_id=device.token_family_id,
         device=_safe_device(device),
     )
+
+
+async def _create_paired_device(
+    *,
+    user_id: str,
+    label: str,
+    origin: str,
+    extension_version: str,
+    now_ns: int,
+    db: AsyncSession,
+) -> tuple[BrowserPairedDeviceModel, str]:
+    """Mint a device credential, disambiguating a label the user already holds.
+
+    A revoked device keeps its label forever under the (user_id, label) unique
+    constraint, so a stale revoked label cannot be told apart here from a live
+    duplicate. Suffix instead of failing, or the extension's fixed default
+    label would permanently block re-pairing.
+    """
+    device_id = str(uuid4())
+    token_family_id = str(uuid4())
+    refresh_token = create_refresh_credential(
+        device_id=device_id,
+        token_family_id=token_family_id,
+        secret_key=WEBUI_SECRET_KEY,
+    )
+    for attempt in range(1, MAX_DEVICE_LABEL_ATTEMPTS + 1):
+        candidate = label if attempt == 1 else f'{label} ({attempt})'
+        try:
+            device = await BrowserPairedDevices.insert(
+                device_id=device_id,
+                user_id=user_id,
+                label=candidate,
+                refresh_token_hash=hash_browser_token(refresh_token, WEBUI_SECRET_KEY),
+                token_family_id=token_family_id,
+                allowed_origin=origin,
+                extension_version=extension_version,
+                now_ns=now_ns,
+                db=db,
+            )
+            return device, refresh_token
+        except IntegrityError:
+            await db.rollback()
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='device_label_in_use')
+
+
+@router.post('/pairing/claim', response_model=DeviceTokenResponse)
+async def claim_pairing_with_session(
+    form_data: PairingClaimForm,
+    request: Request,
+    user=Depends(get_verified_user),
+    settings: BrowserExtensionRuntimeSettings = Depends(get_browser_extension_runtime_settings),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Pair the packaged extension directly from the caller's signed-in session.
+
+    The device-authorization flow exists for inputs that cannot host a browser.
+    This extension runs inside one, beside an authenticated Tide-Bot session, so
+    it can prove identity without the verification tab. Only the pinned
+    extension origin may claim, which is what keeps another installed extension
+    from silently minting a device against the same session.
+    """
+    client_key = _client_fingerprint(request)
+    _check_rate_limit(_pairing_start_ip_limiter, f'browser-pair-claim:{client_key}')
+    if request.headers.get('origin') not in _allowed_extension_origins():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='browser_extension_untrusted_caller')
+    await _require_browser_permission(user, settings, db)
+    origin = _validate_origin(form_data.origin, settings)
+    device, refresh_token = await _create_paired_device(
+        user_id=user.id,
+        label=form_data.device_label,
+        origin=origin,
+        extension_version=form_data.extension_version,
+        now_ns=time.time_ns(),
+        db=db,
+    )
+    return _token_response(device, refresh_token)
 
 
 @router.post('/pairing/start')
@@ -556,28 +656,14 @@ async def exchange_pairing_token(
     if consumed is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='invalid_grant')
 
-    device_id = str(uuid4())
-    token_family_id = str(uuid4())
-    refresh_token = create_refresh_credential(
-        device_id=device_id,
-        token_family_id=token_family_id,
-        secret_key=WEBUI_SECRET_KEY,
+    device, refresh_token = await _create_paired_device(
+        user_id=grant.user_id,
+        label=grant.device_label,
+        origin=origin,
+        extension_version=grant.extension_version,
+        now_ns=now,
+        db=db,
     )
-    try:
-        device = await BrowserPairedDevices.insert(
-            device_id=device_id,
-            user_id=grant.user_id,
-            label=grant.device_label,
-            refresh_token_hash=hash_browser_token(refresh_token, WEBUI_SECRET_KEY),
-            token_family_id=token_family_id,
-            allowed_origin=origin,
-            extension_version=grant.extension_version,
-            now_ns=now,
-            db=db,
-        )
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='device_label_in_use') from None
     return _token_response(device, refresh_token)
 
 
