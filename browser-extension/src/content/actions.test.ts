@@ -57,12 +57,13 @@ describe('DomActions', () => {
 	});
 
 	it('selects only declared option values and emits input/change', async () => {
-		const { actions, snapshot } = setup(`
-			<label for="country">Country</label>
-			<select id="country">
-				<option value="us">United States</option>
-				<option value="ca">Canada</option>
-			</select>
+		const { actions } = setup(`
+			<label>Country
+				<select id="country">
+					<option value="us">United States</option>
+					<option value="ca">Canada</option>
+				</select>
+			</label>
 		`);
 		const select = document.querySelector('select')!;
 		const events: string[] = [];
@@ -70,7 +71,7 @@ describe('DomActions', () => {
 		select.addEventListener('change', () => events.push('change'));
 
 		const result = await actions.execute('browser_select', {
-			target: { handle: snapshot.interactive[0].handle },
+			target: { role: 'combobox', name: 'Country' },
 			values: ['ca']
 		});
 

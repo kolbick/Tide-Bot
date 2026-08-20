@@ -102,6 +102,16 @@ function implicitRole(element: Element): string {
 	return tag;
 }
 
+function labelText(label: Element, control: Element): string {
+	if (!label.contains(control)) return label.textContent ?? '';
+	const visit = (node: Node): string => {
+		if (node === control) return '';
+		if (node.nodeType === 3) return node.textContent ?? '';
+		return [...node.childNodes].map(visit).join(' ');
+	};
+	return visit(label);
+}
+
 function accessibleName(element: Element, document: Document): string {
 	const ariaLabel = element.getAttribute('aria-label');
 	if (ariaLabel) return redactText(ariaLabel, 256);
@@ -115,10 +125,11 @@ function accessibleName(element: Element, document: Document): string {
 	}
 	const labels = (element as HTMLInputElement).labels;
 	if (labels?.length) {
-		const text = [...labels].map((label) => label.textContent ?? '').join(' ');
+		const text = [...labels].map((label) => labelText(label, element)).join(' ');
 		if (text.trim()) return redactText(text, 256);
 	}
-	const closestLabel = element.closest('label')?.textContent;
+	const closest = element.closest('label');
+	const closestLabel = closest ? labelText(closest, element) : '';
 	if (closestLabel?.trim()) return redactText(closestLabel, 256);
 	for (const attribute of ['alt', 'placeholder', 'title']) {
 		const value = element.getAttribute(attribute);
