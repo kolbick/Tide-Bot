@@ -282,7 +282,7 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 		await expect(panel.getByText(/Review \d+ recorded steps?/)).toBeVisible();
 		await panel.getByLabel('Workflow name').fill('E2E recorded workflow');
 		await panel.getByRole('button', { name: 'Save reviewed workflow' }).click();
-		await expect(panel.getByText('E2E recorded workflow', { exact: true })).toBeVisible();
+		await expect(panel.getByRole('button', { name: 'Delete E2E recorded workflow' })).toBeVisible();
 
 		await panel.getByLabel('Schedule name').fill('E2E scheduled replay');
 		await panel.getByLabel('Schedule frequency').selectOption('HOURLY');
