@@ -118,6 +118,7 @@ async def pairing_token(request: web.Request) -> web.Response:
 
 async def refresh_token(request: web.Request) -> web.Response:
     await request.json()
+    state["coverage"]["refresh_token"] = state["coverage"].get("refresh_token", 0) + 1
     if state["revoked"]:
         return json_response({"detail": "device_revoked"}, 401)
     return json_response(token_response())
@@ -322,6 +323,7 @@ async def list_chats(_: web.Request) -> web.Response:
 
 async def create_chat(request: web.Request) -> web.Response:
     body = await request.json()
+    state["coverage"]["create_chat"] = state["coverage"].get("create_chat", 0) + 1
     document = body.get("chat", {})
     chat_id = str(document.get("id") or uuid.uuid4())
     state["chats"][chat_id] = {"id": chat_id, "title": "Extension E2E", "chat": document}
@@ -343,6 +345,7 @@ async def chat_resource(request: web.Request) -> web.Response:
 
 async def chat_completion(request: web.Request) -> web.Response:
     body = await request.json()
+    state["coverage"]["chat_completion"] = state["coverage"].get("chat_completion", 0) + 1
     messages = body.get("messages", [])
     prompt = str(messages[-1].get("content", "")) if messages else ""
     try:

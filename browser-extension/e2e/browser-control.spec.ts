@@ -110,7 +110,12 @@ async function submit(panel: Page, prompt: string) {
 	await panel.getByRole('button', { name: 'Send message' }).click();
 }
 
-async function submitAndExpect(panel: Page, prompt: string, response: string) {
+async function submitAndExpect(
+	panel: Page,
+	request: APIRequestContext,
+	prompt: string,
+	response: string
+) {
 	await submit(panel, prompt);
 	try {
 		await expect(panel.getByText(response, { exact: true })).toBeVisible();
@@ -118,8 +123,17 @@ async function submitAndExpect(panel: Page, prompt: string, response: string) {
 		const bounded = (values: string[]) => values.slice(-5).map((value) => value.slice(0, 200));
 		const alerts = bounded(await panel.getByRole('alert').allTextContents());
 		const assistantMessages = bounded(await panel.locator('article.assistant p').allTextContents());
+		const transcript = bounded(
+			await panel.locator('[aria-label="Chat transcript"] article').allTextContents()
+		);
+		const composer = {
+			draftLength: (await panel.getByLabel('Message Tide-Bot').inputValue()).length,
+			sendDisabled: await panel.getByRole('button', { name: 'Send message' }).isDisabled(),
+			sendText: await panel.getByRole('button', { name: 'Send message' }).textContent()
+		};
+		const state = await e2eState(request);
 		throw new Error(
-			`assistant_response_missing alerts=${JSON.stringify(alerts)} assistant=${JSON.stringify(assistantMessages)}`,
+			`assistant_response_missing alerts=${JSON.stringify(alerts)} assistant=${JSON.stringify(assistantMessages)} transcript=${JSON.stringify(transcript)} composer=${JSON.stringify(composer)} coverage=${JSON.stringify(state.coverage)}`,
 			{ cause }
 		);
 	}
@@ -196,11 +210,13 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 
 		await submitAndExpect(
 			panel,
+			request,
 			'Hello Tide-Bot from text chat',
 			'Tide-Bot replied through the selected local model.'
 		);
 		await submitAndExpect(
 			panel,
+			request,
 			'E2E ordinary controls',
 			'Ordinary controls completed in the locked tab.'
 		);
@@ -208,12 +224,13 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 		await expect(target.getByLabel('Plan')).toHaveValue('pro');
 		await expect(target.getByText('ordinary clicked', { exact: true })).toBeVisible();
 
-		await submitAndExpect(panel, 'E2E navigate within test', 'Navigation completed.');
+		await submitAndExpect(panel, request, 'E2E navigate within test', 'Navigation completed.');
 		await target.waitForURL(`${serverOrigin}/test-page?view=navigated`);
 		await expect(target.getByText('navigated', { exact: true })).toBeVisible();
 
 		await submitAndExpect(
 			panel,
+			request,
 			'E2E capture safe diagnostics',
 			'Screenshot metadata and sanitized diagnostics verified.'
 		);
@@ -221,7 +238,12 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 		const secondTab = await context.newPage();
 		await secondTab.goto(`${serverOrigin}/test-page?view=second`);
 		await secondTab.bringToFront();
-		await submitAndExpect(panel, 'E2E locked tab check', 'The original tab remained locked.');
+		await submitAndExpect(
+			panel,
+			request,
+			'E2E locked tab check',
+			'The original tab remained locked.'
+		);
 		await expect(target.getByText('locked clicked', { exact: true })).toBeVisible();
 		await expect(secondTab.getByText('No actions yet', { exact: true })).toBeVisible();
 
