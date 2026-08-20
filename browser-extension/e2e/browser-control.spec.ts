@@ -136,6 +136,7 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 	request: APIRequestContext;
 }) => {
 	const context = await chromium.launchPersistentContext(profileDir, {
+		channel: 'chromium',
 		headless: true,
 		acceptDownloads: true,
 		downloadsPath: downloadDir,

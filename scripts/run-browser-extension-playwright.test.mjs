@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, rm, stat } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import test from 'node:test';
@@ -59,6 +59,12 @@ test('uses fixed repository inputs and a bounded runtime', () => {
 	assert.equal(inputs.playwrightConfig, resolve('browser-extension/playwright.config.ts'));
 	assert.ok(HARNESS_TIMEOUT_MS >= 30_000 && HARNESS_TIMEOUT_MS <= 180_000);
 	assert.deepEqual(Object.keys(inputs).sort(), ['extensionRoot', 'playwrightConfig']);
+});
+
+test('uses the Chromium channel required for headless extension loading', async () => {
+	const spec = await readFile(resolve('browser-extension/e2e/browser-control.spec.ts'), 'utf8');
+	assert.match(spec, /launchPersistentContext\([\s\S]*channel:\s*'chromium'/);
+	assert.match(spec, /launchPersistentContext\([\s\S]*headless:\s*true/);
 });
 
 test('redacts credentials and pairing secrets from failure output', () => {
