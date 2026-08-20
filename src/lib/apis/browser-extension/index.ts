@@ -39,6 +39,9 @@ export type BrowserExtensionSettings = {
 	custom_origins_unlocked: boolean;
 	default_origin: string;
 	can_manage: boolean;
+	extension_id?: string;
+	/** Admin-only. Doubles as the bearer credential for the signed package. */
+	auto_install_url?: string | null;
 };
 
 const endpoint = (path: string) => `${WEBUI_API_BASE_URL}/browser-extension${path}`;

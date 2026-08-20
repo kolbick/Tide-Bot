@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 import time
 from typing import Literal
 from urllib.parse import parse_qsl, urlsplit
@@ -13,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from open_webui.env import ENV, STATIC_DIR, WEBUI_SECRET_KEY
+from open_webui.env import DATA_DIR, ENV, STATIC_DIR, WEBUI_SECRET_KEY
 from open_webui.internal.db import get_async_session
 from open_webui.models.browser_extension import (
     BrowserPairedDeviceModel,
@@ -52,6 +53,9 @@ router = APIRouter()
 
 DEFAULT_SERVER_ORIGIN = 'https://tide-bot.com'
 BROWSER_EXTENSION_ARCHIVE = STATIC_DIR / 'browser-extension' / 'tide-bot-browser-extension.zip'
+# Signed artifacts live on the data volume, not in the image: the CRX signing
+# key must never enter a Docker build context, so they are published separately.
+BROWSER_EXTENSION_DIST_DIR = DATA_DIR / 'browser-extension'
 PAIRING_TTL_SECONDS = 300
 PAIRING_POLL_INTERVAL_SECONDS = 2
 MAX_DEVICE_LABEL_ATTEMPTS = 5
@@ -60,9 +64,10 @@ MAX_DEVICE_LABEL_ATTEMPTS = 5
 ROTATION_GRACE_SECONDS = 60
 
 # Chrome derives this id from the public `key` pinned in the extension manifest,
-# so it is identical for every install of the packaged extension. Session-based
-# claiming is restricted to it; anything else must use the device-code flow.
-BROWSER_EXTENSION_ID = 'pjaanipaolcckdgfjjekkmfnelbkfbaa'
+# which is the public half of the CRX signing key, so an unpacked load and a
+# self-hosted .crx install share one identity. Session-based claiming is
+# restricted to it; anything else must use the device-code flow.
+BROWSER_EXTENSION_ID = 'blocbpfgbghpfjdpnmipdcciladcpglg'
 
 _redis = get_redis_client()
 _pairing_start_ip_limiter = RateLimiter(_redis, limit=10, window=300, bucket_size=30)
@@ -766,6 +771,49 @@ async def list_paired_devices(
     return [_safe_device(device) for device in devices]
 
 
+async def _distribution_token() -> str:
+    """Bearer token embedded in the self-hosted update URL.
+
+    Chrome's extension updater is a background browser process with no session
+    and no way to prompt, so it cannot authenticate interactively. An
+    unguessable path is the form authentication takes for that client, the same
+    way a private package feed works. Generated once and reused so installed
+    browsers keep polling a stable URL.
+    """
+    token = await Config.get('browser_extension.dist_token', None)
+    if not isinstance(token, str) or len(token) < 32:
+        token = secrets.token_urlsafe(32)
+        await Config.upsert({'browser_extension.dist_token': token})
+    return token
+
+
+async def _distribution_file(token: str, name: str, media_type: str) -> FileResponse:
+    expected = await _distribution_token()
+    if not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='not_found')
+    path = BROWSER_EXTENSION_DIST_DIR / name
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='browser_extension_build_unavailable',
+        )
+    return FileResponse(path, media_type=media_type, headers={'Cache-Control': 'no-cache'})
+
+
+@router.get('/dist/{token}/update.xml')
+async def browser_extension_update_manifest(token: str):
+    return await _distribution_file(token, 'update.xml', 'text/xml')
+
+
+@router.get('/dist/{token}/tide-bot-browser-extension.crx')
+async def browser_extension_crx(token: str):
+    return await _distribution_file(
+        token,
+        'tide-bot-browser-extension.crx',
+        'application/x-chrome-extension',
+    )
+
+
 @router.get('/download')
 async def download_browser_extension(
     user=Depends(get_verified_user),
@@ -837,11 +885,21 @@ async def get_browser_extension_settings(
     db: AsyncSession = Depends(get_async_session),
 ):
     await _require_browser_permission(user, settings, db)
-    return {
+    is_admin = user.role == 'admin'
+    payload = {
         'custom_origins_unlocked': settings.custom_origins_unlocked,
         'default_origin': settings.default_origin,
-        'can_manage': user.role == 'admin',
+        'can_manage': is_admin,
+        'extension_id': BROWSER_EXTENSION_ID,
+        'auto_install_url': None,
     }
+    if is_admin and (BROWSER_EXTENSION_DIST_DIR / 'update.xml').is_file():
+        # Admin-only: this URL is the bearer credential for the signed package.
+        token = await _distribution_token()
+        payload['auto_install_url'] = (
+            f'{settings.default_origin}/api/v1/browser-extension/dist/{token}/update.xml'
+        )
+    return payload
 
 
 @router.put('/settings')

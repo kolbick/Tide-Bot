@@ -24,6 +24,29 @@
 	let error = '';
 	let notice = '';
 	let confirmRevokeId: string | null = null;
+	let copied = false;
+
+	const POLICY_KEY = 'HKLM:\\SOFTWARE\\Policies\\Google\\Chrome\\ExtensionInstallForcelist';
+
+	// Chrome force-installs any extension listed here and keeps it updated from
+	// the given update URL, which is what removes the manual install entirely.
+	$: autoInstallCommand = extensionSettings?.auto_install_url
+		? [
+				`New-Item -Path '${POLICY_KEY}' -Force | Out-Null`,
+				`Set-ItemProperty -Path '${POLICY_KEY}' -Name '1' \``,
+				`  -Value '${extensionSettings.extension_id};${extensionSettings.auto_install_url}'`
+			].join('\n')
+		: '';
+
+	const copyAutoInstall = async () => {
+		try {
+			await navigator.clipboard.writeText(autoInstallCommand);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// Clipboard can be blocked; the command stays selectable on screen.
+		}
+	};
 
 	const messageFor = (reason: unknown) => {
 		const message = reason instanceof Error ? reason.message : String(reason ?? '');
@@ -175,9 +198,33 @@
 		</div>
 	{/if}
 
+	{#if extensionSettings?.auto_install_url}
+		<section class="mt-4 rounded-2xl border border-cyan-200 p-4 dark:border-cyan-900/50">
+			<h2 class="text-sm font-semibold">Install automatically (recommended)</h2>
+			<p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+				Run this once in <strong>PowerShell as Administrator</strong>, then restart Chrome. It
+				installs Tide-Bot and keeps it updated — no download, no unzip, no developer mode.
+			</p>
+			<pre
+				class="mt-3 overflow-x-auto rounded-xl bg-gray-950 p-3 text-xs leading-relaxed text-gray-100">{autoInstallCommand}</pre>
+			<div class="mt-2 flex items-center gap-2">
+				<button
+					type="button"
+					class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold transition hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
+					on:click={copyAutoInstall}
+				>
+					{copied ? 'Copied' : 'Copy command'}
+				</button>
+				<span class="text-xs text-gray-500 dark:text-gray-400">
+					Treat this command as a secret — the URL grants access to the package.
+				</span>
+			</div>
+		</section>
+	{/if}
+
 	<div class="mt-4 grid gap-4 lg:grid-cols-2">
 		<section class="rounded-2xl border border-gray-100 p-4 dark:border-white/[0.06]">
-			<h2 class="text-sm font-semibold">Install in Chrome</h2>
+			<h2 class="text-sm font-semibold">Install manually</h2>
 			<ol class="mt-3 space-y-2.5 text-sm text-gray-600 dark:text-gray-300">
 				<li class="flex gap-3">
 					<span class="font-semibold text-cyan-700 dark:text-cyan-300">1</span><span

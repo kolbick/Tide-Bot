@@ -318,3 +318,6 @@ browser-extension/test-results/
 browser-extension/playwright-report/
 backend/open_webui/static/browser-extension/*.zip
 backend/open_webui/static/browser-extension/*.sha256
+# Signed self-hosted artifacts. update.xml embeds the distribution token.
+backend/open_webui/static/browser-extension/*.crx
+backend/open_webui/static/browser-extension/update.xml
