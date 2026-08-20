@@ -294,7 +294,9 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 				timeout: 12_000
 			})
 			.toBeGreaterThan(0);
-		await expect(panel.getByText('Schedule: E2E scheduled replay', { exact: true })).toBeVisible();
+		await expect(
+			panel.getByText('Schedule: E2E scheduled replay', { exact: true }).last()
+		).toBeVisible();
 
 		await panel.getByRole('button', { name: 'Use voice' }).click();
 		await expect(panel.getByLabel('Voice mode')).toHaveValue('hands-free');
