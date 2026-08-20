@@ -489,6 +489,9 @@
 						} else if (value === 'mistral') {
 							TTS_VOICE = '';
 							TTS_MODEL = 'voxtral-mini-tts-2603';
+						} else if (value === 'elevenlabs') {
+							TTS_VOICE = '';
+							TTS_MODEL = 'eleven_multilingual_v2';
 						} else {
 							TTS_VOICE = '';
 							TTS_MODEL = '';

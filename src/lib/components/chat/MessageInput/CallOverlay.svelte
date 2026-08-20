@@ -14,6 +14,7 @@
 	import VideoInputMenu from './CallOverlay/VideoInputMenu.svelte';
 	import { KokoroWorker } from '$lib/workers/KokoroWorker';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
+	import { Conversation as ElevenLabsConversation } from '@elevenlabs/client';
 
 	const i18n = getContext('i18n');
 
@@ -47,6 +48,53 @@
 
 	let videoInputDevices = [];
 	let selectedVideoInputDeviceId = null;
+
+	// Realtime voice mode: when the selected model carries an ElevenLabs Agent id,
+	// the mic/speaker are handed to the ElevenLabs Conversational AI SDK instead of
+	// OWUI's own record -> transcribe -> chat completion -> TTS loop, since that loop
+	// is turn-based and can't match a duplex realtime agent conversation.
+	let elevenLabsConversation = null;
+
+	const getElevenLabsAgentId = () => model?.info?.meta?.elevenlabs_agent_id ?? null;
+
+	const startElevenLabsRealtimeSession = async (agentId) => {
+		loading = true;
+		try {
+			elevenLabsConversation = await ElevenLabsConversation.startSession({
+				agentId,
+				onConnect: () => {
+					loading = false;
+				},
+				onDisconnect: () => {
+					assistantSpeaking = false;
+					rmsLevel = 0;
+				},
+				onModeChange: ({ mode }) => {
+					assistantSpeaking = mode === 'speaking';
+					rmsLevel = assistantSpeaking ? 0.03 : 0;
+				},
+				onError: (message) => {
+					console.error('ElevenLabs realtime session error:', message);
+					toast.error(`${message}`);
+				}
+			});
+		} catch (error) {
+			loading = false;
+			console.error('Failed to start ElevenLabs realtime session:', error);
+			toast.error(`${error}`);
+		}
+	};
+
+	const stopElevenLabsRealtimeSession = async () => {
+		if (elevenLabsConversation) {
+			try {
+				await elevenLabsConversation.endSession();
+			} catch (error) {
+				console.error('Failed to end ElevenLabs realtime session:', error);
+			}
+			elevenLabsConversation = null;
+		}
+	};
 
 	const getVideoInputDevices = async () => {
 		const devices = await navigator.mediaDevices.enumerateDevices();
@@ -656,6 +704,12 @@
 
 	const toggleMute = () => {
 		muted = !muted;
+
+		if (elevenLabsConversation) {
+			elevenLabsConversation.setMicMuted?.(muted);
+			return;
+		}
+
 		if (muted && hasStartedSpeaking) {
 			// Abort the ongoing recording so it doesn't accidentally send a partial sentence
 			hasStartedSpeaking = false;
@@ -726,11 +780,16 @@
 
 		model = $models.find((m) => m.id === modelId);
 
-		startRecording();
+		const elevenLabsAgentId = getElevenLabsAgentId();
+		if (elevenLabsAgentId) {
+			await startElevenLabsRealtimeSession(elevenLabsAgentId);
+		} else {
+			startRecording();
 
-		eventTarget.addEventListener('chat:start', chatStartHandler);
-		eventTarget.addEventListener('chat', chatEventHandler);
-		eventTarget.addEventListener('chat:finish', chatFinishHandler);
+			eventTarget.addEventListener('chat:start', chatStartHandler);
+			eventTarget.addEventListener('chat', chatEventHandler);
+			eventTarget.addEventListener('chat:finish', chatFinishHandler);
+		}
 
 		document.addEventListener('keydown', handleKeydown);
 
@@ -738,6 +797,7 @@
 			await stopAllAudio();
 
 			stopAudioStream();
+			await stopElevenLabsRealtimeSession();
 
 			eventTarget.removeEventListener('chat:start', chatStartHandler);
 			eventTarget.removeEventListener('chat', chatEventHandler);
@@ -761,6 +821,7 @@
 		await stopCamera();
 
 		await stopAudioStream();
+		await stopElevenLabsRealtimeSession();
 		eventTarget.removeEventListener('chat:start', chatStartHandler);
 		eventTarget.removeEventListener('chat', chatEventHandler);
 		eventTarget.removeEventListener('chat:finish', chatFinishHandler);
