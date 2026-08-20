@@ -288,7 +288,7 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 		await panel.getByLabel('Schedule frequency').selectOption('HOURLY');
 		await panel.getByLabel('First run').fill('2099-01-01T12:00');
 		await panel.getByRole('button', { name: 'Create schedule' }).click();
-		await expect(panel.getByText('E2E scheduled replay', { exact: true })).toBeVisible();
+		await expect(panel.getByRole('button', { name: 'Delete E2E scheduled replay' })).toBeVisible();
 		await expect
 			.poll(async () => (await e2eState(request)).events.schedule_runs, {
 				timeout: 12_000
