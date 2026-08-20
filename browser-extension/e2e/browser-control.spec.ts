@@ -112,7 +112,17 @@ async function submit(panel: Page, prompt: string) {
 
 async function submitAndExpect(panel: Page, prompt: string, response: string) {
 	await submit(panel, prompt);
-	await expect(panel.getByText(response, { exact: true })).toBeVisible();
+	try {
+		await expect(panel.getByText(response, { exact: true })).toBeVisible();
+	} catch (cause) {
+		const bounded = (values: string[]) => values.slice(-5).map((value) => value.slice(0, 200));
+		const alerts = bounded(await panel.getByRole('alert').allTextContents());
+		const assistantMessages = bounded(await panel.locator('article.assistant p').allTextContents());
+		throw new Error(
+			`assistant_response_missing alerts=${JSON.stringify(alerts)} assistant=${JSON.stringify(assistantMessages)}`,
+			{ cause }
+		);
+	}
 }
 
 async function e2eState(request: APIRequestContext) {
