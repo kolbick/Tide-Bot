@@ -1,5 +1,5 @@
-import { readdir } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
+import { join, resolve, sep } from 'node:path';
 
 import {
 	chromium,
@@ -323,8 +323,15 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 		await expect(panel.getByRole('button', { name: 'Pair browser' })).toBeVisible();
 		await expect.poll(async () => (await e2eState(request)).revoked).toBe(true);
 
-		const downloaded = await readdir(downloadDir);
-		expect(downloaded.some((name) => name.includes('tide-bot-e2e-report'))).toBe(true);
+		await expect
+			.poll(async () => {
+				const downloaded = await readdir(downloadDir);
+				const contents = await Promise.all(
+					downloaded.map((name) => readFile(join(downloadDir, name), 'utf8'))
+				);
+				return contents.includes('Tide-Bot extension E2E report\n');
+			})
+			.toBe(true);
 	} finally {
 		await context.close();
 	}
