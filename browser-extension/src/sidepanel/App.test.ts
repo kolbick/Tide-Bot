@@ -100,7 +100,7 @@ describe('Tide-Bot side panel', () => {
 		await waitFor(() => expect(api.openSession).toHaveBeenCalledOnce());
 		const input = screen.getByRole('textbox', { name: 'Message Tide-Bot' });
 		await fireEvent.input(input, { target: { value: 'Open the report' } });
-		await fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+		await fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
 		await waitFor(() => expect(api.createChat).toHaveBeenCalledOnce());
 		expect(api.streamCompletion).toHaveBeenCalledWith(

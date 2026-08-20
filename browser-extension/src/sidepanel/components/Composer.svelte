@@ -21,7 +21,7 @@
 	});
 </script>
 
-<form class="composer" on:submit|preventDefault={onSubmit}>
+<form class="composer" on:submit|preventDefault={() => onSubmit()}>
 	<label for="message">Message Tide-Bot</label>
 	<div class="composer-box">
 		<textarea
