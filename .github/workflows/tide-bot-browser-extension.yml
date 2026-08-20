@@ -1,0 +1,152 @@
+name: tide-bot-browser-extension
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/tide-bot-browser-extension.yml'
+      - 'backend/open_webui/**browser_extension*'
+      - 'backend/open_webui/migrations/versions/**browser_extension*'
+      - 'browser-extension/**'
+      - 'docs/browser-extension/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/*browser-extension*'
+      - 'src/lib/apis/browser-extension/**'
+      - 'src/lib/components/browser-extension/**'
+  push:
+    branches:
+      - main
+      - 'feature/**'
+    paths:
+      - '.github/workflows/tide-bot-browser-extension.yml'
+      - 'backend/open_webui/**browser_extension*'
+      - 'backend/open_webui/migrations/versions/**browser_extension*'
+      - 'browser-extension/**'
+      - 'docs/browser-extension/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/*browser-extension*'
+      - 'src/lib/apis/browser-extension/**'
+      - 'src/lib/components/browser-extension/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tide-bot-browser-extension-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22.18.0'
+  NPM_VERSION: '10.9.3'
+  PYTHON_VERSION: '3.12'
+  PYTHONPATH: backend
+  WEBUI_SECRET_KEY: browser-extension-ci-secret
+
+jobs:
+  verify-extension:
+    name: Verify Chrome extension and release package
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node 22.18.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          check-latest: false
+          cache: npm
+
+      - name: Pin npm 10.9.3
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          test "$(node --version)" = "v${NODE_VERSION}"
+          test "$(npm --version)" = "${NPM_VERSION}"
+
+      - name: Install Node dependencies from lockfile
+        run: npm ci
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend test dependencies
+        run: python -m pip install --requirement backend/requirements.txt "pytest-asyncio>=1.0.0"
+
+      - name: Prepare isolated backend directories
+        run: |
+          data_dir="$RUNNER_TEMP/tide-bot-data"
+          static_dir="$RUNNER_TEMP/tide-bot-static"
+          frontend_build_dir="$RUNNER_TEMP/tide-bot-build"
+          printf 'DATA_DIR=%s\n' "$data_dir" >> "$GITHUB_ENV"
+          printf 'STATIC_DIR=%s\n' "$static_dir" >> "$GITHUB_ENV"
+          printf 'FRONTEND_BUILD_DIR=%s\n' "$frontend_build_dir" >> "$GITHUB_ENV"
+          mkdir -p "$data_dir" "$static_dir" "$frontend_build_dir"
+
+      - name: Run extension unit and harness tests
+        run: |
+          npm run test:browser-extension:unit
+          node --test scripts/build-browser-extension.test.mjs scripts/run-browser-extension-playwright.test.mjs
+
+      - name: Run focused backend security tests
+        run: |
+          python - <<'PY'
+          import redis
+          import pytest
+          import sys
+
+          tests = [
+              "backend/open_webui/models/test_browser_extension.py",
+              "backend/open_webui/utils/test_browser_extension_crypto.py",
+              "backend/open_webui/utils/test_browser_extension_permissions.py",
+              "backend/open_webui/utils/test_browser_extension_auth.py",
+              "backend/open_webui/utils/test_browser_extension_broker.py",
+              "backend/open_webui/socket/test_browser_extension_handlers.py",
+              "backend/open_webui/utils/test_browser_extension_tools.py",
+              "backend/open_webui/utils/test_browser_extension_middleware.py",
+              "backend/open_webui/routers/test_browser_extension_http_auth.py",
+              "backend/open_webui/routers/test_browser_extension_pairing.py",
+              "backend/open_webui/routers/test_browser_extension_workflows.py",
+          ]
+          sys.exit(pytest.main(["-q", *tests]))
+          PY
+
+      - name: Type-check extension sources and Playwright story
+        run: node_modules/.bin/svelte-check --tsconfig browser-extension/tsconfig.json
+
+      - name: Build and inspect production extension package
+        run: |
+          npm run build:browser-extension
+          unzip -t backend/open_webui/static/browser-extension/tide-bot-browser-extension.zip
+          archive_sha="$(sha256sum backend/open_webui/static/browser-extension/tide-bot-browser-extension.zip | cut -d ' ' -f 1)"
+          expected_sha="$(tr -d '\r\n' < backend/open_webui/static/browser-extension/tide-bot-browser-extension.sha256)"
+          test "$archive_sha" = "$expected_sha"
+
+      - name: Install hermetic Playwright Chromium
+        run: node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run browser-control end-to-end story
+        run: npm run test:browser-extension:e2e
+
+      - name: Audit Tide-Bot branding
+        run: npm run audit:branding
+
+      - name: Upload downloadable extension and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: tide-bot-browser-extension-${{ github.sha }}
+          path: |
+            backend/open_webui/static/browser-extension/tide-bot-browser-extension.zip
+            backend/open_webui/static/browser-extension/tide-bot-browser-extension.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      # The workflow intentionally stops at a verified downloadable artifact.
+      # Chrome Web Store publication requires the repository owner's developer account.

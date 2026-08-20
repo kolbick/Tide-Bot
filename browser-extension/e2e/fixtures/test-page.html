@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Tide-Bot browser control test</title>
+		<style>
+			body {
+				font:
+					16px/1.5 system-ui,
+					sans-serif;
+				max-width: 48rem;
+				margin: 3rem auto;
+				padding: 0 1rem;
+				color: #0b1b36;
+			}
+			form,
+			section {
+				display: grid;
+				gap: 0.75rem;
+				margin-block: 1.5rem;
+			}
+			button,
+			input,
+			select,
+			a {
+				font: inherit;
+				padding: 0.6rem;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>Tide-Bot controlled page</h1>
+			<p id="view">Ready</p>
+			<form aria-label="Test controls">
+				<label>Name <input name="name" autocomplete="off" /></label>
+				<label
+					>Plan
+					<select name="plan">
+						<option value="basic">Basic</option>
+						<option value="pro">Pro</option>
+					</select></label
+				>
+			</form>
+			<section aria-label="Actions">
+				<button type="button" data-event="ordinary">Ordinary action</button>
+				<button type="button" data-event="delete">Delete account</button>
+				<button type="button" data-event="locked">Locked tab check</button>
+				<button type="button" id="telemetry">Generate telemetry</button>
+				<a href="/download/report.txt" download="tide-bot-e2e-report.txt">Download test report</a>
+			</section>
+			<output id="result" aria-live="polite">No actions yet</output>
+		</main>
+		<script>
+			const query = new URLSearchParams(location.search);
+			document.querySelector('#view').textContent = query.get('view') || 'Ready';
+			for (const button of document.querySelectorAll('[data-event]')) {
+				button.addEventListener('click', async () => {
+					const name = button.dataset.event;
+					document.querySelector('#result').textContent = `${name} clicked`;
+					await fetch('/__e2e/event', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ name })
+					});
+				});
+			}
+			document.querySelector('#telemetry').addEventListener('click', async () => {
+				console.info('token=console-secret-value');
+				await fetch('/__e2e/event?token=network-secret-value', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ name: 'telemetry' })
+				});
+			});
+		</script>
+	</body>
+</html>

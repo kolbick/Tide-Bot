@@ -8,7 +8,9 @@ const requiredFiles = [
 	'static/tide-bot/tide-bot-192.png',
 	'static/tide-bot/tide-bot-512.png',
 	'static/tide-bot/ted-bot/spritesheet.webp',
-	'src/lib/branding.ts'
+	'src/lib/branding.ts',
+	'browser-extension/manifest.json',
+	'src/lib/components/browser-extension/BrowserExtensionSettings.svelte'
 ];
 
 const requiredIdentity = [
@@ -26,7 +28,16 @@ const requiredIdentity = [
 	['src/app.html', '<title>Tide-Bot | Changing Tides Treatment Center</title>'],
 	['src/app.html', '/tide-bot/tide-bot-96.png'],
 	['src/lib/components/layout/Sidebar.svelte', 'BRAND.faviconPath'],
-	['backend/open_webui/routers/models.py', "/tide-bot/tide-bot-96.png"],
+	['browser-extension/manifest.json', 'Tide-Bot Browser Control'],
+	[
+		'src/lib/components/browser-extension/BrowserExtensionSettings.svelte',
+		'Tide-Bot Browser Control'
+	],
+	[
+		'src/lib/components/browser-extension/BrowserExtensionSettings.svelte',
+		'local models remain on your Tide-Bot server'
+	],
+	['backend/open_webui/routers/models.py', '/tide-bot/tide-bot-96.png'],
 	['static/static/site.webmanifest', 'Tide-Bot | Changing Tides Treatment Center']
 ];
 
@@ -52,7 +63,8 @@ const productSurfaceFiles = [
 	'src/lib/components/chat/Messages/RateComment.svelte',
 	'src/lib/components/chat/ModelSelector/ModelItemMenu.svelte',
 	'src/lib/components/AddToolServerModal.svelte',
-	'src/lib/components/admin/Evaluations/Feedbacks.svelte'
+	'src/lib/components/admin/Evaluations/Feedbacks.svelte',
+	'src/lib/components/browser-extension/BrowserExtensionSettings.svelte'
 ];
 
 const authenticatedBrandingFiles = [
@@ -72,7 +84,8 @@ const authenticatedBrandingFiles = [
 	'src/routes/(app)/admin/functions/create/+page.svelte',
 	'src/routes/(app)/admin/functions/edit/+page.svelte',
 	'src/routes/(app)/workspace/tools/create/+page.svelte',
-	'src/routes/(app)/workspace/tools/edit/+page.svelte'
+	'src/routes/(app)/workspace/tools/edit/+page.svelte',
+	'src/lib/components/browser-extension/BrowserExtensionSettings.svelte'
 ];
 
 const prohibitedVisibleBranding = ['Open WebUI', 'OpenWebUI'];
@@ -118,7 +131,9 @@ for (const file of authenticatedBrandingFiles) {
 	const contents = await readFile(resolve(root, file), 'utf8');
 	for (const label of prohibitedVisibleBranding) {
 		if (contents.includes(label)) {
-			throw new Error(`Brand audit failed: visible upstream label ${JSON.stringify(label)} remains in ${file}`);
+			throw new Error(
+				`Brand audit failed: visible upstream label ${JSON.stringify(label)} remains in ${file}`
+			);
 		}
 	}
 }

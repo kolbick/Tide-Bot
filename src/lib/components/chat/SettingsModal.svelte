@@ -23,6 +23,7 @@
 	import Search from '../icons/Search.svelte';
 	import Connections from './Settings/Connections.svelte';
 	import Integrations from './Settings/Integrations.svelte';
+	import BrowserExtensionSettings from '../browser-extension/BrowserExtensionSettings.svelte';
 	import DatabaseSettings from '../icons/DatabaseSettings.svelte';
 	import SettingsAlt from '../icons/SettingsAlt.svelte';
 	import Link from '../icons/Link.svelte';
@@ -107,6 +108,7 @@
 		shortcuts: 'Basics',
 		connections: 'Services',
 		tools: 'Services',
+		browser_extension: 'Services',
 		personalization: 'Preferences',
 		audio: 'Preferences',
 		data_controls: 'Data',
@@ -360,6 +362,22 @@
 				'openterminal',
 				'terminal',
 				'settings'
+			]
+		},
+		{
+			id: 'browser_extension',
+			title: 'Browser control',
+			keywords: [
+				'browser',
+				'browser control',
+				'chrome',
+				'chrome extension',
+				'download extension',
+				'hands free',
+				'paired devices',
+				'schedules',
+				'voice',
+				'workflows'
 			]
 		},
 
@@ -754,6 +772,13 @@
 
 	const getAvailableSettings = () => {
 		const personalSettings = allSettings.filter((tab) => {
+			if (tab.id === 'browser_extension') {
+				return (
+					$user?.role === 'admin' ||
+					($user?.role === 'user' && ($user?.permissions?.features?.browser_extension ?? true))
+				);
+			}
+
 			if (tab.id === 'connections') {
 				return $config?.features?.enable_direct_connections;
 			}
@@ -860,6 +885,13 @@
 	};
 
 	$: if ($user?.role !== 'admin' && isAdminTab(selectedTab)) {
+		selectedTab = 'general';
+	}
+	$: if (
+		selectedTab === 'browser_extension' &&
+		$user?.role !== 'admin' &&
+		!($user?.permissions?.features?.browser_extension ?? true)
+	) {
 		selectedTab = 'general';
 	}
 
@@ -1015,6 +1047,19 @@
 								<span>{$i18n.t('Integrations')}</span>
 							</button>
 						{/if}
+					{:else if tabId === 'browser_extension'}
+						<button
+							role="tab"
+							aria-controls="tab-browser-extension"
+							aria-selected={selectedTab === 'browser_extension'}
+							class={tabButtonClass(selectedTab === 'browser_extension')}
+							on:click={() => {
+								selectedTab = 'browser_extension';
+							}}
+						>
+							<Link className="size-3.5" strokeWidth="2" />
+							<span>{$i18n.t('Browser control')}</span>
+						</button>
 					{:else if tabId === 'personalization'}
 						<button
 							role="tab"
@@ -1185,6 +1230,11 @@
 						await saveSettings(updated);
 						toast.success($i18n.t('Settings saved successfully!'));
 					}}
+				/>
+			{:else if selectedTab === 'browser_extension'}
+				<BrowserExtensionSettings
+					token={browser ? localStorage.token : ''}
+					role={$user?.role ?? 'user'}
 				/>
 			{:else if selectedTab === 'personalization'}
 				<Personalization

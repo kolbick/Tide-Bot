@@ -311,3 +311,10 @@ cypress/videos
 cypress/screenshots
 .vscode/settings.json
 .cptr
+
+# Tide-Bot Chrome extension build and browser-test artifacts
+browser-extension/release/
+browser-extension/test-results/
+browser-extension/playwright-report/
+backend/open_webui/static/browser-extension/*.zip
+backend/open_webui/static/browser-extension/*.sha256

@@ -141,6 +141,7 @@ from open_webui.routers import (
     audio,
     auths,
     automations,
+    browser_extension,
     calendar,
     channels,
     chats,
@@ -773,6 +774,11 @@ app.include_router(retrieval.router, prefix='/api/v1/retrieval', tags=['retrieva
 app.include_router(configs.router, prefix='/api/v1/configs', tags=['configs'])
 
 app.include_router(auths.router, prefix='/api/v1/auths', tags=['auths'])
+app.include_router(
+    browser_extension.router,
+    prefix='/api/v1/browser-extension',
+    tags=['browser-extension'],
+)
 app.include_router(users.router, prefix='/api/v1/users', tags=['users'])
 
 
@@ -1168,6 +1174,7 @@ async def chat_completion(
             'user_message_id': user_message.get('id') if user_message else None,
             'assistant_message_id': form_data.pop('assistant_message_id', None),
             'session_id': form_data.pop('session_id', None),
+            'browser_session': form_data.pop('browser_session', None),
             'folder_id': form_data.pop('folder_id', None),
             'filter_ids': form_data.pop('filter_ids', []),
             'tool_ids': form_data.get('tool_ids', None),
@@ -2834,6 +2841,13 @@ async def check_db_health():
 
 # --- static assets & files ---
 # Serve build-time static assets (CSS, JS, images, favicon, etc.)
+@app.api_route('/static/browser-extension', methods=['GET', 'HEAD'], include_in_schema=False)
+@app.api_route('/static/browser-extension/{path:path}', methods=['GET', 'HEAD'], include_in_schema=False)
+async def deny_public_browser_extension_archive(path: str = ''):
+    """Keep packaged extensions behind the authenticated download endpoint."""
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Not Found')
+
+
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
 
 

@@ -60,6 +60,7 @@ export const DEFAULT_PERMISSIONS = {
 	},
 	features: {
 		api_keys: false,
+		browser_extension: true,
 		notes: true,
 		channels: true,
 		folders: true,

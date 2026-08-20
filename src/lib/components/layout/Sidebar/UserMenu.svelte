@@ -453,6 +453,26 @@
 				</div>
 			{/if}
 
+			{#if $user?.role === 'admin' || ($user?.role === 'user' && ($user?.permissions?.features?.browser_extension ?? true))}
+				<button
+					class="flex h-[1.6875rem] items-center gap-2 rounded-xl px-2 text-[13px] w-full hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition cursor-pointer select-none"
+					type="button"
+					on:click={async () => {
+						show = false;
+						showSettings.set('browser_extension');
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class="self-center">
+						<CodeIcon className="size-3.5" strokeWidth="1.5" />
+					</div>
+					<div class="self-center truncate">{$i18n.t('Browser control')}</div>
+				</button>
+			{/if}
+
 			{#if help}
 				<hr class="border-gray-50/30 dark:border-gray-800/30 my-0.5 mx-1 p-0" />
 

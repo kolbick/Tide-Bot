@@ -9,6 +9,7 @@ A self-hosted AI workspace with:
 - The full [Open WebUI](https://github.com/open-webui/open-webui) application source (SvelteKit frontend + FastAPI backend)
 - Tide-Bot visual identity, server defaults, primary browser chrome, PWA metadata, and supplied visual assets
 - The **Ted-Bot native companion**: a two-window desktop app that pairs the main Tide-Bot session with a compact floating companion window
+- **Tide-Bot Browser Control**: a downloadable, paired Chrome side panel for text chat, hands-free voice, secure single-tab actions, workflows, and Chrome-open schedules
 - A reproducible Windows desktop build pipeline (GitHub Actions)
 - A Docker Compose stack for self-hosting (`deploy/tide-stack/`)
 - An isolated Cypress E2E harness for the companion feature
@@ -20,12 +21,20 @@ The companion is a small always-on-top window that follows the active conversati
 
 Two surfaces:
 
-| Surface | Where | What |
-|---|---|---|
-| **Browser** | `https://tide-bot.com/companion` (any browser) | The companion rendered as a SvelteKit route. No install. |
+| Surface            | Where                                                               | What                                                                             |
+| ------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Browser**        | `https://tide-bot.com/companion` (any browser)                      | The companion rendered as a SvelteKit route. No install.                         |
 | **Native desktop** | `tide-bot.exe` (Windows) / `tide-bot.app` (macOS, from local build) | Tauri 2 shell that bundles Tide-Bot into a real desktop app with two OS windows. |
 
 The desktop build is the production-shipped path. The browser path is a development convenience and works the same way.
+
+## Chrome browser extension
+
+Signed-in users with the effective browser-extension permission can download Tide-Bot Browser Control from **Settings > Browser Control**. Extract the authenticated ZIP, open `chrome://extensions`, enable Developer mode, and choose **Load unpacked**. The extension pairs through Tide-Bot, keeps normal chat history and local-model selection, starts in text mode, and uses hands-free as the default after voice is selected.
+
+Browser actions are restricted to one controlled tab at a time. Autonomous is the action default, with Consequential approval and Manual approval available. Downloads, delete-like actions, secret fields, and suspected prompt injection still pause for approval. Scheduled workflows use Chrome alarms, so Chrome must remain open.
+
+Installation, security, permission, retention, recovery, and Chrome Web Store instructions are in [`docs/browser-extension/`](docs/browser-extension/README.md).
 
 ## Quick start
 
@@ -97,6 +106,7 @@ Local cross-compile from macOS is possible but the result is unsigned and not te
 ├── backend/open_webui/               # FastAPI backend
 │   ├── socket/companion_presence.py  # Presence service + stores
 │   └── socket/main.py                # Socket.IO handlers + companion events
+├── browser-extension/                # Chrome MV3 side panel and secure tab executor
 ├── desktop/tide-bot/                 # Tauri 2 desktop shell
 │   ├── scripts/build-desktop.mjs     # Only supported Tauri entry point
 │   ├── scripts/desktop-origins.mjs   # Resolver + provenance writer
@@ -127,7 +137,7 @@ These are external gates that no one in this repo can run from a terminal — th
 - **Real Tauri macOS runtime acceptance** (separate from debug compilation).
 - **Fresh Hatch Pet v2 visual/runtime acceptance** from the actual Tauri app via the required direction-evidence pipeline.
 
-Until those happen, desktop release acceptance is *implementation-complete, not yet acceptance-passed*. See `docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md` for the full evidence record.
+Until those happen, desktop release acceptance is _implementation-complete, not yet acceptance-passed_. See `docs/superpowers/2026-07-24-ted-bot-native-companion-acceptance.md` for the full evidence record.
 
 ## Security and origin policy
 
@@ -146,6 +156,9 @@ Until those happen, desktop release acceptance is *implementation-complete, not 
 - [Branding guide](docs/BRANDING.md) — identity rules
 - [Upstream baseline](docs/UPSTREAM.md) — Open WebUI commit pin
 - [Security](docs/SECURITY.md) — security and origin policy
+- [Browser extension guide](docs/browser-extension/README.md) - installation, use, administration, and troubleshooting
+- [Browser extension security](docs/browser-extension/security.md) - permissions, retention, and incident recovery
+- [Chrome Web Store checklist](docs/browser-extension/chrome-web-store.md) - owner-run submission preparation
 
 ## Upstream and licensing
 

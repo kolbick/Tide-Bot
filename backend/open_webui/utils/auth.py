@@ -368,6 +368,79 @@ async def get_current_user(
                 detail='Invalid token',
             )
 
+        if data is None:
+            from open_webui.models.browser_extension import BrowserPairedDevices
+            from open_webui.utils.browser_extension_auth import (
+                BrowserAccessTokenError,
+                decode_browser_access_token,
+                is_browser_extension_http_request_allowed,
+            )
+            from open_webui.utils.browser_extension_permissions import (
+                has_browser_extension_permission,
+            )
+
+            request_path = request.scope.get('path', '')
+            if not is_browser_extension_http_request_allowed(
+                request.method,
+                request_path,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+                )
+            expected_origin = request.headers.get('x-tide-bot-origin', '')
+            try:
+                data = decode_browser_access_token(
+                    token,
+                    secret_key=WEBUI_SECRET_KEY,
+                    expected_origin=expected_origin,
+                )
+            except BrowserAccessTokenError:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ERROR_MESSAGES.INVALID_TOKEN,
+                ) from None
+
+            device = await BrowserPairedDevices.get_active_by_id(
+                str(data.get('device_id', '')),
+            )
+            identity_matches = (
+                device is not None
+                and hmac.compare_digest(str(device.user_id), str(data.get('id', '')))
+                and hmac.compare_digest(
+                    str(device.token_family_id),
+                    str(data.get('token_family_id', '')),
+                )
+                and hmac.compare_digest(
+                    str(device.allowed_origin),
+                    str(data.get('origin', '')),
+                )
+            )
+            if not identity_matches:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ERROR_MESSAGES.INVALID_TOKEN,
+                )
+
+            user = await Users.get_user_by_id(data['id'])
+            default_permissions = await Config.get(
+                'user.permissions',
+                {'features': {'browser_extension': True}},
+            )
+            if user is None or not await has_browser_extension_permission(
+                user.id,
+                default_permissions,
+                user_role=user.role,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+                )
+            request.state.browser_extension_device_id = device.id
+            request.state.browser_extension_origin = device.allowed_origin
+            asyncio.create_task(Users.update_last_active_by_id(user.id))
+            return user
+
         if data is not None and 'id' in data:
             if not await is_valid_token(data, getattr(request.app.state, 'redis', None)):
                 raise HTTPException(

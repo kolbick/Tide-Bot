@@ -183,6 +183,8 @@ COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 
 # copy backend files
 COPY --chown=$UID:$GID ./backend .
+# The frontend stage builds the authenticated Chrome extension download.
+COPY --chown=$UID:$GID --from=build /app/backend/open_webui/static/browser-extension /app/backend/open_webui/static/browser-extension
 
 EXPOSE 8080
 
