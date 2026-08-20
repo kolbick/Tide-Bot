@@ -14,6 +14,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import open_webui.models.browser_extension as browser_models
@@ -129,6 +130,33 @@ async def exchange_pairing(api, start_data):
     )
 
 
+async def refresh_token(api, token, *, extension_version='1.0.1'):
+    return await api.client.post(
+        '/api/v1/browser-extension/token/refresh',
+        json={
+            'refresh_token': token,
+            'origin': 'https://tide-bot.com',
+            'extension_version': extension_version,
+        },
+    )
+
+
+async def age_rotation_past_grace(api, device_id):
+    """Push the recorded rotation outside the grace window."""
+    await api.db.execute(
+        sa.update(browser_models.BrowserPairedDevice)
+        .where(browser_models.BrowserPairedDevice.id == device_id)
+        .values(rotated_at=1)
+    )
+    await api.db.commit()
+
+
+async def paired_tokens(api):
+    start_data = (await start_pairing(api)).json()
+    await approve_pairing(api, start_data)
+    return (await exchange_pairing(api, start_data)).json()
+
+
 @pytest.mark.asyncio
 async def test_pairing_requires_approval_and_consumes_verifier_once(api):
     started = await start_pairing(api)
@@ -204,46 +232,64 @@ async def test_denied_pairing_cannot_be_exchanged(api):
 
 
 @pytest.mark.asyncio
-async def test_refresh_rotates_and_replay_revokes_the_token_family(api):
-    start_data = (await start_pairing(api)).json()
-    await approve_pairing(api, start_data)
-    tokens = (await exchange_pairing(api, start_data)).json()
+async def test_refresh_rotates_and_stale_replay_revokes_the_token_family(api):
+    tokens = await paired_tokens(api)
+    device_id = tokens['device']['id']
 
-    refreshed = await api.client.post(
-        '/api/v1/browser-extension/token/refresh',
-        json={
-            'refresh_token': tokens['refresh_token'],
-            'origin': 'https://tide-bot.com',
-            'extension_version': '1.0.1',
-        },
-    )
+    refreshed = await refresh_token(api, tokens['refresh_token'])
     assert refreshed.status_code == 200
     rotated = refreshed.json()
     assert rotated['refresh_token'] != tokens['refresh_token']
 
-    replay = await api.client.post(
-        '/api/v1/browser-extension/token/refresh',
-        json={
-            'refresh_token': tokens['refresh_token'],
-            'origin': 'https://tide-bot.com',
-            'extension_version': '1.0.1',
-        },
-    )
+    # Past the grace window, presenting the rotated-away credential is a replay.
+    await age_rotation_past_grace(api, device_id)
+
+    replay = await refresh_token(api, tokens['refresh_token'])
     assert replay.status_code == 401
     assert tokens['refresh_token'] not in replay.text
-
-    device_id = tokens['device']['id']
     assert await BrowserPairedDevices.get_active_by_id(device_id, db=api.db) is None
 
-    revoked_family = await api.client.post(
-        '/api/v1/browser-extension/token/refresh',
-        json={
-            'refresh_token': rotated['refresh_token'],
-            'origin': 'https://tide-bot.com',
-            'extension_version': '1.0.1',
-        },
-    )
+    revoked_family = await refresh_token(api, rotated['refresh_token'])
     assert revoked_family.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_reaccepts_the_rotated_credential_inside_the_grace_window(api):
+    """A worker killed before it stored the rotation must not lose the device."""
+    tokens = await paired_tokens(api)
+    device_id = tokens['device']['id']
+
+    lost = await refresh_token(api, tokens['refresh_token'])
+    assert lost.status_code == 200
+    unreceived = lost.json()['refresh_token']
+
+    retry = await refresh_token(api, tokens['refresh_token'])
+    assert retry.status_code == 200
+    assert retry.json()['refresh_token'] == tokens['refresh_token']
+    assert await BrowserPairedDevices.get_active_by_id(device_id, db=api.db) is not None
+
+    # The credential the client never received is not left usable: presenting it
+    # is what would expose a second holder, so it still trips revocation.
+    orphaned = await refresh_token(api, unreceived)
+    assert orphaned.status_code == 401
+    assert await BrowserPairedDevices.get_active_by_id(device_id, db=api.db) is None
+
+
+@pytest.mark.asyncio
+async def test_credential_older_than_one_rotation_revokes_immediately(api):
+    """The window forgives exactly one rotation; anything older is a replay."""
+    tokens = await paired_tokens(api)
+    device_id = tokens['device']['id']
+    first = tokens['refresh_token']
+
+    second = (await refresh_token(api, first)).json()['refresh_token']
+    third = (await refresh_token(api, second)).json()['refresh_token']
+    assert len({first, second, third}) == 3
+
+    # `first` is two rotations back, so it is neither current nor forgiven.
+    stale = await refresh_token(api, first)
+    assert stale.status_code == 401
+    assert await BrowserPairedDevices.get_active_by_id(device_id, db=api.db) is None
 
 
 @pytest.mark.asyncio

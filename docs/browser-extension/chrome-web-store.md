@@ -31,6 +31,22 @@ GitHub Actions runs the same release gates and uploads the ZIP plus checksum as 
 - [ ] Verify the signed-in download remains behind `/api/v1/browser-extension/download`, not a public static URL.
 - [ ] Review the privacy disclosure against the exact submitted build and the operator's real model and speech providers.
 
+## Extension identity
+
+The repository build pins a public `key` in `browser-extension/manifest.json` so
+every **Load unpacked** install shares one extension id, and the server allows
+session-based pairing only from that id (`BROWSER_EXTENSION_ID` in
+`backend/open_webui/routers/browser_extension.py`).
+
+The Chrome Web Store assigns its own item id instead. A store release therefore
+changes the id, and one-click pairing silently degrades to the device-code flow
+until the server constant is updated to match.
+
+- [ ] Remove the `key` field before uploading to the Web Store.
+- [ ] Record the store-assigned extension id from the developer dashboard.
+- [ ] Update `BROWSER_EXTENSION_ID` to that id and redeploy before announcing the listing.
+- [ ] Re-verify that pairing completes without opening the verification tab.
+
 ## Store listing assets
 
 - [ ] Product name: **Tide-Bot Browser Control**.

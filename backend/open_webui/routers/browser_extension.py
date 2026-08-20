@@ -55,6 +55,9 @@ BROWSER_EXTENSION_ARCHIVE = STATIC_DIR / 'browser-extension' / 'tide-bot-browser
 PAIRING_TTL_SECONDS = 300
 PAIRING_POLL_INTERVAL_SECONDS = 2
 MAX_DEVICE_LABEL_ATTEMPTS = 5
+# How long a just-rotated-away refresh credential stays acceptable, covering a
+# service worker killed between the server's commit and the extension's write.
+ROTATION_GRACE_SECONDS = 60
 
 # Chrome derives this id from the public `key` pinned in the extension manifest,
 # so it is identical for every install of the packaged extension. Session-based
@@ -712,8 +715,26 @@ async def refresh_device_token(
 
     current_hash = hash_browser_token(form_data.refresh_token, WEBUI_SECRET_KEY)
     if not hmac.compare_digest(device.refresh_token_hash, current_hash):
-        await BrowserPairedDevices.revoke_token_family(device.token_family_id, db=db)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='invalid_refresh_credential')
+        # Chrome can kill a Manifest V3 service worker between this endpoint
+        # committing a rotation and the extension storing the result, leaving a
+        # healthy client holding the credential we just rotated away. Inside a
+        # short window that is a lost response, not a stolen credential, so
+        # re-accept it once; outside it, replay detection still applies.
+        restored = None
+        if device.previous_refresh_token_hash and hmac.compare_digest(
+            device.previous_refresh_token_hash, current_hash
+        ):
+            restored = await BrowserPairedDevices.restore_rotated_refresh_token(
+                device.id,
+                device.token_family_id,
+                current_hash,
+                not_rotated_before=time.time_ns() - ROTATION_GRACE_SECONDS * 1_000_000_000,
+                db=db,
+            )
+        if restored is None:
+            await BrowserPairedDevices.revoke_token_family(device.token_family_id, db=db)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='invalid_refresh_credential')
+        return _token_response(restored, form_data.refresh_token)
 
     rotated_token = create_refresh_credential(
         device_id=device.id,

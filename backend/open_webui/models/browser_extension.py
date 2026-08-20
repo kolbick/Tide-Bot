@@ -54,6 +54,11 @@ class BrowserPairedDevice(Base):
     user_id = Column(Text, nullable=False)
     label = Column(Text, nullable=False)
     refresh_token_hash = Column(Text, nullable=False, unique=True)
+    # The credential this row last rotated away from, kept only long enough to
+    # tell a lost-response retry apart from a genuine replay. See
+    # BrowserPairedDeviceTable.restore_rotated_refresh_token.
+    previous_refresh_token_hash = Column(Text, nullable=True)
+    rotated_at = Column(BigInteger, nullable=True)
     token_family_id = Column(Text, nullable=False)
     allowed_origin = Column(Text, nullable=False)
     extension_version = Column(Text, nullable=False)
@@ -167,6 +172,8 @@ class BrowserPairedDeviceModel(_StoredModel):
     user_id: str
     label: str
     refresh_token_hash: str
+    previous_refresh_token_hash: str | None = None
+    rotated_at: int | None = None
     token_family_id: str
     allowed_origin: str
     extension_version: str
@@ -452,6 +459,8 @@ class BrowserPairedDeviceTable:
         now = _now_ns(now_ns)
         values: dict[str, Any] = {
             'refresh_token_hash': new_hash,
+            'previous_refresh_token_hash': current_hash,
+            'rotated_at': now,
             'last_seen_at': now,
             'updated_at': now,
         }
@@ -515,6 +524,50 @@ class BrowserPairedDeviceTable:
                     BrowserPairedDevice.revoked_at.is_(None),
                 )
                 .values(label=label, updated_at=_now_ns(now_ns))
+                .returning(BrowserPairedDevice)
+            )
+            row = result.scalar_one_or_none()
+            await session.commit()
+            return BrowserPairedDeviceModel.model_validate(row) if row else None
+
+    async def restore_rotated_refresh_token(
+        self,
+        device_id: str,
+        token_family_id: str,
+        previous_hash: str,
+        *,
+        not_rotated_before: int,
+        now_ns: int | None = None,
+        db: AsyncSession | None = None,
+    ) -> BrowserPairedDeviceModel | None:
+        """Re-accept the credential this row just rotated away from.
+
+        A Manifest V3 service worker can be killed after the server commits a
+        rotation but before the extension stores the new credential, leaving the
+        client holding only the old one. Rolling forward is impossible — the
+        server keeps hashes, not the token — so roll back to the credential the
+        caller proved it holds and let it rotate normally next time. Bounded by
+        not_rotated_before so anything older still trips replay detection.
+        """
+        now = _now_ns(now_ns)
+        async with get_async_db_context(db) as session:
+            result = await session.execute(
+                update(BrowserPairedDevice)
+                .where(
+                    BrowserPairedDevice.id == device_id,
+                    BrowserPairedDevice.token_family_id == token_family_id,
+                    BrowserPairedDevice.previous_refresh_token_hash == previous_hash,
+                    BrowserPairedDevice.rotated_at.is_not(None),
+                    BrowserPairedDevice.rotated_at >= not_rotated_before,
+                    BrowserPairedDevice.revoked_at.is_(None),
+                )
+                .values(
+                    refresh_token_hash=previous_hash,
+                    previous_refresh_token_hash=None,
+                    rotated_at=None,
+                    last_seen_at=now,
+                    updated_at=now,
+                )
                 .returning(BrowserPairedDevice)
             )
             row = result.scalar_one_or_none()
