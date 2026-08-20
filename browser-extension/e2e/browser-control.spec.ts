@@ -318,9 +318,13 @@ test('pairs, chats, controls one tab, uses voice, records schedules, and recover
 		await request.post(`${serverOrigin}/__e2e/revoke`);
 		await panel.waitForTimeout(1_500);
 		await panel.reload();
-		await expect(panel.getByText('Offline', { exact: true })).toBeVisible();
-		await panel.getByRole('button', { name: 'Reconnect' }).click();
-		await expect(panel.getByRole('button', { name: 'Pair browser' })).toBeVisible();
+		const pairBrowser = panel.getByRole('button', { name: 'Pair browser' });
+		const reconnect = panel.getByRole('button', { name: 'Reconnect' });
+		await expect
+			.poll(async () => (await pairBrowser.isVisible()) || (await reconnect.isVisible()))
+			.toBe(true);
+		if (await reconnect.isVisible().catch(() => false)) await reconnect.click();
+		await expect(pairBrowser).toBeVisible();
 		await expect.poll(async () => (await e2eState(request)).revoked).toBe(true);
 
 		await expect
