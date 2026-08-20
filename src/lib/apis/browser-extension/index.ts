@@ -99,6 +99,21 @@ export const updateBrowserExtensionSettings = (
 		body: JSON.stringify(settings)
 	});
 
+export const approveBrowserExtensionPairing = (
+	token: string,
+	grantId: string,
+	deviceCode: string,
+	approved: boolean
+) =>
+	requestJson<{ status: 'approved' | 'denied' }>(
+		token,
+		`/pairing/${encodeURIComponent(grantId)}/approve`,
+		{
+			method: 'POST',
+			body: JSON.stringify({ device_code: deviceCode, approved })
+		}
+	);
+
 export const downloadBrowserExtension = async (token: string): Promise<void> => {
 	const response = await fetch(endpoint('/download'), {
 		method: 'GET',
@@ -134,7 +149,8 @@ export const browserExtensionClient = {
 	listSchedules: getBrowserExtensionSchedules,
 	getSettings: getBrowserExtensionSettings,
 	updateSettings: updateBrowserExtensionSettings,
-	download: downloadBrowserExtension
+	download: downloadBrowserExtension,
+	approvePairing: approveBrowserExtensionPairing
 };
 
 export type BrowserExtensionClient = typeof browserExtensionClient;
