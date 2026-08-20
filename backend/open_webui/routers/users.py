@@ -237,6 +237,7 @@ class ChatPermissions(BaseModel):
 
 class FeaturesPermissions(BaseModel):
     api_keys: bool = False
+    browser_extension: bool = True
     notes: bool = True
     channels: bool = True
     folders: bool = True

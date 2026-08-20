@@ -36,6 +36,7 @@ from open_webui.models.channels import Channels
 from open_webui.models.chats import Chats
 from open_webui.models.notes import Notes, NoteUpdateForm
 from open_webui.models.users import UserNameResponse, Users
+from open_webui.socket.browser_extension import BrowserExtensionSocketService
 from open_webui.socket.companion_presence import (
     CompanionPresenceSocketService,
     create_presence_store,
@@ -45,6 +46,7 @@ from open_webui.socket.utils import RedisDict, RedisLock, YdocManager
 from open_webui.tasks import create_task, stop_item_tasks
 from open_webui.utils.access_control import has_permission
 from open_webui.utils.auth import decode_token, is_valid_token
+from open_webui.utils.browser_extension_broker import BrowserCommandBroker
 from open_webui.utils.redis import (
     build_sentinel_url,
     get_redis_connection,
@@ -150,6 +152,18 @@ if WEBSOCKET_MANAGER == 'redis':
         redis_sentinels=ws_sentinels,
         redis_cluster=WEBSOCKET_REDIS_CLUSTER,
     )
+    BROWSER_DEVICE_POOL = RedisDict(
+        f'{REDIS_KEY_PREFIX}:browser_extension:devices',
+        redis_url=WEBSOCKET_REDIS_URL,
+        redis_sentinels=ws_sentinels,
+        redis_cluster=WEBSOCKET_REDIS_CLUSTER,
+    )
+    BROWSER_SESSION_POOL = RedisDict(
+        f'{REDIS_KEY_PREFIX}:browser_extension:sessions',
+        redis_url=WEBSOCKET_REDIS_URL,
+        redis_sentinels=ws_sentinels,
+        redis_cluster=WEBSOCKET_REDIS_CLUSTER,
+    )
     USAGE_POOL = RedisDict(
         f'{REDIS_KEY_PREFIX}:usage_pool',
         redis_url=WEBSOCKET_REDIS_URL,
@@ -182,6 +196,8 @@ else:
     MODELS = {}
 
     SESSION_POOL = {}
+    BROWSER_DEVICE_POOL = {}
+    BROWSER_SESSION_POOL = {}
     USAGE_POOL = {}
 
     aquire_func = release_func = renew_func = lambda: True
@@ -189,6 +205,7 @@ else:
 
 
 COMPANION_PRESENCE_SERVICE: CompanionPresenceSocketService | None = None
+BROWSER_EXTENSION_SERVICE: BrowserExtensionSocketService | None = None
 
 
 def initialize_companion_presence_service() -> CompanionPresenceSocketService:
@@ -206,6 +223,46 @@ def initialize_companion_presence_service() -> CompanionPresenceSocketService:
             store=store,
         )
     return COMPANION_PRESENCE_SERVICE
+
+
+async def _send_browser_command(
+    device_id: str,
+    envelope: dict,
+    timeout: float,
+):
+    try:
+        return await sio.call(
+            'browser:command:request',
+            envelope,
+            to=f'browser:device:{device_id}',
+            timeout=timeout,
+        )
+    except socketio.exceptions.TimeoutError as exc:
+        raise TimeoutError from exc
+
+
+async def _send_browser_cancel(device_id: str, envelope: dict) -> None:
+    await sio.emit(
+        'browser:command:cancel',
+        envelope,
+        room=f'browser:device:{device_id}',
+    )
+
+
+def initialize_browser_extension_service() -> BrowserExtensionSocketService:
+    global BROWSER_EXTENSION_SERVICE
+    if BROWSER_EXTENSION_SERVICE is None:
+        broker = BrowserCommandBroker(
+            send_command=_send_browser_command,
+            send_cancel=_send_browser_cancel,
+            devices=BROWSER_DEVICE_POOL,
+            sessions=BROWSER_SESSION_POOL,
+        )
+        BROWSER_EXTENSION_SERVICE = BrowserExtensionSocketService(
+            sio=sio,
+            broker=broker,
+        )
+    return BROWSER_EXTENSION_SERVICE
 
 
 YDOC_MANAGER = YdocManager(
@@ -480,6 +537,42 @@ async def companion_presence_update(sid, data):
 async def companion_presence_subscribe(sid, data=None):
     service = COMPANION_PRESENCE_SERVICE or initialize_companion_presence_service()
     return await service.subscribe(sid)
+
+
+@sio.on('browser:device:join')
+async def browser_device_join(sid, data):
+    service = BROWSER_EXTENSION_SERVICE or initialize_browser_extension_service()
+    return await service.join(sid, data)
+
+
+@sio.on('browser:heartbeat')
+async def browser_heartbeat(sid, data=None):
+    service = BROWSER_EXTENSION_SERVICE or initialize_browser_extension_service()
+    return await service.heartbeat(sid, data)
+
+
+@sio.on('browser:session:open')
+async def browser_session_open(sid, data):
+    service = BROWSER_EXTENSION_SERVICE or initialize_browser_extension_service()
+    return await service.open_session(sid, data)
+
+
+@sio.on('browser:session:close')
+async def browser_session_close(sid, data):
+    service = BROWSER_EXTENSION_SERVICE or initialize_browser_extension_service()
+    return await service.close_session(sid, data)
+
+
+@sio.on('browser:command:result')
+async def browser_command_result(sid, data):
+    service = BROWSER_EXTENSION_SERVICE or initialize_browser_extension_service()
+    return await service.command_result(sid, data)
+
+
+@sio.on('browser:approval:result')
+async def browser_approval_result(sid, data):
+    service = BROWSER_EXTENSION_SERVICE or initialize_browser_extension_service()
+    return await service.approval_result(sid, data)
 
 
 @sio.on('join-channels')
@@ -899,6 +992,12 @@ async def yjs_awareness_update(sid, data):
 
 @sio.event
 async def disconnect(sid, reason=None):
+    if BROWSER_EXTENSION_SERVICE is not None:
+        try:
+            await BROWSER_EXTENSION_SERVICE.disconnect(sid)
+        except Exception:
+            log.exception('Failed to remove browser extension state during socket disconnect')
+
     if COMPANION_PRESENCE_SERVICE is not None:
         try:
             await COMPANION_PRESENCE_SERVICE.disconnect(sid)

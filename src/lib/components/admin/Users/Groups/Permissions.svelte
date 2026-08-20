@@ -870,6 +870,26 @@
 		</div>
 
 		<div class="flex flex-col w-full">
+			<Tooltip
+				className="flex w-full justify-between my-1"
+				content={$i18n.t(
+					'Controls whether group members can pair Tide-Bot with a Chrome browser and let it act on web pages.'
+				)}
+				placement="top-start"
+			>
+				<div class="self-center text-xs font-normal">
+					{$i18n.t('Browser control extension')}
+				</div>
+				<Switch bind:state={permissions.features.browser_extension} />
+			</Tooltip>
+			{#if !permissions.features.browser_extension}
+				<div class="text-xs text-gray-500">
+					{$i18n.t('An explicit group deny overrides the default browser-control permission.')}
+				</div>
+			{/if}
+		</div>
+
+		<div class="flex flex-col w-full">
 			<div class="flex w-full justify-between my-1">
 				<div class=" self-center text-xs font-normal">
 					{$i18n.t('Notes')}

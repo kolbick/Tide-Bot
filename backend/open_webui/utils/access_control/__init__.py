@@ -10,6 +10,7 @@ from open_webui.models.access_grants import (
 )
 from open_webui.models.groups import Groups
 from open_webui.models.users import UserModel
+from open_webui.utils.browser_extension_permissions import has_browser_extension_permission
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
