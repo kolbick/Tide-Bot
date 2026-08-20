@@ -408,13 +408,18 @@ async def _tts_elevenlabs(request, payload, file_path, file_body_path, user):
     r = None
     try:
         session = await get_session()
+        body = {
+            'text': payload['input'],
+            'voice_settings': {'stability': 0.5, 'similarity_boost': 0.5},
+        }
+        model_id = await Config.get('audio.tts.model')
+        # audio.tts.model is shared across engines (e.g. OpenAI's 'tts-1' default);
+        # only forward it if it's actually an ElevenLabs model id, else let ElevenLabs pick its own default.
+        if model_id and model_id.startswith('eleven_'):
+            body['model_id'] = model_id
         async with session.post(
             f'{ELEVENLABS_API_BASE_URL}/v1/text-to-speech/{voice_id}',
-            json={
-                'text': payload['input'],
-                'model_id': await Config.get('audio.tts.model'),
-                'voice_settings': {'stability': 0.5, 'similarity_boost': 0.5},
-            },
+            json=body,
             headers={
                 'Accept': 'audio/mpeg',
                 'Content-Type': 'application/json',
