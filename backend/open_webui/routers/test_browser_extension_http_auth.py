@@ -93,16 +93,22 @@ async def test_browser_device_token_is_rejected_outside_scope_or_origin(
     import open_webui.utils.auth as auth_module
     import open_webui.utils.browser_extension_auth as browser_auth
 
-    monkeypatch.setattr(auth_module, 'decode_token', lambda _token: None)
-    monkeypatch.setattr(
-        browser_auth,
-        'decode_browser_access_token',
-        lambda *_args, **_kwargs: {
+    def decode_browser_token(*_args, expected_origin=None, **_kwargs):
+        claims = {
             'id': 'user-a',
             'device_id': 'device-a',
             'token_family_id': 'family-a',
             'origin': 'https://tide-bot.com',
-        },
+        }
+        if expected_origin != claims['origin']:
+            raise browser_auth.BrowserAccessTokenError('origin mismatch')
+        return claims
+
+    monkeypatch.setattr(auth_module, 'decode_token', lambda _token: None)
+    monkeypatch.setattr(
+        browser_auth,
+        'decode_browser_access_token',
+        decode_browser_token,
     )
 
     with pytest.raises(HTTPException) as error:
