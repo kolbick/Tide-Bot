@@ -5,7 +5,7 @@
 
 {#if items.length}
 	<section class="activity" aria-label="Browser activity">
-		<p class="eyebrow">Browser activity</p>
+		<p class="field-label">Recent activity</p>
 		{#each items.slice(-6) as item (item.id)}
 			<div>
 				<span class:complete={item.status === 'complete'}></span>

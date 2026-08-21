@@ -129,6 +129,13 @@ export async function buildBrowserExtension({
 
 	await cp(join(extensionRoot, 'manifest.json'), join(distDir, 'manifest.json'));
 	await cp(join(extensionRoot, 'icons'), join(distDir, 'icons'), { recursive: true });
+	// Archivo is the product typeface. Copied to the package root and referenced
+	// by an absolute URL so the side panel matches tide-bot.com without a
+	// network fetch, which the extension CSP would block anyway.
+	await cp(
+		join(repoRoot, 'static/assets/fonts/Archivo-Variable.ttf'),
+		join(distDir, 'Archivo-Variable.ttf')
+	);
 
 	await assertNoRemoteHostedCode(distDir);
 	const sha256 = await writeArchive(distDir, zipPath);

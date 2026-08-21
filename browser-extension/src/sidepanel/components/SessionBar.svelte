@@ -7,19 +7,9 @@
 	export let tabPolicy: TabPolicy = 'locked';
 	export let onStart: () => void;
 	export let onStop: () => void;
-	export let onReconnect: () => void;
 </script>
 
 <section class="session-bar" aria-label="Browser session">
-	<div class="connection">
-		<span class:live={connected} class="status-dot"></span>
-		<strong>{connected ? 'Connected' : 'Offline'}</strong>
-		{#if !connected}
-			<button class="text-button" type="button" aria-label="Reconnect" on:click={onReconnect}
-				>Reconnect</button
-			>
-		{/if}
-	</div>
 	<div class="policy-row">
 		<label>
 			<span>Action mode</span>

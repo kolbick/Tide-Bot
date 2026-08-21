@@ -128,6 +128,8 @@
 	});
 
 	$: voiceActive = voiceStatus.inputMode === 'voice';
+	// Drives the signal line, which is the only progress indicator in the panel.
+	$: busy = generating || activities.some((item) => item.status === 'running');
 
 	const pair = async () => {
 		pairing = true;
@@ -303,62 +305,80 @@
 	};
 </script>
 
-<svelte:head><meta name="theme-color" content="#0b1b36" /></svelte:head>
+<svelte:head><meta name="theme-color" content="#fffbf3" /></svelte:head>
 
 <main class="shell">
 	<header class="brand">
 		<img src="/icons/icon-48.png" alt="" />
-		<div>
-			<p class="eyebrow">Changing Tides Treatment Center</p>
-			<h1>{PRODUCT_NAME}</h1>
-		</div>
-		<span class="privacy-pill">Private</span>
+		<h1>{PRODUCT_NAME}</h1>
+		{#if status.paired}
+			<span class="connection">
+				<span class:live={status.connected} class="status-dot"></span>
+				{status.connected ? 'Connected' : 'Offline'}
+				{#if !status.connected}
+					<!-- Kept beside the status it fixes, not buried in the disclosure. -->
+					<button class="text-button" type="button" on:click={reconnect}>Reconnect</button>
+				{/if}
+			</span>
+		{/if}
 	</header>
+
+	<div class="signal-line" class:is-active={busy} aria-hidden="true"></div>
 
 	{#if loading}
 		<section class="loading" aria-live="polite">Connecting to Tide-Bot…</section>
 	{:else if !status.paired}
-		<Pairing busy={pairing} code={pairingCode} {error} onPair={pair} />
+		<div class="scroll">
+			<Pairing busy={pairing} code={pairingCode} {error} onPair={pair} />
+		</div>
 	{:else}
-		<SessionBar
-			connected={status.connected}
-			session={status.session}
-			bind:actionMode
-			bind:tabPolicy
-			onStart={openSession}
-			onStop={closeSession}
-			onReconnect={reconnect}
-		/>
-		<ModelPicker
-			{models}
-			{chats}
-			bind:selectedModel
-			bind:selectedChat
-			disabled={generating}
-			onChatChange={selectChat}
-		/>
-		{#if error}<p class="error banner-error" role="alert">{error}</p>{/if}
-		<Chat {messages} {generating} />
-		<ActivityTimeline items={activities} />
-		<WorkflowManager
-			{api}
-			connected={status.connected}
-			sessionActive={Boolean(status.session)}
-			deviceId={status.deviceId}
-		/>
-		{#each approvals as approval (approval.commandId)}
-			<ApprovalCard {approval} onResolve={(approved) => resolveApproval(approval, approved)} />
-		{/each}
-		{#if voiceActive || voiceStatus.error}
-			<VoiceControls
-				status={voiceStatus}
-				onMode={(mode) => void controller().setVoiceMode(mode)}
-				onStop={stopVoice}
-				onRetry={startVoice}
-				onPushStart={() => controller().beginPushToTalk()}
-				onPushEnd={() => controller().endPushToTalk()}
-			/>
-		{/if}
+		<div class="scroll">
+			{#if error}<p class="error banner-error" role="alert">{error}</p>{/if}
+			<Chat {messages} {generating} />
+			{#each approvals as approval (approval.commandId)}
+				<ApprovalCard {approval} onResolve={(approved) => resolveApproval(approval, approved)} />
+			{/each}
+			{#if voiceActive || voiceStatus.error}
+				<VoiceControls
+					status={voiceStatus}
+					onMode={(mode) => void controller().setVoiceMode(mode)}
+					onStop={stopVoice}
+					onRetry={startVoice}
+					onPushStart={() => controller().beginPushToTalk()}
+					onPushEnd={() => controller().endPushToTalk()}
+				/>
+			{/if}
+		</div>
+
+		<details class="controls">
+			<summary>Session and workflows</summary>
+			<div class="controls-body">
+				<SessionBar
+					connected={status.connected}
+					session={status.session}
+					bind:actionMode
+					bind:tabPolicy
+					onStart={openSession}
+					onStop={closeSession}
+				/>
+				<ModelPicker
+					{models}
+					{chats}
+					bind:selectedModel
+					bind:selectedChat
+					disabled={generating}
+					onChatChange={selectChat}
+				/>
+				<ActivityTimeline items={activities} />
+				<WorkflowManager
+					{api}
+					connected={status.connected}
+					sessionActive={Boolean(status.session)}
+					deviceId={status.deviceId}
+				/>
+			</div>
+		</details>
+
 		<Composer
 			bind:value={draft}
 			bind:textarea

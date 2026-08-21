@@ -81,7 +81,9 @@ describe('Tide-Bot side panel', () => {
 
 		expect(await screen.findByRole('heading', { name: 'Tide-Bot Browser Control' })).toBeTruthy();
 		await waitFor(() => expect(api.models).toHaveBeenCalledOnce());
-		expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue('local-model');
+		// models() being called only means the request started; wait for the
+		// loaded panel rather than asserting mid-load.
+		expect(await screen.findByRole('combobox', { name: 'Model' })).toHaveValue('local-model');
 		expect(screen.getByRole('combobox', { name: 'Action mode' })).toHaveValue('autonomous');
 		expect(screen.getByRole('combobox', { name: 'Tab policy' })).toHaveValue('locked');
 		expect(screen.getByRole('textbox', { name: 'Message Tide-Bot' })).toBe(document.activeElement);
@@ -148,7 +150,7 @@ describe('Tide-Bot side panel', () => {
 		render(App, { props: { api } });
 
 		expect(await screen.findByText('Offline')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
 		expect(api.reconnect).toHaveBeenCalledOnce();
 	});
 });

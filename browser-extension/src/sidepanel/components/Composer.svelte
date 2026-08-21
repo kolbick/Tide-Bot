@@ -36,18 +36,36 @@
 		<button
 			class="voice-button"
 			type="button"
-			aria-label="Use voice"
+			aria-label={voiceActive ? 'Stop voice' : 'Use voice'}
 			aria-pressed={voiceActive}
 			on:click={onVoice}
-			{disabled}>◉</button
+			{disabled}
 		>
+			<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+				<rect x="5.5" y="1.5" width="5" height="8" rx="2.5" stroke="currentColor" stroke-width="1.4" />
+				<path
+					d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linecap="round"
+				/>
+			</svg>
+		</button>
 		<button
 			class="send-button"
 			type="submit"
 			aria-label="Send message"
 			disabled={disabled || generating || !value.trim()}
 		>
-			{generating ? 'Working' : 'Send'}
+			<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+				<path
+					d="M8 13V3M8 3 3.5 7.5M8 3l4.5 4.5"
+					stroke="currentColor"
+					stroke-width="1.6"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+			</svg>
 		</button>
 	</div>
 </form>
