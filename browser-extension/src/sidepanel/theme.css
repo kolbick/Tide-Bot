@@ -46,6 +46,12 @@
 	--signal-wash: rgba(194, 100, 64, 0.11);
 	--ember: #b23a48;
 
+	/* The mark keeps Tide-Bot's ocean palette while the interface runs on clay,
+	   so the identity stays blue without the accent fighting the ivory. */
+	--mark-hat: #124d78;
+	--mark-wave: #1877d2;
+	--mark-crest: #29c9e8;
+
 	--font-ui: 'Mona Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-read: 'Instrument Serif', Georgia, 'Iowan Old Style', 'Times New Roman', serif;
 
@@ -97,6 +103,10 @@
 		--signal-deep: #e79b78;
 		--signal-wash: rgba(217, 130, 92, 0.16);
 		--ember: #e2707c;
+		/* The deep hat fill would disappear into a dark ground, so it lifts. */
+		--mark-hat: #cfe0ee;
+		--mark-wave: #5aa5ef;
+		--mark-crest: #29c9e8;
 		--lift: 0 1px 2px rgba(0, 0, 0, 0.34), 0 2px 10px rgba(0, 0, 0, 0.24);
 		--lift-focus: 0 2px 8px rgba(0, 0, 0, 0.4), 0 8px 26px rgba(217, 130, 92, 0.12);
 		--select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'><path d='M3 4.5 6 7.5 9 4.5' stroke='%23788493' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
@@ -166,10 +176,10 @@ select {
 	background: var(--paper);
 }
 
-.brand img {
-	width: 24px;
-	height: 24px;
-	border-radius: var(--r-sm);
+.brand .mark {
+	width: 22px;
+	height: 22px;
+	flex: none;
 }
 
 .brand h1 {

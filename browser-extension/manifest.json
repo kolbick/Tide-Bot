@@ -3,7 +3,7 @@
 	"name": "Tide-Bot Browser Control",
 	"short_name": "Tide-Bot",
 	"description": "Secure, single-tab browser control for your private Tide-Bot assistant.",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"minimum_chrome_version": "120",
 	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApjN6oInjftnUQdWKX29OODom2OMJ3lcGqSS6lbD/8OrNb7YEu6QAUibuvjvY0i6IDGTMZ2YgftzUOuZ91VTk3gHZuFWl2XUBvx5MtKCtUGcuxq4SWUp6iefSqyJgzvjstBfNLjdMj9qfK31IYauBsacVmGv0TuujHp9NdptaW8pXAddUJ9nJGj0X81ilAvznwvd92PwnC1VCBUbtmCmsjyPL1fdW39NA6uxHSn5Ljve9WcrOeVrLgUr5pbHBeQ8Z11UvsyIETa618nFrLMx31R+p6gvaPXVBkejmie9gSqhPqldHpx6HqmRddZr8V3sb3W42k4rfrnubpT0IzYxHcwIDAQAB",
 	"permissions": [
