@@ -310,27 +310,7 @@
 
 <main class="shell">
 	<header class="brand">
-		<!-- The bicorne and wave from the Tide-Bot badge, redrawn flat so they
-		     survive 16px and sit on the paper instead of on a plate. Decorative:
-		     the wordmark beside it already names the product. -->
-		<svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-			<path
-				d="M3.8 9.9c2.5-3 5.2-4.5 8.2-4.5s5.7 1.5 8.2 4.5c-2 1.05-3.8 1.5-5.4 1.4-.85.95-1.8 1.42-2.8 1.42s-1.95-.47-2.8-1.42c-1.6.1-3.4-.35-5.4-1.4Z"
-				fill="var(--mark-hat)"
-			/>
-			<path
-				d="M4.7 15.3c1.45-1.55 2.9-1.55 4.35 0s2.9 1.55 4.35 0 2.9-1.55 4.35 0"
-				stroke="var(--mark-wave)"
-				stroke-width="1.7"
-				stroke-linecap="round"
-			/>
-			<path
-				d="M6.4 18.5c1.05-1.12 2.1-1.12 3.15 0s2.1 1.12 3.15 0 2.1-1.12 3.15 0"
-				stroke="var(--mark-crest)"
-				stroke-width="1.6"
-				stroke-linecap="round"
-			/>
-		</svg>
+		<img class="mark" src="/icons/icon-48.png" alt="" />
 		<h1>Tide-Bot</h1>
 		{#if status.paired}
 			<span class="connection">

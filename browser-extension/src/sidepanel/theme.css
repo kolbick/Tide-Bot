@@ -38,25 +38,17 @@
 	--ink-faint: #8f887e;
 	--line: rgba(31, 29, 26, 0.09);
 	--line-strong: rgba(31, 29, 26, 0.15);
-	/* Clay, not ocean blue. A cool accent fights an ivory ground; this is the
-	   warm end of the Tide-Bot palette and it lets the one spot of colour sit
-	   in the paper instead of on top of it. */
-	--signal: #c26440;
-	--signal-deep: #a8512f;
-	--signal-wash: rgba(194, 100, 64, 0.11);
+	/* Tide-Bot's own ocean blue. The layout is borrowed; the colour is not. */
+	--signal: #1877d2;
+	--signal-deep: #0f5aa6;
+	--signal-wash: rgba(24, 119, 210, 0.1);
 	--ember: #b23a48;
-
-	/* The mark keeps Tide-Bot's ocean palette while the interface runs on clay,
-	   so the identity stays blue without the accent fighting the ivory. */
-	--mark-hat: #124d78;
-	--mark-wave: #1877d2;
-	--mark-crest: #29c9e8;
 
 	--font-ui: 'Mona Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-read: 'Instrument Serif', Georgia, 'Iowan Old Style', 'Times New Roman', serif;
 
 	--lift: 0 1px 2px rgba(31, 29, 26, 0.06), 0 2px 8px rgba(31, 29, 26, 0.05);
-	--lift-focus: 0 2px 6px rgba(31, 29, 26, 0.08), 0 8px 24px rgba(194, 100, 64, 0.1);
+	--lift-focus: 0 2px 6px rgba(31, 29, 26, 0.08), 0 8px 24px rgba(24, 119, 210, 0.1);
 
 	/* One rounded scale, applied consistently — nothing reads as a box. */
 	--r-sm: 10px;
@@ -99,16 +91,12 @@
 		--ink-faint: #837d74;
 		--line: rgba(240, 237, 231, 0.1);
 		--line-strong: rgba(240, 237, 231, 0.17);
-		--signal: #d9825c;
-		--signal-deep: #e79b78;
-		--signal-wash: rgba(217, 130, 92, 0.16);
+		--signal: #4b9df0;
+		--signal-deep: #7cbaf7;
+		--signal-wash: rgba(75, 157, 240, 0.16);
 		--ember: #e2707c;
-		/* The deep hat fill would disappear into a dark ground, so it lifts. */
-		--mark-hat: #cfe0ee;
-		--mark-wave: #5aa5ef;
-		--mark-crest: #29c9e8;
 		--lift: 0 1px 2px rgba(0, 0, 0, 0.34), 0 2px 10px rgba(0, 0, 0, 0.24);
-		--lift-focus: 0 2px 8px rgba(0, 0, 0, 0.4), 0 8px 26px rgba(217, 130, 92, 0.12);
+		--lift-focus: 0 2px 8px rgba(0, 0, 0, 0.4), 0 8px 26px rgba(75, 157, 240, 0.12);
 		--select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'><path d='M3 4.5 6 7.5 9 4.5' stroke='%23788493' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 		color-scheme: dark;
 	}
@@ -176,10 +164,13 @@ select {
 	background: var(--paper);
 }
 
+/* The Tide-Bot badge as supplied. It carries its own rounded plate, so the
+   radius here matches rather than fights it. */
 .brand .mark {
 	width: 22px;
 	height: 22px;
 	flex: none;
+	border-radius: 6px;
 }
 
 .brand h1 {
