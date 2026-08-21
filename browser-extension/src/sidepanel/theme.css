@@ -1,60 +1,105 @@
 /*
  * Tide-Bot side panel.
  *
- * The panel sits beside real work all day, so it recedes: warm paper ground,
- * one accent, no gradients or glows. Colors and the Archivo face are the same
- * tokens tide-bot.com uses, so the extension reads as part of the product.
+ * Soft geometry, humanist type, and motion that reports state rather than
+ * decorating. Colors come from the same tokens tide-bot.com uses so the panel
+ * reads as part of the product.
  *
- * The signal line under the header is the one moving element. It is the
- * brand's own device and it reports real state — generating, or a browser
- * action in flight — which is why there are no spinners anywhere else.
+ * Every transition here is tied to something real — focus, hover, a message
+ * arriving, a response streaming — and all of it collapses under
+ * prefers-reduced-motion.
  */
 
 @font-face {
-	font-family: 'Archivo';
-	src: url('/Archivo-Variable.ttf') format('truetype-variations');
-	font-weight: 100 900;
+	font-family: 'Mona Sans';
+	src: url('/Mona-Sans.woff2') format('woff2 supports variations');
+	font-weight: 200 900;
+	font-stretch: 75% 125%;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Instrument Serif';
+	src: url('/InstrumentSerif-Regular.ttf') format('truetype');
+	font-weight: 400;
 	font-display: swap;
 }
 
 :root {
-	--paper: #fffbf3;
-	--paper-sunk: #f7f1e5;
-	--sand: #fff3dd;
-	--ink: #0b1b36;
-	--ink-soft: #55657a;
-	--ink-faint: #8a97a6;
-	--line: rgba(11, 27, 54, 0.11);
-	--line-strong: rgba(11, 27, 54, 0.2);
-	--signal: #1877d2;
-	--signal-deep: #0f5aa6;
-	--signal-wash: rgba(24, 119, 210, 0.09);
+	/* Warm ivory ground with near-black ink and a single accent. The panel is
+	   otherwise monochrome; restraint is what keeps it from reading as an app
+	   chrome and lets the conversation carry the surface. */
+	--paper: #f7f5f0;
+	--raised: #fdfcfa;
+	--paper-sunk: #efece5;
+	--sand: #eae7df;
+	--ink: #1f1d1a;
+	--ink-soft: #5f5a52;
+	--ink-faint: #8f887e;
+	--line: rgba(31, 29, 26, 0.09);
+	--line-strong: rgba(31, 29, 26, 0.15);
+	/* Clay, not ocean blue. A cool accent fights an ivory ground; this is the
+	   warm end of the Tide-Bot palette and it lets the one spot of colour sit
+	   in the paper instead of on top of it. */
+	--signal: #c26440;
+	--signal-deep: #a8512f;
+	--signal-wash: rgba(194, 100, 64, 0.11);
 	--ember: #b23a48;
 
-	--radius: 12px;
-	--gutter: 14px;
+	--font-ui: 'Mona Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-read: 'Instrument Serif', Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+
+	--lift: 0 1px 2px rgba(31, 29, 26, 0.06), 0 2px 8px rgba(31, 29, 26, 0.05);
+	--lift-focus: 0 2px 6px rgba(31, 29, 26, 0.08), 0 8px 24px rgba(194, 100, 64, 0.1);
+
+	/* One rounded scale, applied consistently — nothing reads as a box. */
+	--r-sm: 10px;
+	--r-md: 14px;
+	--r-lg: 20px;
+	--r-xl: 24px;
+	--r-full: 999px;
+
+	--gutter: 18px;
+
+	/* Native select chrome is the one thing that stays square on Windows, so the
+	   control is redrawn and given its own chevron. */
+	--select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'><path d='M3 4.5 6 7.5 9 4.5' stroke='%238b97a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+
+	--dur-xs: 110ms;
+	--dur-sm: 180ms;
+	--dur-md: 260ms;
+	--dur-lg: 340ms;
+	--ease: cubic-bezier(0.4, 0, 0.2, 1);
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
 	color-scheme: light;
-	font-family: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	font-family: var(--font-ui);
 	font-synthesis: none;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 	color: var(--ink);
 	background: var(--paper);
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--paper: #0b1220;
-		--paper-sunk: #121b2c;
-		--sand: #16233a;
-		--ink: #eef3f8;
-		--ink-soft: #a7b4c4;
-		--ink-faint: #7c8a9b;
-		--line: rgba(238, 243, 248, 0.12);
-		--line-strong: rgba(238, 243, 248, 0.22);
-		--signal: #4b9df0;
-		--signal-deep: #7cbaf7;
-		--signal-wash: rgba(75, 157, 240, 0.14);
+		--paper: #1a1917;
+		--raised: #232220;
+		--paper-sunk: #2a2825;
+		--sand: #2b2926;
+		--ink: #f0ede7;
+		--ink-soft: #a9a49b;
+		--ink-faint: #837d74;
+		--line: rgba(240, 237, 231, 0.1);
+		--line-strong: rgba(240, 237, 231, 0.17);
+		--signal: #d9825c;
+		--signal-deep: #e79b78;
+		--signal-wash: rgba(217, 130, 92, 0.16);
 		--ember: #e2707c;
+		--lift: 0 1px 2px rgba(0, 0, 0, 0.34), 0 2px 10px rgba(0, 0, 0, 0.24);
+		--lift-focus: 0 2px 8px rgba(0, 0, 0, 0.4), 0 8px 26px rgba(217, 130, 92, 0.12);
+		--select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'><path d='M3 4.5 6 7.5 9 4.5' stroke='%23788493' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 		color-scheme: dark;
 	}
 }
@@ -85,7 +130,7 @@ select {
 :focus-visible {
 	outline: 2px solid var(--signal);
 	outline-offset: 2px;
-	border-radius: 4px;
+	border-radius: var(--r-sm);
 }
 
 .sr-only {
@@ -116,47 +161,61 @@ select {
 .brand {
 	display: flex;
 	align-items: center;
-	gap: 9px;
-	padding: 11px var(--gutter);
+	gap: 10px;
+	padding: 14px var(--gutter) 13px;
+	background: var(--paper);
 }
 
 .brand img {
-	width: 22px;
-	height: 22px;
-	border-radius: 6px;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--r-sm);
 }
 
 .brand h1 {
 	margin: 0;
-	font-size: 13px;
-	font-weight: 600;
-	letter-spacing: -0.01em;
+	font-size: 14.5px;
+	font-weight: 500;
+	letter-spacing: -0.008em;
 }
 
 .connection {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 7px;
 	margin-left: auto;
-	font-size: 11px;
+	font-size: 11.5px;
 	color: var(--ink-faint);
 }
 
 .status-dot {
 	width: 6px;
 	height: 6px;
-	border-radius: 50%;
+	border-radius: var(--r-full);
 	background: var(--ink-faint);
+	transition: background var(--dur-sm) var(--ease);
 }
 
 .status-dot.live {
 	background: var(--signal);
+	animation: dot-pulse 2.6s var(--ease) infinite;
+}
+
+@keyframes dot-pulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 var(--signal-wash);
+	}
+	50% {
+		box-shadow: 0 0 0 4px transparent;
+	}
 }
 
 /* The signature: hairline at rest, live only while something is happening. */
 .signal-line {
 	height: 2px;
 	background: var(--line);
+	transition: background var(--dur-md) var(--ease);
 }
 
 .signal-line.is-active {
@@ -180,135 +239,215 @@ select {
 	}
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.signal-line.is-active {
-		animation: none;
-		background: var(--signal);
-	}
-}
-
 /* ---------- transcript ---------- */
 
 .scroll {
 	overflow-y: auto;
 	padding: 4px var(--gutter) 0;
+	scroll-behavior: smooth;
+	overscroll-behavior: contain;
 }
 
 .transcript {
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
-	padding: 10px 0 16px;
+	gap: 22px;
+	padding: 18px 0 24px;
 }
 
 .transcript article {
-	font-size: 13px;
-	line-height: 1.55;
+	animation: message-in var(--dur-md) var(--ease-out) both;
 }
 
 .transcript article p {
 	margin: 0;
+	color: var(--ink);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
 
-/* The tint carries who is speaking, so the labels stay for assistive tech.
-   Both roles share the same horizontal padding so the text column has one
-   left edge and the turns do not read as ragged. */
-.transcript article p {
-	padding: 9px 11px;
-	border-radius: var(--radius);
-	color: var(--ink);
+/* The assistant's turn is the document: set in the reading face, full measure,
+   no container. Only the person's own words get a surface, which is what keeps
+   the panel feeling like something you read rather than a form you fill. */
+.transcript article.assistant p {
+	font-family: var(--font-read);
+	font-size: 17px;
+	line-height: 1.58;
+	letter-spacing: 0.002em;
+}
+
+.transcript article.user {
+	display: flex;
+	justify-content: flex-end;
 }
 
 .transcript article.user p {
+	max-width: 88%;
+	padding: 10px 14px;
+	border-radius: var(--r-lg);
 	background: var(--sand);
+	font-size: 13.5px;
+	line-height: 1.5;
 }
 
-.transcript article.assistant p {
-	padding-left: 11px;
-	background: none;
+@keyframes message-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
 }
 
 .empty-chat {
-	padding: 28px 2px;
+	padding: 40px 15px 0;
+	animation: message-in var(--dur-lg) var(--ease-out) both;
 }
 
 .empty-chat h2 {
 	margin: 0;
-	font-size: 15px;
-	font-weight: 600;
-	letter-spacing: -0.01em;
+	font-family: var(--font-read);
+	font-size: 27px;
+	font-weight: 400;
+	letter-spacing: -0.005em;
+	line-height: 1.18;
 }
 
 .empty-chat p {
-	margin: 6px 0 0;
-	font-size: 12.5px;
-	line-height: 1.5;
+	margin: 10px 0 0;
+	font-size: 13.5px;
+	line-height: 1.55;
 	color: var(--ink-soft);
-	max-width: 34ch;
+	max-width: 32ch;
 }
 
-/* ---------- controls disclosure ---------- */
+/* ---------- controls ---------- */
 
 .controls {
 	border-top: 1px solid var(--line);
 }
 
-.controls > summary {
+.controls-toggle {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	padding: 9px var(--gutter);
-	font-size: 11.5px;
+	width: 100%;
+	padding: 12px var(--gutter);
+	border: 0;
+	background: none;
+	font-size: 12.5px;
 	color: var(--ink-soft);
-	list-style: none;
-	user-select: none;
+	text-align: left;
+	transition: color var(--dur-xs) var(--ease);
 }
 
-.controls > summary::-webkit-details-marker {
-	display: none;
+.controls-toggle:hover {
+	color: var(--ink);
 }
 
-.controls > summary::after {
+.controls-toggle::after {
 	content: '';
-	width: 5px;
-	height: 5px;
+	width: 6px;
+	height: 6px;
 	margin-left: auto;
 	border-right: 1.5px solid currentColor;
 	border-bottom: 1.5px solid currentColor;
-	transform: rotate(45deg);
-	transition: transform 0.15s ease;
+	border-radius: 1px;
+	transform: translateY(-2px) rotate(45deg);
+	transition: transform var(--dur-md) var(--ease-spring);
 }
 
-.controls[open] > summary::after {
-	transform: rotate(-135deg);
+.controls.open .controls-toggle::after {
+	transform: translateY(1px) rotate(-135deg);
+}
+
+/* Grid rows animate where height:auto cannot, so the panel expands smoothly. */
+.controls-reveal {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-lg) var(--ease-out);
+}
+
+.controls.open .controls-reveal {
+	grid-template-rows: 1fr;
+}
+
+/* Collapsed content must leave the tab order and the accessibility tree, not
+   just lose its height. Visibility is held until the reveal finishes so the
+   expansion still animates. */
+.controls-reveal > div {
+	overflow: hidden;
+	visibility: hidden;
+	transition: visibility 0s linear var(--dur-lg);
+}
+
+.controls.open .controls-reveal > div {
+	visibility: visible;
+	transition-delay: 0s;
 }
 
 .controls-body {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-	padding: 2px var(--gutter) 12px;
+	padding: 2px var(--gutter) 14px;
 	max-height: 42vh;
 	overflow-y: auto;
+	opacity: 0;
+	transition: opacity var(--dur-sm) var(--ease) 60ms;
+}
+
+.controls.open .controls-body {
+	opacity: 1;
 }
 
 .controls-body label > span,
 .field-label {
 	display: block;
-	margin-bottom: 4px;
-	font-size: 11px;
+	margin-bottom: 5px;
+	font-size: 11.5px;
 	color: var(--ink-faint);
 }
 
-.controls-body select {
+.controls-body select,
+.schedule-form select,
+.schedule-form input {
 	width: 100%;
-	padding: 6px 8px;
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	background: var(--paper);
-	font-size: 12px;
+	padding: 9px 12px;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--r-full);
+	background: var(--raised);
+	font-size: 12.5px;
+	transition:
+		border-color var(--dur-xs) var(--ease),
+		box-shadow var(--dur-xs) var(--ease);
+}
+
+.controls-body select,
+.schedule-form select {
+	appearance: none;
+	-webkit-appearance: none;
+	padding-right: 30px;
+	background-image: var(--select-arrow);
+	background-repeat: no-repeat;
+	background-position: right 11px center;
+	background-size: 12px;
+}
+
+.controls-body select:hover,
+.schedule-form select:hover,
+.schedule-form input:hover {
+	border-color: var(--ink-faint);
+}
+
+.controls-body select:focus-visible,
+.schedule-form select:focus-visible,
+.schedule-form input:focus-visible {
+	outline: none;
+	border-color: var(--signal);
+	box-shadow: 0 0 0 3px var(--signal-wash);
 }
 
 .policy-row,
@@ -316,30 +455,41 @@ select {
 .schedule-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
-	gap: 8px;
+	gap: 9px;
 }
 
 .session-bar {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 11px;
 }
 
 .session-button,
 .workflow-toggle button,
 .schedule-form button {
-	padding: 7px 12px;
+	padding: 9px 14px;
 	border: 1px solid var(--line-strong);
-	border-radius: 9px;
-	background: var(--paper);
-	font-size: 12px;
+	border-radius: var(--r-full);
+	background: var(--raised);
+	font-size: 12.5px;
 	font-weight: 500;
+	transition:
+		background var(--dur-xs) var(--ease),
+		border-color var(--dur-xs) var(--ease),
+		transform var(--dur-xs) var(--ease);
 }
 
 .session-button:hover:not(:disabled),
 .workflow-toggle button:hover,
 .schedule-form button:hover {
 	background: var(--paper-sunk);
+	border-color: var(--ink-faint);
+}
+
+.session-button:active:not(:disabled),
+.workflow-toggle button:active,
+.schedule-form button:active {
+	transform: scale(0.97);
 }
 
 .session-button:disabled {
@@ -355,15 +505,20 @@ select {
 	font-size: 11.5px;
 	text-decoration: underline;
 	text-underline-offset: 2px;
+	transition: opacity var(--dur-xs) var(--ease);
+}
+
+.text-button:hover {
+	opacity: 0.7;
 }
 
 .tab-detail {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 7px 9px;
+	padding: 9px 11px;
 	border: 1px solid var(--line);
-	border-radius: 9px;
+	border-radius: var(--r-md);
 	font-size: 11.5px;
 	color: var(--ink-soft);
 }
@@ -376,11 +531,16 @@ select {
 
 .tab-detail button {
 	margin-left: auto;
-	padding: 3px 9px;
+	padding: 4px 11px;
 	border: 1px solid var(--line-strong);
-	border-radius: 7px;
-	background: var(--paper);
+	border-radius: var(--r-full);
+	background: var(--raised);
 	font-size: 11px;
+	transition: background var(--dur-xs) var(--ease);
+}
+
+.tab-detail button:hover {
+	background: var(--paper-sunk);
 }
 
 /* ---------- activity ---------- */
@@ -388,15 +548,16 @@ select {
 .activity {
 	display: flex;
 	flex-direction: column;
-	gap: 5px;
+	gap: 6px;
 }
 
 .activity > div {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 9px;
 	font-size: 11.5px;
 	color: var(--ink-soft);
+	animation: message-in var(--dur-sm) var(--ease-out) both;
 }
 
 .activity > div p {
@@ -404,11 +565,12 @@ select {
 }
 
 .activity > div span {
-	width: 5px;
-	height: 5px;
-	border-radius: 50%;
+	width: 6px;
+	height: 6px;
+	border-radius: var(--r-full);
 	background: var(--ink-faint);
 	flex: none;
+	transition: background var(--dur-sm) var(--ease);
 }
 
 .activity > div span.complete {
@@ -424,8 +586,7 @@ select {
 /* ---------- composer ---------- */
 
 .composer {
-	padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom, 0px));
-	border-top: 1px solid var(--line);
+	padding: 12px var(--gutter) calc(14px + env(safe-area-inset-bottom, 0px));
 	background: var(--paper);
 }
 
@@ -437,31 +598,57 @@ select {
 	clip: rect(0, 0, 0, 0);
 }
 
+/* Raised on white with a hairline and a whisper of shadow, so the input reads
+   as a distinct material rather than a drawn rectangle. */
+/* A box you write into, with its controls resting inside along the bottom —
+   not a single-line field with buttons crowded beside it. */
 .composer-box {
-	display: flex;
-	align-items: flex-end;
+	display: grid;
+	grid-template-columns: 1fr auto auto;
+	align-items: center;
 	gap: 6px;
-	padding: 8px 8px 8px 11px;
+	padding: 12px 12px 10px;
 	border: 1px solid var(--line-strong);
-	border-radius: 14px;
-	background: var(--paper);
-	transition: border-color 0.15s ease;
+	border-radius: var(--r-lg);
+	background: var(--raised);
+	box-shadow: var(--lift);
+	transition:
+		border-color var(--dur-sm) var(--ease),
+		box-shadow var(--dur-sm) var(--ease);
+}
+
+.composer-box textarea {
+	grid-column: 1 / -1;
+	margin-bottom: 6px;
+}
+
+/* Column 1 stays empty so the controls group at the right rather than
+   straddling a void. */
+.composer-box .voice-button {
+	grid-column: 2;
+}
+
+.composer-box:hover {
+	border-color: var(--ink-faint);
 }
 
 .composer-box:focus-within {
 	border-color: var(--signal);
+	box-shadow: var(--lift-focus);
 }
 
 .composer-box textarea {
-	flex: 1;
-	max-height: 140px;
-	padding: 3px 0;
+	height: 24px;
+	max-height: 150px;
+	padding: 0;
 	border: 0;
 	background: none;
-	font-size: 13px;
+	font-family: var(--font-ui);
+	font-size: 14px;
 	line-height: 1.5;
 	resize: none;
 	outline: none;
+	transition: height var(--dur-sm) var(--ease-out);
 }
 
 .composer-box textarea::placeholder {
@@ -472,13 +659,18 @@ select {
 .send-button {
 	display: grid;
 	place-items: center;
-	width: 28px;
-	height: 28px;
+	width: 32px;
+	height: 32px;
 	flex: none;
-	border-radius: 50%;
+	border-radius: var(--r-full);
 	border: 0;
 	background: none;
 	color: var(--ink-soft);
+	transition:
+		background var(--dur-xs) var(--ease),
+		color var(--dur-xs) var(--ease),
+		transform var(--dur-sm) var(--ease-spring),
+		opacity var(--dur-sm) var(--ease);
 }
 
 .voice-button:hover:not(:disabled) {
@@ -498,6 +690,12 @@ select {
 
 .send-button:hover:not(:disabled) {
 	background: var(--signal-deep);
+	transform: scale(1.06);
+}
+
+.voice-button:active:not(:disabled),
+.send-button:active:not(:disabled) {
+	transform: scale(0.92);
 }
 
 .send-button:disabled,
@@ -506,120 +704,155 @@ select {
 	cursor: not-allowed;
 }
 
+.send-button:disabled {
+	transform: scale(0.9);
+}
+
 .send-button svg,
 .voice-button svg {
-	width: 15px;
-	height: 15px;
+	width: 16px;
+	height: 16px;
 }
 
 /* ---------- pairing ---------- */
 
 .pairing-card {
 	margin: auto 0;
-	padding: 0 var(--gutter);
+	padding: 0 15px;
+	animation: message-in var(--dur-lg) var(--ease-out) both;
 }
 
 .pairing-card h2 {
 	margin: 0;
-	font-size: 17px;
-	font-weight: 600;
-	letter-spacing: -0.015em;
+	font-family: var(--font-read);
+	font-size: 27px;
+	font-weight: 400;
+	letter-spacing: -0.005em;
+	line-height: 1.18;
 }
 
 .pairing-card p {
-	margin: 7px 0 0;
-	font-size: 12.5px;
-	line-height: 1.5;
+	margin: 9px 0 0;
+	font-size: 13.5px;
+	line-height: 1.55;
 	color: var(--ink-soft);
-	max-width: 36ch;
+	max-width: 34ch;
 }
 
 .pairing-card button {
-	margin-top: 14px;
-	padding: 9px 15px;
+	margin-top: 16px;
+	padding: 11px 20px;
 	border: 0;
-	border-radius: 10px;
+	border-radius: var(--r-full);
 	background: var(--signal);
 	color: #fff;
-	font-size: 12.5px;
+	font-size: 13px;
 	font-weight: 500;
+	box-shadow: var(--lift);
+	transition:
+		background var(--dur-xs) var(--ease),
+		transform var(--dur-sm) var(--ease-spring),
+		box-shadow var(--dur-sm) var(--ease);
 }
 
 .pairing-card button:hover:not(:disabled) {
 	background: var(--signal-deep);
+	transform: translateY(-1px);
+	box-shadow: var(--lift-focus);
+}
+
+.pairing-card button:active:not(:disabled) {
+	transform: scale(0.97);
 }
 
 .pairing-card button:disabled {
-	opacity: 0.5;
+	opacity: 0.6;
 	cursor: progress;
 }
 
 .pair-code {
-	margin-top: 12px;
-	font-size: 12.5px;
+	margin-top: 14px;
+	font-size: 13px;
 	color: var(--ink-soft);
 }
 
 .pair-code strong {
 	display: inline-block;
-	margin-left: 4px;
-	padding: 3px 8px;
-	border: 1px solid var(--line);
-	border-radius: 7px;
-	background: var(--paper-sunk);
+	margin-left: 5px;
+	padding: 4px 11px;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--r-full);
+	background: var(--raised);
 	font-variant-numeric: tabular-nums;
-	letter-spacing: 0.06em;
+	letter-spacing: 0.08em;
 }
 
 /* ---------- approval ---------- */
 
 .approval-card {
-	margin: 0 var(--gutter) 10px;
-	padding: 11px 12px;
+	margin: 0 var(--gutter) 12px;
+	padding: 13px 15px;
 	border: 1px solid var(--line-strong);
-	border-radius: var(--radius);
-	background: var(--paper-sunk);
+	border-radius: var(--r-lg);
+	background: var(--raised);
+	box-shadow: var(--lift);
+	animation: message-in var(--dur-md) var(--ease-spring) both;
 }
 
 .approval-card > div span {
-	font-size: 11px;
+	font-size: 11.5px;
 	color: var(--ink-faint);
 }
 
 .approval-card strong {
 	display: block;
-	margin-top: 2px;
-	font-size: 13px;
+	margin-top: 3px;
+	font-size: 13.5px;
 	font-weight: 600;
 }
 
 .approval-card p {
-	margin: 4px 0 0;
-	font-size: 12px;
+	margin: 5px 0 0;
+	font-size: 12.5px;
 	color: var(--ink-soft);
 }
 
 .approval-actions {
 	display: flex;
-	gap: 7px;
-	margin-top: 10px;
+	gap: 8px;
+	margin-top: 12px;
 }
 
 .approval-actions button {
 	flex: 1;
-	padding: 7px;
+	padding: 9px;
 	border: 0;
-	border-radius: 9px;
+	border-radius: var(--r-full);
 	background: var(--signal);
 	color: #fff;
-	font-size: 12px;
+	font-size: 12.5px;
 	font-weight: 500;
+	transition:
+		background var(--dur-xs) var(--ease),
+		transform var(--dur-xs) var(--ease);
+}
+
+.approval-actions button:hover {
+	background: var(--signal-deep);
+}
+
+.approval-actions button:active {
+	transform: scale(0.97);
 }
 
 .approval-actions .deny {
 	border: 1px solid var(--line-strong);
-	background: var(--paper);
+	background: var(--raised);
 	color: var(--ember);
+}
+
+.approval-actions .deny:hover {
+	background: var(--paper-sunk);
 }
 
 /* ---------- voice ---------- */
@@ -627,40 +860,56 @@ select {
 .voice-controls {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	margin: 0 var(--gutter) 10px;
-	padding: 8px 10px;
+	gap: 9px;
+	margin: 0 var(--gutter) 12px;
+	padding: 10px 13px;
 	border: 1px solid var(--line);
-	border-radius: var(--radius);
+	border-radius: var(--r-lg);
+	background: var(--raised);
 	font-size: 11.5px;
 	color: var(--ink-soft);
+	animation: message-in var(--dur-md) var(--ease-out) both;
 }
 
 .voice-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
+	width: 7px;
+	height: 7px;
+	border-radius: var(--r-full);
 	background: var(--ink-faint);
 	flex: none;
 }
 
 .voice-dot.active {
 	background: var(--signal);
+	animation: dot-pulse 1.8s var(--ease) infinite;
 }
 
 .voice-actions {
 	display: flex;
-	gap: 6px;
+	gap: 7px;
 	margin-left: auto;
 }
 
 .voice-actions button,
 .hold-button {
-	padding: 4px 9px;
+	padding: 5px 12px;
 	border: 1px solid var(--line-strong);
-	border-radius: 8px;
-	background: var(--paper);
+	border-radius: var(--r-full);
+	background: var(--raised);
 	font-size: 11px;
+	transition:
+		background var(--dur-xs) var(--ease),
+		transform var(--dur-xs) var(--ease);
+}
+
+.voice-actions button:hover,
+.hold-button:hover {
+	background: var(--paper-sunk);
+}
+
+.voice-actions button:active,
+.hold-button:active {
+	transform: scale(0.96);
 }
 
 .voice-error {
@@ -672,15 +921,15 @@ select {
 .workflow-manager {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
-	font-size: 12px;
+	gap: 9px;
+	font-size: 12.5px;
 }
 
 .workflow-list,
 .schedule-list {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 7px;
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -690,11 +939,20 @@ select {
 .schedule-list li {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 7px 9px;
+	gap: 9px;
+	padding: 9px 12px;
 	border: 1px solid var(--line);
-	border-radius: 9px;
+	border-radius: var(--r-md);
 	color: var(--ink-soft);
+	transition:
+		border-color var(--dur-xs) var(--ease),
+		background var(--dur-xs) var(--ease);
+}
+
+.workflow-list li:hover,
+.schedule-list li:hover {
+	border-color: var(--line-strong);
+	background: var(--raised);
 }
 
 .workflow-empty,
@@ -710,42 +968,51 @@ select {
 .recording-row {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 9px;
 }
 
 .workflow-toggle {
 	display: flex;
-	gap: 7px;
+	gap: 8px;
 }
 
-.schedule-form input,
-.schedule-form select {
-	width: 100%;
-	padding: 6px 8px;
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	background: var(--paper);
-	font-size: 12px;
-}
 
 /* ---------- status ---------- */
 
 .loading {
 	margin: auto;
 	padding: var(--gutter);
-	font-size: 12.5px;
+	font-size: 13px;
 	color: var(--ink-faint);
 }
 
 .error {
 	color: var(--ember);
-	font-size: 12px;
+	font-size: 12.5px;
 }
 
 .banner-error {
-	margin: 0 var(--gutter) 8px;
-	padding: 8px 10px;
+	margin: 0 0 10px;
+	padding: 10px 13px;
 	border: 1px solid var(--ember);
-	border-radius: 9px;
-	background: var(--paper-sunk);
+	border-radius: var(--r-md);
+	background: var(--raised);
+	animation: message-in var(--dur-md) var(--ease-out) both;
+}
+
+/* ---------- motion preferences ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+		scroll-behavior: auto !important;
+	}
+
+	.signal-line.is-active {
+		background: var(--signal);
+	}
 }

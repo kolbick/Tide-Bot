@@ -68,6 +68,7 @@
 	let actionMode: ActionMode = 'autonomous';
 	let tabPolicy: TabPolicy = 'locked';
 	let textarea: HTMLTextAreaElement | null = null;
+	let controlsOpen = false;
 	let unsubscribe: () => void = () => undefined;
 
 	const loadAccount = async () => {
@@ -309,8 +310,10 @@
 
 <main class="shell">
 	<header class="brand">
-		<img src="/icons/icon-48.png" alt="" />
-		<h1>{PRODUCT_NAME}</h1>
+		<!-- Wordmark only. The packaged icon carries its own dark plate, which
+		     reads as a sticker on this ground, and the panel is already
+		     unmistakably Tide-Bot from the browser chrome. -->
+		<h1>Tide-Bot</h1>
 		{#if status.paired}
 			<span class="connection">
 				<span class:live={status.connected} class="status-dot"></span>
@@ -350,9 +353,21 @@
 			{/if}
 		</div>
 
-		<details class="controls">
-			<summary>Session and workflows</summary>
-			<div class="controls-body">
+		<!-- Not <details>: its content is inert when closed, so the expansion
+		     cannot be animated. A button plus a grid-row reveal can be. -->
+		<section class="controls" class:open={controlsOpen}>
+			<button
+				class="controls-toggle"
+				type="button"
+				aria-expanded={controlsOpen}
+				aria-controls="controls-body"
+				on:click={() => (controlsOpen = !controlsOpen)}
+			>
+				Session and workflows
+			</button>
+			<div class="controls-reveal">
+				<div>
+					<div class="controls-body" id="controls-body">
 				<SessionBar
 					connected={status.connected}
 					session={status.session}
@@ -375,9 +390,11 @@
 					connected={status.connected}
 					sessionActive={Boolean(status.session)}
 					deviceId={status.deviceId}
-				/>
+					/>
+					</div>
+				</div>
 			</div>
-		</details>
+		</section>
 
 		<Composer
 			bind:value={draft}

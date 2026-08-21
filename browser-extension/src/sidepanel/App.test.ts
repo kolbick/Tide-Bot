@@ -79,7 +79,7 @@ describe('Tide-Bot side panel', () => {
 		const { api } = fakeApi();
 		render(App, { props: { api } });
 
-		expect(await screen.findByRole('heading', { name: 'Tide-Bot Browser Control' })).toBeTruthy();
+		expect(await screen.findByRole('heading', { name: 'Tide-Bot' })).toBeTruthy();
 		await waitFor(() => expect(api.models).toHaveBeenCalledOnce());
 		// models() being called only means the request started; wait for the
 		// loaded panel rather than asserting mid-load.
@@ -98,6 +98,8 @@ describe('Tide-Bot side panel', () => {
 		render(App, { props: { api } });
 		await screen.findByRole('option', { name: 'Tide Local 8B' });
 
+		// Session controls live behind the disclosure, which is closed by default.
+		await fireEvent.click(screen.getByRole('button', { name: 'Session and workflows' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Start controlling tab' }));
 		await waitFor(() => expect(api.openSession).toHaveBeenCalledOnce());
 		const input = screen.getByRole('textbox', { name: 'Message Tide-Bot' });

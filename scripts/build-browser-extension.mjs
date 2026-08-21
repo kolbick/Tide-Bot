@@ -129,12 +129,19 @@ export async function buildBrowserExtension({
 
 	await cp(join(extensionRoot, 'manifest.json'), join(distDir, 'manifest.json'));
 	await cp(join(extensionRoot, 'icons'), join(distDir, 'icons'), { recursive: true });
-	// Archivo is the product typeface. Copied to the package root and referenced
-	// by an absolute URL so the side panel matches tide-bot.com without a
-	// network fetch, which the extension CSP would block anyway.
+	// Copied to the package root and referenced by an absolute URL so the panel
+	// keeps its typeface without a network fetch, which the extension CSP would
+	// block anyway. Mona Sans is humanist where Archivo is rigid, and its woff2
+	// is a fifth the size of the Archivo variable TTF.
 	await cp(
-		join(repoRoot, 'static/assets/fonts/Archivo-Variable.ttf'),
-		join(distDir, 'Archivo-Variable.ttf')
+		join(repoRoot, 'static/assets/fonts/Mona-Sans.woff2'),
+		join(distDir, 'Mona-Sans.woff2')
+	);
+	// The conversation is set in a serif; that is what makes the panel read as
+	// something to be read rather than a form to be filled.
+	await cp(
+		join(repoRoot, 'static/assets/fonts/InstrumentSerif-Regular.ttf'),
+		join(distDir, 'InstrumentSerif-Regular.ttf')
 	);
 
 	await assertNoRemoteHostedCode(distDir);

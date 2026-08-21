@@ -16,6 +16,16 @@
 		}
 	};
 
+	// Grow with the text instead of scrolling inside a fixed box. Measured off
+	// scrollHeight, so the height transition has a real target to animate to.
+	const autoGrow = () => {
+		if (!textarea) return;
+		textarea.style.height = 'auto';
+		textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
+	};
+
+	$: if (textarea && value !== undefined) autoGrow();
+
 	onMount(() => {
 		if (!disabled) textarea?.focus();
 	});
