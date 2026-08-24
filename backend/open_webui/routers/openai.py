@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import logging
 import re
-from typing import Optional
 from urllib.parse import quote, urlparse
 
 import aiohttp
@@ -22,7 +22,6 @@ from open_webui.config import (
     CACHE_DIR,
 )
 from open_webui.constants import ERROR_MESSAGES
-from open_webui.events import EVENTS, publish_event, publish_model_provider_request_failed
 from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     AIOHTTP_CLIENT_TIMEOUT,
@@ -33,15 +32,33 @@ from open_webui.env import (
     FORWARD_SESSION_INFO_HEADER_CHAT_ID,
     MODELS_CACHE_TTL,
 )
-from open_webui.internal.db import get_async_session
+from open_webui.events import EVENTS, publish_event, publish_model_provider_request_failed
 from open_webui.models.access_grants import AccessGrants
 from open_webui.models.config import Config
 from open_webui.models.groups import Groups
 from open_webui.models.models import Models
 from open_webui.models.users import UserModel
-from open_webui.utils.access_control import check_model_access, has_connection_access, has_permission
+from open_webui.utils.access_control import check_model_access, has_permission
 from open_webui.utils.anthropic import get_anthropic_models, is_anthropic_url
 from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.chatgpt_subscription import (
+    CHATGPT_AUTH_TYPE,
+    CHATGPT_CODEX_BASE_URL,
+    CHATGPT_CODEX_CLIENT_VERSION,
+    CHATGPT_ORIGINATOR,
+    CHATGPT_PRIVATE_CREDENTIALS_KEY,
+    CHATGPT_PUBLIC_STATUS_KEY,
+    ChatGPTSubscriptionError,
+    credentials_need_refresh,
+    decrypt_credentials,
+    encrypt_credentials,
+    normalize_models_response,
+    poll_device_code,
+    public_status,
+    refresh_credentials,
+    request_device_code,
+    sanitize_codex_responses_payload,
+)
 from open_webui.utils.headers import get_custom_headers, include_user_info_headers
 from open_webui.utils.misc import (
     convert_logit_bias_input_to_json,
@@ -57,7 +74,6 @@ from open_webui.utils.session_pool import (
     stream_wrapper,
 )
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +91,7 @@ log = logging.getLogger(__name__)
 # clients to attempt decompression of an already-decoded payload, resulting
 # in ZlibError.  See https://github.com/aio-libs/aiohttp/issues/4462.
 _STRIP_PROXY_HEADERS = frozenset({'Content-Encoding', 'Content-Length', 'Transfer-Encoding'})
+_CHATGPT_REFRESH_LOCK = asyncio.Lock()
 
 
 def _clean_proxy_headers(raw_headers) -> dict:
@@ -125,7 +142,14 @@ async def get_models_request(
 ):
     if is_anthropic_url(url):
         return await get_anthropic_models(url, key, user=user)
-    return await send_get_request(request, f'{url}/models', key, user=user, config=config)
+
+    is_chatgpt_subscription = (config or {}).get('auth_type') == CHATGPT_AUTH_TYPE
+    models_url = f'{url}/models'
+    if is_chatgpt_subscription:
+        models_url = f'{models_url}?client_version={CHATGPT_CODEX_CLIENT_VERSION}'
+
+    response = await send_get_request(request, models_url, key, user=user, config=config)
+    return normalize_models_response(response) if is_chatgpt_subscription else response
 
 
 def openai_reasoning_model_handler(payload):
@@ -201,6 +225,12 @@ async def get_headers_and_cookies(
 
         if oauth_token:
             token = f'{oauth_token.get("access_token", "")}'
+    elif auth_type == CHATGPT_AUTH_TYPE:
+        credentials = await get_valid_chatgpt_credentials(config)
+        token = credentials['access_token']
+        headers['ChatGPT-Account-ID'] = credentials['account_id']
+        headers['originator'] = CHATGPT_ORIGINATOR
+        headers['User-Agent'] = f'codex_cli_rs/{CHATGPT_CODEX_CLIENT_VERSION} (Tide-Bot)'
 
     elif auth_type in ('azure_ad', 'microsoft_entra_id'):
         token = get_microsoft_entra_id_access_token()
@@ -281,6 +311,173 @@ async def get_openai_runtime_config() -> tuple[bool, list[str], list[str], dict]
         values.get('openai.api_keys') or [],
         values.get('openai.api_configs') or {},
     )
+
+
+def _indexed_openai_configs(api_base_urls: list[str], api_configs: dict) -> dict[str, dict]:
+    return {
+        str(idx): copy.deepcopy(api_configs.get(str(idx), api_configs.get(url, {})) or {})
+        for idx, url in enumerate(api_base_urls)
+    }
+
+
+def _find_chatgpt_connection(api_base_urls: list[str], api_configs: dict) -> tuple[int | None, dict | None]:
+    indexed = _indexed_openai_configs(api_base_urls, api_configs)
+    for idx in range(len(api_base_urls)):
+        config = indexed[str(idx)]
+        if config.get('auth_type') == CHATGPT_AUTH_TYPE:
+            return idx, config
+    return None, None
+
+
+def _redact_openai_config(config: dict) -> dict:
+    result = copy.deepcopy(config)
+    api_base_urls = result.get('OPENAI_API_BASE_URLS') or []
+    api_configs = _indexed_openai_configs(api_base_urls, result.get('OPENAI_API_CONFIGS') or {})
+    for connection in api_configs.values():
+        connection.pop(CHATGPT_PRIVATE_CREDENTIALS_KEY, None)
+    result['OPENAI_API_CONFIGS'] = api_configs
+    return result
+
+
+def _merge_chatgpt_private_config(
+    submitted_urls: list[str],
+    submitted_configs: dict,
+    stored_urls: list[str],
+    stored_configs: dict,
+) -> dict[str, dict]:
+    merged = _indexed_openai_configs(submitted_urls, submitted_configs)
+    _, stored_chatgpt = _find_chatgpt_connection(stored_urls, stored_configs)
+
+    for connection in merged.values():
+        connection.pop(CHATGPT_PRIVATE_CREDENTIALS_KEY, None)
+        if connection.get('auth_type') == CHATGPT_AUTH_TYPE:
+            if stored_chatgpt and stored_chatgpt.get(CHATGPT_PRIVATE_CREDENTIALS_KEY):
+                connection[CHATGPT_PRIVATE_CREDENTIALS_KEY] = stored_chatgpt[CHATGPT_PRIVATE_CREDENTIALS_KEY]
+                connection[CHATGPT_PUBLIC_STATUS_KEY] = stored_chatgpt.get(
+                    CHATGPT_PUBLIC_STATUS_KEY,
+                    connection.get(CHATGPT_PUBLIC_STATUS_KEY, {}),
+                )
+            connection.update(
+                {
+                    'api_type': 'responses',
+                    'prefix_id': 'chatgpt',
+                    'provider': 'openai',
+                }
+            )
+    return merged
+
+
+async def _clear_openai_model_caches(request: Request) -> None:
+    await get_all_models.cache.clear()
+    request.app.state.BASE_MODELS = []
+    request.app.state.OPENAI_MODELS = {}
+    models = getattr(request.app.state, 'MODELS', None)
+    if hasattr(models, 'clear'):
+        models.clear()
+    else:
+        request.app.state.MODELS = {}
+
+
+async def _persist_chatgpt_credentials(credentials: dict) -> tuple[int, dict]:
+    _, api_base_urls, api_keys, api_configs = await get_openai_runtime_config()
+    api_keys = list(api_keys)
+    indexed = _indexed_openai_configs(api_base_urls, api_configs)
+    idx, existing = _find_chatgpt_connection(api_base_urls, indexed)
+
+    if idx is None:
+        idx = len(api_base_urls)
+        api_base_urls = [*api_base_urls, CHATGPT_CODEX_BASE_URL]
+        api_keys = [*api_keys, '']
+        existing = {}
+    else:
+        api_base_urls = list(api_base_urls)
+        api_base_urls[idx] = CHATGPT_CODEX_BASE_URL
+        while len(api_keys) <= idx:
+            api_keys.append('')
+        api_keys[idx] = ''
+
+    status_data = public_status(credentials)
+    indexed[str(idx)] = {
+        **(existing or {}),
+        'enable': True,
+        'auth_type': CHATGPT_AUTH_TYPE,
+        'api_type': 'responses',
+        'prefix_id': 'chatgpt',
+        'provider': 'openai',
+        'connection_type': 'external',
+        CHATGPT_PRIVATE_CREDENTIALS_KEY: encrypt_credentials(credentials),
+        CHATGPT_PUBLIC_STATUS_KEY: status_data,
+    }
+
+    await Config.upsert(
+        {
+            'openai.enable': True,
+            'openai.api_base_urls': api_base_urls,
+            'openai.api_keys': api_keys,
+            'openai.api_configs': indexed,
+        }
+    )
+    return idx, status_data
+
+
+async def _set_chatgpt_status(state: str, error: str | None = None) -> dict:
+    _, api_base_urls, _, api_configs = await get_openai_runtime_config()
+    indexed = _indexed_openai_configs(api_base_urls, api_configs)
+    idx, connection = _find_chatgpt_connection(api_base_urls, indexed)
+    if idx is None or connection is None:
+        return {'connected': False, 'state': 'disconnected', 'error': error}
+
+    credentials = {}
+    try:
+        credentials = decrypt_credentials(connection.get(CHATGPT_PRIVATE_CREDENTIALS_KEY))
+    except ChatGPTSubscriptionError:
+        pass
+    status_data = public_status(credentials, state=state, error=error)
+    connection[CHATGPT_PUBLIC_STATUS_KEY] = status_data
+    indexed[str(idx)] = connection
+    await Config.upsert({'openai.api_configs': indexed})
+    return status_data
+
+
+async def get_valid_chatgpt_credentials(config: dict) -> dict:
+    try:
+        credentials = decrypt_credentials(config.get(CHATGPT_PRIVATE_CREDENTIALS_KEY))
+    except ChatGPTSubscriptionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    if not credentials_need_refresh(credentials):
+        return credentials
+
+    async with _CHATGPT_REFRESH_LOCK:
+        _, api_base_urls, _, api_configs = await get_openai_runtime_config()
+        indexed = _indexed_openai_configs(api_base_urls, api_configs)
+        idx, stored_config = _find_chatgpt_connection(api_base_urls, indexed)
+        if idx is not None and stored_config:
+            try:
+                credentials = decrypt_credentials(stored_config.get(CHATGPT_PRIVATE_CREDENTIALS_KEY))
+            except ChatGPTSubscriptionError as exc:
+                await _set_chatgpt_status('reconnect_required', str(exc))
+                raise HTTPException(status_code=401, detail=str(exc)) from exc
+            if not credentials_need_refresh(credentials):
+                config.update(stored_config)
+                return credentials
+
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30), trust_env=True) as session:
+                credentials = await refresh_credentials(session, credentials)
+        except ChatGPTSubscriptionError as exc:
+            await _set_chatgpt_status('reconnect_required', str(exc))
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+        if idx is None or stored_config is None:
+            raise HTTPException(status_code=401, detail='The ChatGPT subscription must be reconnected.')
+
+        stored_config[CHATGPT_PRIVATE_CREDENTIALS_KEY] = encrypt_credentials(credentials)
+        stored_config[CHATGPT_PUBLIC_STATUS_KEY] = public_status(credentials)
+        indexed[str(idx)] = stored_config
+        await Config.upsert({'openai.api_configs': indexed})
+        config.update(stored_config)
+        return credentials
 
 
 async def normalize_openai_api_keys(api_base_urls: list[str], api_keys: list[str]) -> list[str]:
@@ -388,7 +585,7 @@ async def count_anthropic_tokens(request: Request, form_data: dict, user: UserMo
 
 @router.get('/config')
 async def get_config(request: Request, user=Depends(get_admin_user)):
-    return await get_openai_config()
+    return _redact_openai_config(await get_openai_config())
 
 
 class OpenAIConfigForm(BaseModel):
@@ -407,8 +604,13 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
     elif len(api_keys) < len(form_data.OPENAI_API_BASE_URLS):
         api_keys = [*api_keys, *([''] * (len(form_data.OPENAI_API_BASE_URLS) - len(api_keys)))]
 
-    valid_keys = set(map(str, range(len(form_data.OPENAI_API_BASE_URLS))))
-    api_configs = {key: value for key, value in form_data.OPENAI_API_CONFIGS.items() if key in valid_keys}
+    _, stored_urls, _, stored_configs = await get_openai_runtime_config()
+    api_configs = _merge_chatgpt_private_config(
+        form_data.OPENAI_API_BASE_URLS,
+        form_data.OPENAI_API_CONFIGS,
+        stored_urls,
+        stored_configs,
+    )
 
     await Config.upsert(
         {
@@ -419,14 +621,7 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
         }
     )
 
-    await get_all_models.cache.clear()
-    request.app.state.BASE_MODELS = []
-    request.app.state.OPENAI_MODELS = {}
-    models = getattr(request.app.state, 'MODELS', None)
-    if hasattr(models, 'clear'):
-        models.clear()
-    else:
-        request.app.state.MODELS = {}
+    await _clear_openai_model_caches(request)
 
     await publish_event(
         request,
@@ -441,12 +636,106 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
         },
     )
 
-    return {
-        'ENABLE_OPENAI_API': form_data.ENABLE_OPENAI_API,
-        'OPENAI_API_BASE_URLS': form_data.OPENAI_API_BASE_URLS,
-        'OPENAI_API_KEYS': api_keys,
-        'OPENAI_API_CONFIGS': api_configs,
-    }
+    return _redact_openai_config(
+        {
+            'ENABLE_OPENAI_API': form_data.ENABLE_OPENAI_API,
+            'OPENAI_API_BASE_URLS': form_data.OPENAI_API_BASE_URLS,
+            'OPENAI_API_KEYS': api_keys,
+            'OPENAI_API_CONFIGS': api_configs,
+        }
+    )
+
+
+class ChatGPTDeviceCompleteForm(BaseModel):
+    login_handle: str
+
+
+@router.get('/chatgpt/subscription/status')
+async def get_chatgpt_subscription_status(user=Depends(get_admin_user)):
+    _, api_base_urls, _, api_configs = await get_openai_runtime_config()
+    idx, connection = _find_chatgpt_connection(api_base_urls, api_configs)
+    if idx is None or connection is None:
+        return {'connected': False, 'state': 'disconnected', 'connection_index': None}
+
+    status_data = copy.deepcopy(
+        connection.get(CHATGPT_PUBLIC_STATUS_KEY)
+        or {'connected': bool(connection.get(CHATGPT_PRIVATE_CREDENTIALS_KEY)), 'state': 'connected'}
+    )
+    status_data['connection_index'] = idx
+    return status_data
+
+
+@router.post('/chatgpt/subscription/device/start')
+async def start_chatgpt_subscription_device_login(user=Depends(get_admin_user)):
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30), trust_env=True) as session:
+            return await request_device_code(session)
+    except ChatGPTSubscriptionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post('/chatgpt/subscription/device/complete')
+async def complete_chatgpt_subscription_device_login(
+    request: Request,
+    form_data: ChatGPTDeviceCompleteForm,
+    user=Depends(get_admin_user),
+):
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30), trust_env=True) as session:
+            credentials = await poll_device_code(session, form_data.login_handle)
+    except ChatGPTSubscriptionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if credentials is None:
+        return JSONResponse(status_code=202, content={'status': 'pending'})
+
+    idx, status_data = await _persist_chatgpt_credentials(credentials)
+    await _clear_openai_model_caches(request)
+    return {'status': 'connected', 'connection_index': idx, **status_data}
+
+
+@router.post('/chatgpt/subscription/models/refresh')
+async def refresh_chatgpt_subscription_models(request: Request, user=Depends(get_admin_user)):
+    _, api_base_urls, _, api_configs = await get_openai_runtime_config()
+    idx, connection = _find_chatgpt_connection(api_base_urls, api_configs)
+    if idx is None or connection is None:
+        raise HTTPException(status_code=404, detail='The ChatGPT subscription is not connected.')
+
+    await get_valid_chatgpt_credentials(connection)
+    await _clear_openai_model_caches(request)
+    model_result = await get_all_models(request, user=user)
+    count = sum(1 for model in model_result.get('data', []) if model.get('urlIdx') == idx)
+    return {'status': 'connected', 'connection_index': idx, 'model_count': count}
+
+
+@router.delete('/chatgpt/subscription')
+async def disconnect_chatgpt_subscription(request: Request, user=Depends(get_admin_user)):
+    enable, api_base_urls, api_keys, api_configs = await get_openai_runtime_config()
+    indexed = _indexed_openai_configs(api_base_urls, api_configs)
+    idx, _ = _find_chatgpt_connection(api_base_urls, indexed)
+    if idx is None:
+        return {'connected': False, 'state': 'disconnected'}
+
+    remaining_urls = [url for current_idx, url in enumerate(api_base_urls) if current_idx != idx]
+    remaining_keys = [key for current_idx, key in enumerate(api_keys) if current_idx != idx]
+    remaining_configs = {}
+    new_idx = 0
+    for current_idx in range(len(api_base_urls)):
+        if current_idx == idx:
+            continue
+        remaining_configs[str(new_idx)] = indexed.get(str(current_idx), {})
+        new_idx += 1
+
+    await Config.upsert(
+        {
+            'openai.enable': enable,
+            'openai.api_base_urls': remaining_urls,
+            'openai.api_keys': remaining_keys,
+            'openai.api_configs': remaining_configs,
+        }
+    )
+    await _clear_openai_model_caches(request)
+    return {'connected': False, 'state': 'disconnected'}
 
 
 @router.post('/audio/speech')
@@ -1301,7 +1590,8 @@ async def generate_chat_completion(
 
     headers, cookies = await get_headers_and_cookies(request, url, key, api_config, metadata, user=user)
 
-    is_responses = api_config.get('api_type') == 'responses'
+    is_chatgpt_subscription = api_config.get('auth_type') == CHATGPT_AUTH_TYPE
+    is_responses = api_config.get('api_type') == 'responses' or is_chatgpt_subscription
 
     if api_config.get('azure') or api_config.get('provider') == 'azure':
         # Only set api-key header if not using Azure Entra ID authentication
@@ -1332,6 +1622,8 @@ async def generate_chat_completion(
     else:
         if is_responses:
             payload = convert_to_responses_payload(payload)
+            if is_chatgpt_subscription:
+                payload = sanitize_codex_responses_payload(payload)
             request_url = f'{url}/responses'
         else:
             request_url = f'{url}/chat/completions'
@@ -1364,8 +1656,10 @@ async def generate_chat_completion(
             timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
         )
 
-        # Check if response is SSE
-        if 'text/event-stream' in r.headers.get('Content-Type', ''):
+        # The ChatGPT Codex backend streams named SSE events but may omit the
+        # Content-Type header. Treat subscription responses as SSE explicitly.
+        is_sse_response = is_chatgpt_subscription or 'text/event-stream' in r.headers.get('Content-Type', '')
+        if is_sse_response:
             # If the provider returned an error status with SSE content-type,
             # read the body and return a proper error response instead of
             # streaming the error back (which hides the error from logs).
@@ -1406,10 +1700,13 @@ async def generate_chat_completion(
                     )
 
             streaming = True
+            response_headers = _clean_proxy_headers(r.headers)
+            if is_chatgpt_subscription:
+                response_headers['Content-Type'] = 'text/event-stream'
             return StreamingResponse(
                 stream_wrapper(r, content_handler=stream_chunks_handler),
                 status_code=r.status,
-                headers=_clean_proxy_headers(r.headers),
+                headers=response_headers,
             )
         else:
             try:
@@ -1595,8 +1892,6 @@ async def responses(
     # Enforce per-model access control
     await check_model_access(user, await Models.get_model_by_id(model_id), BYPASS_MODEL_ACCESS_CONTROL)
 
-    body = json.dumps(payload)
-
     if model_id:
         models = request.app.state.OPENAI_MODELS
         if not models or model_id not in models:
@@ -1606,6 +1901,13 @@ async def responses(
             idx = models[model_id]['urlIdx']
 
     url, key, api_config = await get_openai_connection(idx)
+    prefix_id = api_config.get('prefix_id')
+    if prefix_id:
+        payload['model'] = payload['model'].replace(f'{prefix_id}.', '')
+    is_chatgpt_subscription = api_config.get('auth_type') == CHATGPT_AUTH_TYPE
+    if is_chatgpt_subscription:
+        payload = sanitize_codex_responses_payload(payload)
+    body = json.dumps(payload)
 
     r = None
     streaming = False
@@ -1641,13 +1943,17 @@ async def responses(
             timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
         )
 
-        # Check if response is SSE
-        if 'text/event-stream' in r.headers.get('Content-Type', ''):
+        # ChatGPT Codex can omit Content-Type while returning named SSE events.
+        is_sse_response = is_chatgpt_subscription or 'text/event-stream' in r.headers.get('Content-Type', '')
+        if is_sse_response:
             streaming = True
+            response_headers = _clean_proxy_headers(r.headers)
+            if is_chatgpt_subscription:
+                response_headers['Content-Type'] = 'text/event-stream'
             return StreamingResponse(
                 stream_wrapper(r),
                 status_code=r.status,
-                headers=_clean_proxy_headers(r.headers),
+                headers=response_headers,
             )
         else:
             try:

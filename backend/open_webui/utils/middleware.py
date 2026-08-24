@@ -772,7 +772,10 @@ def handle_responses_streaming_event(
         response_data = data.get('response', {})
         final_output = response_data.get('output')
 
-        new_output = final_output if final_output is not None else current_output
+        # Some Responses-compatible backends stream complete output items but
+        # return an empty `output` array in response.completed. Preserve the
+        # accumulated stream state instead of erasing the rendered response.
+        new_output = final_output if final_output else current_output
 
         # Ensure reasoning items are marked as completed in the final output
         if new_output:

@@ -74,6 +74,59 @@ export const updateOpenAIConfig = async (token: string = '', config: OpenAIConfi
 	return res;
 };
 
+export type ChatGPTSubscriptionStatus = {
+	connected: boolean;
+	state: 'disconnected' | 'connected' | 'reconnect_required' | string;
+	connection_index?: number | null;
+	account_id?: string | null;
+	email?: string | null;
+	plan_type?: string | null;
+	expires_at?: number | null;
+	last_refresh?: number | null;
+	error?: string | null;
+	model_count?: number;
+};
+
+const chatGPTSubscriptionRequest = async (
+	token: string,
+	path: string,
+	options: RequestInit = {}
+) => {
+	const res = await fetch(`${OPENAI_API_BASE_URL}/chatgpt/subscription${path}`, {
+		...options,
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` }),
+			...(options.headers ?? {})
+		}
+	});
+
+	const payload = await res.json().catch(() => ({}));
+	if (!res.ok) {
+		throw payload?.detail ?? 'ChatGPT subscription request failed';
+	}
+	return payload;
+};
+
+export const getChatGPTSubscriptionStatus = async (token: string) =>
+	chatGPTSubscriptionRequest(token, '/status');
+
+export const startChatGPTSubscriptionLogin = async (token: string) =>
+	chatGPTSubscriptionRequest(token, '/device/start', { method: 'POST' });
+
+export const completeChatGPTSubscriptionLogin = async (token: string, loginHandle: string) =>
+	chatGPTSubscriptionRequest(token, '/device/complete', {
+		method: 'POST',
+		body: JSON.stringify({ login_handle: loginHandle })
+	});
+
+export const refreshChatGPTSubscriptionModels = async (token: string) =>
+	chatGPTSubscriptionRequest(token, '/models/refresh', { method: 'POST' });
+
+export const disconnectChatGPTSubscription = async (token: string) =>
+	chatGPTSubscriptionRequest(token, '', { method: 'DELETE' });
+
 export const getOpenAIModelsDirect = async (url: string, key: string) => {
 	let error = null;
 
@@ -133,7 +186,7 @@ export const getOpenAIModels = async (token: string, urlIdx?: number) => {
 
 export const verifyOpenAIConnection = async (
 	token: string = '',
-	connection: dict = {},
+	connection: Record<string, any> = {},
 	direct: boolean = false
 ) => {
 	const { url, key, config } = connection;

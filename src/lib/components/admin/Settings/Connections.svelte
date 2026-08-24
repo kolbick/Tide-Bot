@@ -1,11 +1,21 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { createEventDispatcher, onMount, getContext } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount, getContext } from 'svelte';
 
 	const dispatch = createEventDispatcher();
 
 	import { getOllamaConfig, updateOllamaConfig } from '$lib/apis/ollama';
-	import { getOpenAIConfig, updateOpenAIConfig, getOpenAIModels } from '$lib/apis/openai';
+	import {
+		completeChatGPTSubscriptionLogin,
+		disconnectChatGPTSubscription,
+		getChatGPTSubscriptionStatus,
+		getOpenAIConfig,
+		getOpenAIModels,
+		refreshChatGPTSubscriptionModels,
+		startChatGPTSubscriptionLogin,
+		updateOpenAIConfig,
+		type ChatGPTSubscriptionStatus
+	} from '$lib/apis/openai';
 	import { getModels as _getModels, getBackendConfig } from '$lib/apis';
 	import { getConnectionsConfig, setConnectionsConfig } from '$lib/apis/configs';
 
@@ -50,6 +60,109 @@
 	let pipelineUrls: Record<string, boolean> = {};
 	let showAddOpenAIConnectionModal = false;
 	let showAddOllamaConnectionModal = false;
+
+	let chatGPTSubscriptionStatus: ChatGPTSubscriptionStatus | null = null;
+	let chatGPTDeviceLogin: any = null;
+	let chatGPTLoginBusy = false;
+	let chatGPTModelRefreshBusy = false;
+	let chatGPTPollTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const applyOpenAIConfig = (openaiConfig: any) => {
+		ENABLE_OPENAI_API = openaiConfig.ENABLE_OPENAI_API;
+		OPENAI_API_BASE_URLS = openaiConfig.OPENAI_API_BASE_URLS ?? [];
+		OPENAI_API_KEYS = openaiConfig.OPENAI_API_KEYS ?? [];
+		OPENAI_API_CONFIGS = openaiConfig.OPENAI_API_CONFIGS ?? {};
+	};
+
+	const reloadOpenAIConfig = async () => {
+		applyOpenAIConfig(await getOpenAIConfig(localStorage.token));
+	};
+
+	const pollChatGPTLogin = async () => {
+		if (!chatGPTDeviceLogin?.login_handle) return;
+
+		try {
+			const result = await completeChatGPTSubscriptionLogin(
+				localStorage.token,
+				chatGPTDeviceLogin.login_handle
+			);
+			if (result.status === 'pending') {
+				chatGPTPollTimer = setTimeout(
+					pollChatGPTLogin,
+					Math.max(chatGPTDeviceLogin.interval ?? 5, 2) * 1000
+				);
+				return;
+			}
+
+			chatGPTSubscriptionStatus = result;
+			chatGPTDeviceLogin = null;
+			chatGPTLoginBusy = false;
+			await reloadOpenAIConfig();
+			await models.set(await getModels());
+			toast.success($i18n.t('ChatGPT subscription connected'));
+		} catch (error) {
+			chatGPTDeviceLogin = null;
+			chatGPTLoginBusy = false;
+			toast.error(`${error}`);
+		}
+	};
+
+	const startChatGPTLoginHandler = async () => {
+		chatGPTLoginBusy = true;
+		if (chatGPTPollTimer) clearTimeout(chatGPTPollTimer);
+		const loginWindow = window.open('about:blank', '_blank');
+		try {
+			chatGPTDeviceLogin = await startChatGPTSubscriptionLogin(localStorage.token);
+			if (loginWindow) {
+				loginWindow.opener = null;
+				loginWindow.location.href = chatGPTDeviceLogin.verification_url;
+			}
+			await pollChatGPTLogin();
+		} catch (error) {
+			loginWindow?.close();
+			chatGPTDeviceLogin = null;
+			chatGPTLoginBusy = false;
+			toast.error(`${error}`);
+		}
+	};
+
+	const refreshChatGPTModelsHandler = async () => {
+		chatGPTModelRefreshBusy = true;
+		try {
+			const result = await refreshChatGPTSubscriptionModels(localStorage.token);
+			chatGPTSubscriptionStatus = { ...chatGPTSubscriptionStatus, ...result };
+			await models.set(await getModels());
+			toast.success(
+				$i18n.t('{{count}} ChatGPT subscription models refreshed', {
+					count: result.model_count ?? 0
+				})
+			);
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			chatGPTModelRefreshBusy = false;
+		}
+	};
+
+	const disconnectChatGPTHandler = async () => {
+		chatGPTLoginBusy = true;
+		if (chatGPTPollTimer) clearTimeout(chatGPTPollTimer);
+		try {
+			chatGPTSubscriptionStatus = await disconnectChatGPTSubscription(localStorage.token);
+			chatGPTDeviceLogin = null;
+			await reloadOpenAIConfig();
+			await models.set(await getModels());
+			toast.success($i18n.t('ChatGPT subscription disconnected'));
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			chatGPTLoginBusy = false;
+		}
+	};
+
+	onDestroy(() => {
+		if (chatGPTPollTimer) clearTimeout(chatGPTPollTimer);
+	});
 
 	const updateOpenAIHandler = async () => {
 		if (ENABLE_OPENAI_API !== null) {
@@ -142,6 +255,10 @@
 		if ($user?.role === 'admin') {
 			let ollamaConfig: any = {};
 			let openaiConfig: any = {};
+			let subscriptionStatus: ChatGPTSubscriptionStatus = {
+				connected: false,
+				state: 'disconnected'
+			};
 
 			await Promise.all([
 				(async () => {
@@ -152,15 +269,15 @@
 				})(),
 				(async () => {
 					connectionsConfig = await getConnectionsConfig(localStorage.token);
+				})(),
+				(async () => {
+					subscriptionStatus = await getChatGPTSubscriptionStatus(localStorage.token);
 				})()
 			]);
 
-			ENABLE_OPENAI_API = openaiConfig.ENABLE_OPENAI_API;
+			applyOpenAIConfig(openaiConfig);
+			chatGPTSubscriptionStatus = subscriptionStatus;
 			ENABLE_OLLAMA_API = ollamaConfig.ENABLE_OLLAMA_API;
-
-			OPENAI_API_BASE_URLS = openaiConfig.OPENAI_API_BASE_URLS;
-			OPENAI_API_KEYS = openaiConfig.OPENAI_API_KEYS;
-			OPENAI_API_CONFIGS = openaiConfig.OPENAI_API_CONFIGS;
 
 			OLLAMA_BASE_URLS = ollamaConfig.OLLAMA_BASE_URLS;
 			OLLAMA_API_CONFIGS = ollamaConfig.OLLAMA_API_CONFIGS;
@@ -176,11 +293,15 @@
 
 				OPENAI_API_BASE_URLS.forEach(async (url, idx) => {
 					OPENAI_API_CONFIGS[idx] = OPENAI_API_CONFIGS[idx] || {};
-					if (!(OPENAI_API_CONFIGS[idx]?.enable ?? true)) {
+					if (
+						!(OPENAI_API_CONFIGS[idx]?.enable ?? true) ||
+						(OPENAI_API_CONFIGS[idx]?.auth_type === 'chatgpt_subscription' &&
+							!chatGPTSubscriptionStatus?.connected)
+					) {
 						return;
 					}
-					const res = await getOpenAIModels(localStorage.token, idx);
-					if (res.pipelines) {
+					const res = await getOpenAIModels(localStorage.token, idx).catch(() => null);
+					if (res?.pipelines) {
 						pipelineUrls[url] = true;
 					}
 				});
@@ -232,6 +353,108 @@
 					/>
 				</AdminSettingRow>
 
+				<div class="rounded-xl border border-gray-200 p-3 dark:border-gray-800">
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<div
+								class="flex items-center gap-2 text-xs font-medium text-gray-900 dark:text-white"
+							>
+								<span>{$i18n.t('ChatGPT Subscription')}</span>
+								<span
+									class={`rounded-full px-2 py-0.5 text-[0.625rem] ${
+										chatGPTSubscriptionStatus?.connected
+											? 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300'
+											: chatGPTSubscriptionStatus?.state === 'reconnect_required'
+												? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+												: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+									}`}
+								>
+									{chatGPTSubscriptionStatus?.connected
+										? $i18n.t('Connected')
+										: chatGPTSubscriptionStatus?.state === 'reconnect_required'
+											? $i18n.t('Reconnect required')
+											: $i18n.t('Not connected')}
+								</span>
+							</div>
+							<div class="mt-1 text-[0.6875rem] text-gray-500 dark:text-gray-400">
+								{#if chatGPTSubscriptionStatus?.connected}
+									{chatGPTSubscriptionStatus.email ?? $i18n.t('ChatGPT account')}
+									{#if chatGPTSubscriptionStatus.plan_type}
+										· {chatGPTSubscriptionStatus.plan_type}
+									{/if}
+								{:else}
+									{$i18n.t(
+										'Use the OpenAI models included with a ChatGPT plan instead of a separately billed API key.'
+									)}
+								{/if}
+							</div>
+						</div>
+
+						<div class="flex shrink-0 items-center gap-1.5">
+							{#if chatGPTSubscriptionStatus?.connected}
+								<button
+									class="rounded-full border border-gray-200 px-2.5 py-1 text-[0.6875rem] hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+									type="button"
+									disabled={chatGPTModelRefreshBusy}
+									on:click={refreshChatGPTModelsHandler}
+								>
+									{chatGPTModelRefreshBusy ? $i18n.t('Refreshing…') : $i18n.t('Refresh models')}
+								</button>
+								<button
+									class="rounded-full border border-red-200 px-2.5 py-1 text-[0.6875rem] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:hover:bg-red-950/30"
+									type="button"
+									disabled={chatGPTLoginBusy}
+									on:click={disconnectChatGPTHandler}
+								>
+									{$i18n.t('Disconnect')}
+								</button>
+							{:else}
+								<button
+									class="rounded-full bg-black px-3 py-1 text-[0.6875rem] text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-gray-200"
+									type="button"
+									disabled={chatGPTLoginBusy}
+									on:click={startChatGPTLoginHandler}
+								>
+									{chatGPTLoginBusy ? $i18n.t('Waiting…') : $i18n.t('Connect')}
+								</button>
+							{/if}
+						</div>
+					</div>
+
+					{#if chatGPTDeviceLogin}
+						<div class="mt-3 rounded-lg bg-gray-50 p-3 text-xs dark:bg-gray-900">
+							<div class="text-gray-600 dark:text-gray-300">
+								{$i18n.t('A ChatGPT sign-in page was opened. Enter this one-time code:')}
+							</div>
+							<div class="mt-2 flex items-center gap-2">
+								<code
+									class="rounded bg-white px-2.5 py-1.5 text-sm font-semibold tracking-wider dark:bg-gray-800"
+									>{chatGPTDeviceLogin.user_code}</code
+								>
+								<button
+									class="rounded-full border border-gray-200 px-2.5 py-1 text-[0.6875rem] hover:bg-white dark:border-gray-700 dark:hover:bg-gray-800"
+									type="button"
+									on:click={() => navigator.clipboard.writeText(chatGPTDeviceLogin.user_code)}
+								>
+									{$i18n.t('Copy')}
+								</button>
+								<a
+									class="text-[0.6875rem] underline"
+									href={chatGPTDeviceLogin.verification_url}
+									target="_blank"
+									rel="noreferrer">{$i18n.t('Open sign-in')}</a
+								>
+							</div>
+						</div>
+					{/if}
+
+					{#if chatGPTSubscriptionStatus?.error}
+						<div class="mt-2 text-[0.6875rem] text-amber-700 dark:text-amber-300">
+							{chatGPTSubscriptionStatus.error}
+						</div>
+					{/if}
+				</div>
+
 				{#if ENABLE_OPENAI_API}
 					<div>
 						<div class="mb-2 flex items-center justify-between gap-4">
@@ -254,28 +477,30 @@
 
 						<div class="flex flex-col gap-1.5">
 							{#each OPENAI_API_BASE_URLS as url, idx}
-								<OpenAIConnection
-									bind:url={OPENAI_API_BASE_URLS[idx]}
-									bind:key={OPENAI_API_KEYS[idx]}
-									bind:config={OPENAI_API_CONFIGS[idx]}
-									pipeline={pipelineUrls[url] ? true : false}
-									onSubmit={() => {
-										updateOpenAIHandler();
-									}}
-									onDelete={() => {
-										OPENAI_API_BASE_URLS = OPENAI_API_BASE_URLS.filter(
-											(url, urlIdx) => idx !== urlIdx
-										);
-										OPENAI_API_KEYS = OPENAI_API_KEYS.filter((key, keyIdx) => idx !== keyIdx);
+								{#if OPENAI_API_CONFIGS[idx]?.auth_type !== 'chatgpt_subscription'}
+									<OpenAIConnection
+										bind:url={OPENAI_API_BASE_URLS[idx]}
+										bind:key={OPENAI_API_KEYS[idx]}
+										bind:config={OPENAI_API_CONFIGS[idx]}
+										pipeline={pipelineUrls[url] ? true : false}
+										onSubmit={() => {
+											updateOpenAIHandler();
+										}}
+										onDelete={() => {
+											OPENAI_API_BASE_URLS = OPENAI_API_BASE_URLS.filter(
+												(url, urlIdx) => idx !== urlIdx
+											);
+											OPENAI_API_KEYS = OPENAI_API_KEYS.filter((key, keyIdx) => idx !== keyIdx);
 
-										let newConfig: any = {};
-										OPENAI_API_BASE_URLS.forEach((url, newIdx) => {
-											newConfig[newIdx] = OPENAI_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
-										});
-										OPENAI_API_CONFIGS = newConfig;
-										updateOpenAIHandler();
-									}}
-								/>
+											let newConfig: any = {};
+											OPENAI_API_BASE_URLS.forEach((url, newIdx) => {
+												newConfig[newIdx] = OPENAI_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
+											});
+											OPENAI_API_CONFIGS = newConfig;
+											updateOpenAIHandler();
+										}}
+									/>
+								{/if}
 							{/each}
 						</div>
 					</div>
