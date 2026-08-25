@@ -33,7 +33,7 @@ function Test-TideBotScheduleCanonicalPath {
 
 function Read-TideBotScheduleState {
 	param([string] $Path)
-	return Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+	return Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -DateKind String -ErrorAction Stop
 }
 
 function Get-TideBotScheduleDeployableCommit {

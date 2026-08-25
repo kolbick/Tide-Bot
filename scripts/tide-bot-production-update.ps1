@@ -54,15 +54,38 @@ function Get-TideBotDeployableCommit {
 function Test-TideBotCandidateIsOnMain { param([string] $RepositoryPath, [string] $Commit); return ((& ${function:Invoke-TideBotCommand} 'git-test-ancestor-main' @($RepositoryPath, $Commit)).exit_code -eq 0) }
 
 function Read-TideBotDeploymentState { param([string] $StatePath); if (-not (Test-Path -LiteralPath $StatePath)) { return $null }; return Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop }
-function Test-TideBotSuccessfulState {
+function Test-TideBotDeploymentStateShape {
 	param([hashtable] $State)
 	$required = @('schema_version', 'commit', 'upstream_sha', 'image_id', 'deployed_at_utc', 'local_health', 'public_health', 'socketio_health', 'oauth')
 	$oauthRequired = @('connection_present', 'credential_decryptable', 'credential_state', 'model_catalog_available', 'model_count')
 	return $State -and $State.Keys.Count -eq $required.Count -and @($State.Keys | Where-Object { $_ -notin $required }).Count -eq 0 -and $State.schema_version -eq 1 -and $State.commit -match '^[0-9a-f]{40}$' -and $State.upstream_sha -match '^[0-9a-f]{40}$' -and $State.image_id -match '^sha256:' -and $State.oauth -and $State.oauth.Keys.Count -eq $oauthRequired.Count -and @($State.oauth.Keys | Where-Object { $_ -notin $oauthRequired }).Count -eq 0
 }
+function Test-TideBotUtcTimestamp {
+	param($Value)
+	if ($Value -isnot [string] -or $Value -notmatch '^\d{4}-\d{2}-\d{2}T.+(?:Z|\+00:00)$') { return $false }
+	try {
+		$parsed = [datetimeoffset]::Parse($Value, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+		return $parsed.Offset -eq [timespan]::Zero
+	} catch { return $false }
+}
+function Test-TideBotSuccessfulState {
+	param([hashtable] $State)
+	if (-not (Test-TideBotDeploymentStateShape $State)) { return $false }
+	foreach ($healthName in @('local_health', 'public_health', 'socketio_health')) {
+		if ($State[$healthName] -isnot [bool] -or -not $State[$healthName]) { return $false }
+	}
+	if (-not (Test-TideBotUtcTimestamp $State.deployed_at_utc)) { return $false }
+	$oauth = $State.oauth
+	if ($oauth.connection_present -isnot [bool] -or -not $oauth.connection_present -or $oauth.credential_decryptable -isnot [bool] -or -not $oauth.credential_decryptable) { return $false }
+	if ($oauth.credential_state -isnot [string] -or $oauth.credential_state -ne 'connected') { return $false }
+	if ($oauth.model_catalog_available -isnot [bool] -or -not $oauth.model_catalog_available) { return $false }
+	$modelCount = $oauth.model_count
+	$isInteger = $modelCount -is [byte] -or $modelCount -is [int16] -or $modelCount -is [int32] -or $modelCount -is [int64] -or $modelCount -is [uint16] -or $modelCount -is [uint32] -or $modelCount -is [uint64]
+	return $isInteger -and $modelCount -ge 1
+}
 function Write-TideBotDeploymentState {
 	param([string] $StatePath, [hashtable] $State)
-	if (-not (Test-TideBotSuccessfulState $State)) { throw 'Refusing to persist an invalid successful deployment state.' }
+	if (-not (Test-TideBotDeploymentStateShape $State)) { throw 'Refusing to persist an invalid successful deployment state.' }
 	$directory = Split-Path -Parent $StatePath; New-Item -ItemType Directory -Path $directory -Force | Out-Null
 	$temporary = "$StatePath.$PID.tmp"; $State | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $temporary -Encoding utf8NoBOM; Move-Item -LiteralPath $temporary -Destination $StatePath -Force
 }
@@ -109,7 +132,7 @@ function Invoke-TideBotProductionUpdate {
 		Invoke-TideBotCheckedCommand $CommandRunner 'git-switch-detach' @($RepositoryPath, $candidate) | Out-Null
 		if ((Invoke-TideBotCheckedCommand $CommandRunner 'git-head' @($RepositoryPath)).stdout.Trim() -ne $candidate) { throw 'Controlled checkout HEAD did not match the validated candidate.' }
 		$priorState = Read-TideBotDeploymentState $StatePath
-		if ($priorState -and -not (Test-TideBotSuccessfulState $priorState)) { throw 'The last successful deployment state is invalid.' }
+		if ($priorState -and -not (Test-TideBotDeploymentStateShape $priorState)) { throw 'The last successful deployment state is invalid.' }
 		if ($priorState -and $priorState.commit -eq $candidate) { return @{ status = 'already_deployed'; commit = $candidate } }
 		$priorImage = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-inspect-current-image' @()).stdout.Trim(); if ($priorImage -notmatch '^sha256:') { throw 'Running container did not provide an immutable image ID.' }
 		$labels = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-inspect-current-labels' @()).stdout | ConvertFrom-Json -AsHashtable -ErrorAction Stop
