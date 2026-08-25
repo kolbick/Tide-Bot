@@ -16,14 +16,19 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'tide-bot-production-update.ps1')
+
 $script:TideBotScheduleName = 'TideBot-Upstream-Deploy'
 $script:TideBotSchedulePath = '\'
 $script:TideBotScheduleIdentity = 'NT AUTHORITY\SYSTEM'
+$script:TideBotCanonicalRepositoryPath = 'C:\ProgramData\Tide-Bot\repo'
+$script:TideBotCanonicalStatePath = 'C:\ProgramData\Tide-Bot\state\last-successful-deployment.json'
 
-function Test-TideBotSchedulePathWithinProductionRoot {
-	param([string] $Path)
+function Test-TideBotScheduleCanonicalPath {
+	param([string] $Path, [string] $ExpectedPath)
 	$normalized = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
-	return $normalized.StartsWith('C:\ProgramData\Tide-Bot\', [StringComparison]::OrdinalIgnoreCase)
+	$expected = [IO.Path]::GetFullPath($ExpectedPath).TrimEnd('\', '/')
+	return $normalized.Equals($expected, [StringComparison]::OrdinalIgnoreCase)
 }
 
 function Read-TideBotScheduleState {
@@ -55,7 +60,7 @@ function New-TideBotScheduleDefinition {
 		name = $script:TideBotScheduleName
 		path = $script:TideBotSchedulePath
 		description = 'Deploys Tide-Bot only after tide-bot-deployable is a tested Git marker.'
-		action = @{ execute = 'pwsh.exe'; arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$absoluteUpdaterPath`"" }
+		action = @{ execute = 'pwsh.exe'; arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$absoluteUpdaterPath`" -RepositoryPath `"$script:TideBotCanonicalRepositoryPath`" -StatePath `"$script:TideBotCanonicalStatePath`"" }
 		trigger = @{ kind = 'Once'; repetition_minutes = 15 }
 		settings = @{ multiple_instances = 'IgnoreNew'; start_when_available = $true }
 		principal = @{ user_id = 'SYSTEM'; logon_type = 'ServiceAccount'; account_name = $script:TideBotScheduleIdentity }
@@ -105,11 +110,11 @@ function Invoke-TideBotProductionScheduleInstall {
 		return @{ status = 'disabled'; task_name = $definition.name }
 	}
 	if (-not $Enable) { return @{ status = 'disabled'; task_name = $definition.name } }
-	if (-not $Synthetic -and (-not (Test-TideBotSchedulePathWithinProductionRoot $RepositoryPath) -or -not (Test-TideBotSchedulePathWithinProductionRoot $StatePath))) { throw 'Production schedule inputs must remain under C:\ProgramData\Tide-Bot.' }
+	if (-not $Synthetic -and (-not (Test-TideBotScheduleCanonicalPath $RepositoryPath $script:TideBotCanonicalRepositoryPath) -or -not (Test-TideBotScheduleCanonicalPath $StatePath $script:TideBotCanonicalStatePath))) { throw 'Production schedule repository and state paths must exactly match their canonical C:\ProgramData\Tide-Bot locations.' }
 
 	$state = & $StateReader $StatePath
 	$deployableCommit = & $DeployableCommitReader $RepositoryPath
-	if ($null -eq $state -or $state.schema_version -ne 1 -or $state.commit -notmatch '^[0-9a-f]{40}$') { throw 'The successful deployment state record is missing a valid commit.' }
+	if (-not (Test-TideBotSuccessfulState $state)) { throw 'The successful deployment state record does not satisfy the Task 3 safe-state schema.' }
 	if ($deployableCommit -notmatch '^[0-9a-f]{40}$' -or -not $state.commit.Equals($deployableCommit, [StringComparison]::Ordinal)) { throw 'The successful deployment state record does not match tide-bot-deployable.' }
 	& $TaskRunner 'register' $definition | Out-Null
 	return @{ status = 'enabled'; task_name = $definition.name; commit = $deployableCommit }

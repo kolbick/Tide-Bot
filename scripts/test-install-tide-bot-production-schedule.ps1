@@ -23,12 +23,27 @@ function New-TaskRunner {
 	return $runner.GetNewClosure()
 }
 
+function New-SuccessfulState {
+	param([string] $Commit)
+	return @{
+		schema_version = 1
+		commit = $Commit
+		upstream_sha = $Commit
+		image_id = 'sha256:tested-image'
+		deployed_at_utc = '2026-08-25T00:00:00Z'
+		local_health = $true
+		public_health = $true
+		socketio_health = $true
+		oauth = @{ connection_present = $true; credential_decryptable = $true; credential_state = 'connected'; model_catalog_available = $true; model_count = 1 }
+	}
+}
+
 try {
 	$fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ("tide-bot-schedule-$PID-" + [guid]::NewGuid().ToString('N'))
 	New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
 	$commit = 'b' * 40
 	$statePath = Join-Path $fixtureRoot 'last-successful-deployment.json'
-	@{ schema_version = 1; commit = $commit } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
+	(New-SuccessfulState $commit) | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
 	$updaterPath = Join-Path $fixtureRoot 'tide-bot-production-update.ps1'
 	Set-Content -LiteralPath $updaterPath -Value '# fixture' -Encoding utf8NoBOM
 
@@ -41,7 +56,8 @@ try {
 	Assert-True ($definition.principal.user_id -eq 'SYSTEM' -and $definition.principal.logon_type -eq 'ServiceAccount') 'Schedule did not use explicit LocalSystem semantics.'
 	Assert-True ($definition.trigger.kind -eq 'Once' -and $definition.trigger.repetition_minutes -eq 15) 'Schedule did not create a 15-minute one-time repetition trigger.'
 	Assert-True ($definition.settings.multiple_instances -eq 'IgnoreNew' -and $definition.settings.start_when_available) 'Schedule did not enforce IgnoreNew and StartWhenAvailable.'
-	Assert-True ($definition.action.execute -eq 'pwsh.exe' -and $definition.action.arguments -match [regex]::Escape("-NoProfile -ExecutionPolicy Bypass -File `"$updaterPath`"")) 'Schedule action did not invoke the updater by absolute path with guarded PowerShell arguments.'
+	$expectedActionArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$updaterPath`" -RepositoryPath `"C:\ProgramData\Tide-Bot\repo`" -StatePath `"C:\ProgramData\Tide-Bot\state\last-successful-deployment.json`""
+	Assert-True ($definition.action.execute -eq 'pwsh.exe' -and $definition.action.arguments -eq $expectedActionArguments) 'Schedule action did not use the canonical updater defaults with guarded PowerShell arguments.'
 	Assert-True ($definition.description -match 'tested Git marker') 'Schedule description did not state its tested-marker boundary.'
 
 	$disabledCalls = [Collections.Generic.List[object]]::new()
@@ -52,10 +68,28 @@ try {
 	$dryRun = Invoke-TideBotProductionScheduleInstall -Enable -WhatIf -Synthetic -TaskRunner (New-TaskRunner $whatIfCalls $null) -StateReader { throw 'WhatIf read deployment state.' } -DeployableCommitReader { throw 'WhatIf resolved Git.' }
 	Assert-True ($dryRun.status -eq 'planned' -and $whatIfCalls.Count -eq 0) 'Schedule WhatIf had a side effect.'
 
-	$mismatchCalls = [Collections.Generic.List[object]]::new()
-	$mismatchRejected = $false
-	try { Invoke-TideBotProductionScheduleInstall -Enable -Synthetic -RepositoryPath $fixtureRoot -StatePath $statePath -UpdaterPath $updaterPath -TaskRunner (New-TaskRunner $mismatchCalls $null) -StateReader { return @{ schema_version = 1; commit = ('c' * 40) } } -DeployableCommitReader { return $commit } | Out-Null } catch { $mismatchRejected = $true }
-	Assert-True ($mismatchRejected -and $mismatchCalls.Count -eq 0) 'Schedule enabled despite a state-marker mismatch.'
+	$invalidStates = [ordered]@{
+		truncated = @{ schema_version = 1; commit = $commit }
+		invalid = @{ schema_version = 1; commit = $commit; upstream_sha = $commit; image_id = 'mutable-image'; deployed_at_utc = '2026-08-25T00:00:00Z'; local_health = $true; public_health = $true; socketio_health = $true; oauth = @{ connection_present = $true; credential_decryptable = $true; credential_state = 'connected'; model_catalog_available = $true; model_count = 1 } }
+		failed = @{ schema_version = 1; status = 'failed'; commit = $commit }
+		missing_health = @{ schema_version = 1; commit = $commit; upstream_sha = $commit; image_id = 'sha256:tested-image'; deployed_at_utc = '2026-08-25T00:00:00Z'; public_health = $true; socketio_health = $true; oauth = @{ connection_present = $true; credential_decryptable = $true; credential_state = 'connected'; model_catalog_available = $true; model_count = 1 } }
+		missing_image = @{ schema_version = 1; commit = $commit; upstream_sha = $commit; deployed_at_utc = '2026-08-25T00:00:00Z'; local_health = $true; public_health = $true; socketio_health = $true; oauth = @{ connection_present = $true; credential_decryptable = $true; credential_state = 'connected'; model_catalog_available = $true; model_count = 1 } }
+		missing_oauth = @{ schema_version = 1; commit = $commit; upstream_sha = $commit; image_id = 'sha256:tested-image'; deployed_at_utc = '2026-08-25T00:00:00Z'; local_health = $true; public_health = $true; socketio_health = $true }
+		marker_mismatch = New-SuccessfulState ('c' * 40)
+	}
+	foreach ($case in $invalidStates.GetEnumerator()) {
+		$invalidCalls = [Collections.Generic.List[object]]::new()
+		$rejected = $false
+		try { Invoke-TideBotProductionScheduleInstall -Enable -Synthetic -RepositoryPath $fixtureRoot -StatePath $statePath -UpdaterPath $updaterPath -TaskRunner (New-TaskRunner $invalidCalls $null) -StateReader { return $case.Value } -DeployableCommitReader { return $commit } | Out-Null } catch { $rejected = $true }
+		Assert-True ($rejected -and $invalidCalls.Count -eq 0) "Schedule enabled for $($case.Key) successful-state evidence."
+	}
+
+	$alternateRepositoryRejected = $false
+	try { Invoke-TideBotProductionScheduleInstall -Enable -RepositoryPath 'C:\ProgramData\Tide-Bot\alternate-repo' -StatePath 'C:\ProgramData\Tide-Bot\state\last-successful-deployment.json' -TaskRunner { throw 'Alternate repository read state or task runner.' } -StateReader { throw 'Alternate repository read state.' } -DeployableCommitReader { throw 'Alternate repository resolved a marker.' } | Out-Null } catch { $alternateRepositoryRejected = $true }
+	Assert-True $alternateRepositoryRejected 'Schedule accepted an alternate production repository descendant.'
+	$alternateStateRejected = $false
+	try { Invoke-TideBotProductionScheduleInstall -Enable -RepositoryPath 'C:\ProgramData\Tide-Bot\repo' -StatePath 'C:\ProgramData\Tide-Bot\state\other-successful-deployment.json' -TaskRunner { throw 'Alternate state read task runner.' } -StateReader { throw 'Alternate state read.' } -DeployableCommitReader { throw 'Alternate state resolved a marker.' } | Out-Null } catch { $alternateStateRejected = $true }
+	Assert-True $alternateStateRejected 'Schedule accepted an alternate production state descendant.'
 
 	$disableCalls = [Collections.Generic.List[object]]::new()
 	$disableResult = Invoke-TideBotProductionScheduleInstall -Disable -Synthetic -TaskRunner (New-TaskRunner $disableCalls @{ TaskName = 'TideBot-Upstream-Deploy'; TaskPath = '\' })
