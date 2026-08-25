@@ -6,8 +6,8 @@ services:
       context: ../..
       dockerfile: Dockerfile
       args:
-        BUILD_HASH: ${TIDE_BOT_COMMIT:-unconfigured}
-    image: ${TIDE_BOT_IMAGE_REF:-tidebot-open-webui:${TIDE_BOT_COMMIT:-unconfigured}}
+        BUILD_HASH: ${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}
+    image: ${TIDE_BOT_IMAGE_REF:-tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}}
     container_name: tidebot-open-webui
     restart: unless-stopped
     ports:

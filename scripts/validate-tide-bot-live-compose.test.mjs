@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -16,6 +17,38 @@ async function readCompose() {
 	return YAML.parse(await readFile(composePath, 'utf8'));
 }
 
+function composeConfig(environment) {
+	const configEnvironment = { ...process.env, WEBUI_SECRET_KEY: 'fixture-only-compose-validation' };
+	for (const name of [
+		'TIDE_BOT_COMMIT',
+		'TIDE_BOT_IMAGE_REF',
+		'TIDEBOT_OPEN_WEBUI_PORT',
+		'COMPOSE_FILE',
+		'COMPOSE_PROJECT_NAME',
+		'COMPOSE_PROFILES',
+		'COMPOSE_ENV_FILES',
+		'COMPOSE_DISABLE_ENV_FILE'
+	]) {
+		delete configEnvironment[name];
+	}
+
+	Object.assign(configEnvironment, environment);
+	return spawnSync(
+		'docker',
+		[
+			'compose',
+			'-f',
+			'deploy/tide-stack/docker-compose.live.yml',
+			'--env-file',
+			'deploy/tide-stack/.env.live.example',
+			'config',
+			'--format',
+			'json'
+		],
+		{ cwd: repositoryRoot, encoding: 'utf8', env: configEnvironment }
+	);
+}
+
 test('live compose preserves the legacy resource contract without a host environment file', async () => {
 	const compose = await readCompose();
 	const service = compose.services['tidebot-open-webui'];
@@ -25,8 +58,9 @@ test('live compose preserves the legacy resource contract without a host environ
 	assert.equal(service.ports[0], '127.0.0.1:${TIDEBOT_OPEN_WEBUI_PORT:-3102}:8080');
 	assert.equal(
 		service.image,
-		'${TIDE_BOT_IMAGE_REF:-tidebot-open-webui:${TIDE_BOT_COMMIT:-unconfigured}}'
+		'${TIDE_BOT_IMAGE_REF:-tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}}'
 	);
+	assert.equal(service.build.args.BUILD_HASH, '${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}');
 	assert.equal(compose.volumes.tidebot_data.external, true);
 	assert.equal(compose.volumes.tidebot_data.name, 'tidebot-webui_tidebot-open-webui');
 	assert.equal(compose.volumes.tidebot_computer.external, true);
@@ -49,6 +83,25 @@ test('live compose preserves the legacy resource contract without a host environ
 		assert.notEqual(volume.external, false);
 		assert.equal(volume.external, true);
 	}
+});
+
+test('live Compose requires a commit and allows an explicit recorded-image override', () => {
+	const missingCommit = composeConfig({});
+	assert.notEqual(missingCommit.status, 0);
+	assert.match(`${missingCommit.stdout}${missingCommit.stderr}`, /TIDE_BOT_COMMIT is required/);
+
+	const standardBuild = composeConfig({ TIDE_BOT_COMMIT: 'fixture-commit' });
+	assert.equal(standardBuild.status, 0, standardBuild.stderr);
+	const standardService = JSON.parse(standardBuild.stdout).services['tidebot-open-webui'];
+	assert.equal(standardService.image, 'tidebot-open-webui:fixture-commit');
+	assert.equal(standardService.build.args.BUILD_HASH, 'fixture-commit');
+
+	const recordedImage = composeConfig({
+		TIDE_BOT_COMMIT: 'fixture-commit',
+		TIDE_BOT_IMAGE_REF: 'tidebot-open-webui:recorded-immutable'
+	});
+	assert.equal(recordedImage.status, 0, recordedImage.stderr);
+	assert.equal(JSON.parse(recordedImage.stdout).services['tidebot-open-webui'].image, 'tidebot-open-webui:recorded-immutable');
 });
 
 test('environment migration utility is tracked beside the secret-free example', async () => {

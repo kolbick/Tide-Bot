@@ -31,7 +31,7 @@ See [`PRODUCTION.md`](PRODUCTION.md) for the protected environment, backup,
 release, and recovery procedures. Do not use the local commands below for a
 production deployment.
 
-## Base application
+## Local development-only application
 
 1. Copy `.env.example` to `.env` and set a fresh `WEBUI_SECRET_KEY`.
 2. Start the base app:
@@ -45,20 +45,17 @@ production deployment.
 
 The base stack has a dedicated `tide-bot-data` volume and a private
 `tide-bot-network`. Public signup is disabled. Its CORS and Socket.IO defaults
-allow only `localhost:3102` and `127.0.0.1:3102` for local testing. Production
-must use the production overlay, which allows only the exact Tide-Bot HTTPS
-origins:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
-```
+allow only `localhost:3102` and `127.0.0.1:3102` for local testing. These local
+commands are never a production deployment path: production uses only the
+canonical live-overlay command above, including its loopback binding and
+external legacy resources. Do not combine `docker-compose.yml` or
+`docker-compose.production.yml` with production commands.
 
 Do not use a wildcard origin. Put the published endpoint behind an HTTPS
 reverse proxy before using `tide-bot.com`. A safe Nginx reference and
-backup/release checklist are in
-[`PRODUCTION.md`](PRODUCTION.md).
+backup/release checklist are in [`PRODUCTION.md`](PRODUCTION.md).
 
-## Tide Terminal overlay
+## Local development Tide Terminal overlay
 
 Set a fresh `TIDE_TERMINAL_API_KEY` in `.env`, then run:
 
@@ -77,7 +74,7 @@ Unix homes in `tide-terminal-homes`, but this is not a hard container boundary
 between users. Do not grant access to people you would not trust to share the
 same terminal host.
 
-## CPTR overlay
+## Local development CPTR overlay
 
 CPTR is optional and has host-level implications. Start CPTR on the host,
 create a gateway API key, then set `TIDE_CPTR_GATE_TOKEN`,

@@ -13,7 +13,10 @@ Initialize it once from the approved legacy source with
 `scripts\initialize-tide-bot-production-environment.ps1`; the initializer
 copies the source without printing its values, leaves the source intact, and
 protects the destination ACL for Administrators and the scheduled task
-identity. Do not place a production environment file in this repository.
+identity. The optional `-ScheduledTaskIdentity` must name the same specific
+service or user account Task 4 registers; broad Windows groups are rejected.
+It defaults to `NT AUTHORITY\SYSTEM`. Do not place a production environment
+file in this repository.
 
 The updater supplies an immutable `TIDE_BOT_COMMIT` for each build. Its
 recorded `TIDE_BOT_IMAGE_REF` is the only permitted image override, used for a
@@ -73,15 +76,15 @@ The external `tidebot-webui_tidebot-open-webui` volume contains users, chats,
 settings, uploads, and configuration. Stop writes before taking a consistent
 backup.
 
-```bash
-docker compose --project-directory C:\ProgramData\Tide-Bot\repo \
-  --env-file C:\ProgramData\Tide-Bot\production.env \
-  -f deploy/tide-stack/docker-compose.live.yml stop tidebot-open-webui
-docker run --rm -v tidebot-webui_tidebot-open-webui:/data -v "$PWD/backups":/backup alpine \
-  tar -C /data -czf /backup/tidebot-open-webui-$(date +%F).tgz .
-docker compose --project-directory C:\ProgramData\Tide-Bot\repo \
-  --env-file C:\ProgramData\Tide-Bot\production.env \
-  -f deploy/tide-stack/docker-compose.live.yml up -d tidebot-open-webui
+```powershell
+docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
+  --env-file C:\ProgramData\Tide-Bot\production.env `
+  -f deploy\tide-stack\docker-compose.live.yml stop tidebot-open-webui
+docker run --rm -v tidebot-webui_tidebot-open-webui:/data -v "${PWD}\backups:/backup" alpine `
+  tar -C /data -czf /backup/tidebot-open-webui-$(Get-Date -Format yyyy-MM-dd).tgz .
+docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
+  --env-file C:\ProgramData\Tide-Bot\production.env `
+  -f deploy\tide-stack\docker-compose.live.yml up -d tidebot-open-webui
 ```
 
 Encrypt and retain backups according to Changing Tides Treatment Center policy.
