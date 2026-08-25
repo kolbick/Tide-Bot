@@ -56,10 +56,7 @@ test('live compose preserves the legacy resource contract without a host environ
 	assert.equal(compose.name, 'tidebot-webui');
 	assert.equal(service.container_name, 'tidebot-open-webui');
 	assert.equal(service.ports[0], '127.0.0.1:${TIDEBOT_OPEN_WEBUI_PORT:-3102}:8080');
-	assert.equal(
-		service.image,
-		'${TIDE_BOT_IMAGE_REF:-tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}}'
-	);
+	assert.equal(service.image, 'tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}');
 	assert.equal(service.build.args.BUILD_HASH, '${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}');
 	assert.equal(compose.volumes.tidebot_data.external, true);
 	assert.equal(compose.volumes.tidebot_data.name, 'tidebot-webui_tidebot-open-webui');
@@ -85,7 +82,7 @@ test('live compose preserves the legacy resource contract without a host environ
 	}
 });
 
-test('live Compose requires a commit and allows an explicit recorded-image override', () => {
+test('live Compose requires a commit and ignores an arbitrary image override', () => {
 	const missingCommit = composeConfig({});
 	assert.notEqual(missingCommit.status, 0);
 	assert.match(`${missingCommit.stdout}${missingCommit.stderr}`, /TIDE_BOT_COMMIT is required/);
@@ -96,12 +93,12 @@ test('live Compose requires a commit and allows an explicit recorded-image overr
 	assert.equal(standardService.image, 'tidebot-open-webui:fixture-commit');
 	assert.equal(standardService.build.args.BUILD_HASH, 'fixture-commit');
 
-	const recordedImage = composeConfig({
+	const arbitraryImageOverride = composeConfig({
 		TIDE_BOT_COMMIT: 'fixture-commit',
-		TIDE_BOT_IMAGE_REF: 'tidebot-open-webui:recorded-immutable'
+		TIDE_BOT_IMAGE_REF: 'unrecognized-image:arbitrary-tag'
 	});
-	assert.equal(recordedImage.status, 0, recordedImage.stderr);
-	assert.equal(JSON.parse(recordedImage.stdout).services['tidebot-open-webui'].image, 'tidebot-open-webui:recorded-immutable');
+	assert.equal(arbitraryImageOverride.status, 0, arbitraryImageOverride.stderr);
+	assert.equal(JSON.parse(arbitraryImageOverride.stdout).services['tidebot-open-webui'].image, 'tidebot-open-webui:fixture-commit');
 });
 
 test('environment migration utility is tracked beside the secret-free example', async () => {
@@ -114,4 +111,5 @@ test('environment migration utility is tracked beside the secret-free example', 
 	assert.match(initializer, /SupportsShouldProcess/);
 	assert.match(envExample, /^WEBUI_SECRET_KEY=$/m);
 	assert.match(envExample, /^TIDE_BOT_COMMIT=$/m);
+	assert.doesNotMatch(envExample, /^TIDE_BOT_IMAGE_REF=/m);
 });

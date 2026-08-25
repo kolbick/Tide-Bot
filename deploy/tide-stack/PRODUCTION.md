@@ -18,10 +18,10 @@ service or user account Task 4 registers; broad Windows groups are rejected.
 It defaults to `NT AUTHORITY\SYSTEM`. Do not place a production environment
 file in this repository.
 
-The updater supplies an immutable `TIDE_BOT_COMMIT` for each build. Its
-recorded `TIDE_BOT_IMAGE_REF` is the only permitted image override, used for a
-no-build recovery of a recorded image. Before a deployment, validate the
-canonical overlay with:
+The updater supplies an immutable `TIDE_BOT_COMMIT` for each build. Task 3
+validates the stored image ID and creates a private ignored one-use Compose
+override for a no-build recovery. Before a deployment, validate the canonical
+overlay with:
 
 ```powershell
 docker compose --project-directory C:\ProgramData\Tide-Bot\repo `

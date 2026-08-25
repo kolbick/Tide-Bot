@@ -15,8 +15,8 @@ Copy only reviewed variable names from the approved legacy environment source
 into the host-only `C:\ProgramData\Tide-Bot\production.env` file using
 `scripts\initialize-tide-bot-production-environment.ps1`. The tracked
 `.env.live.example` contains no usable values. The scheduled updater sets the
-immutable `TIDE_BOT_COMMIT`; a recorded `TIDE_BOT_IMAGE_REF` may be used only
-for a no-build recovery of that recorded image.
+immutable `TIDE_BOT_COMMIT`. Task 3 validates a recorded image ID and creates a
+private ignored one-use Compose override for a no-build recovery.
 
 Validate the production configuration from the controlled checkout before an
 update:
