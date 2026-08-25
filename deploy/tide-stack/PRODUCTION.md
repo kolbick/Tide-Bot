@@ -32,6 +32,43 @@ docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
 Remove-Item Env:TIDE_BOT_COMMIT
 ```
 
+## Controlled checkout and guarded schedule
+
+The production checkout is only `C:\ProgramData\Tide-Bot\repo`; it is not a
+developer worktree. On the initial manual cutover, pass the exact full commit
+resolved from the tested `tide-bot-deployable` marker to the bootstrap script.
+It clones only `https://github.com/kolbick/Tide-Bot.git` as `origin`, configures
+`https://github.com/open-webui/open-webui.git` as `upstream`, rejects a dirty
+existing checkout, and detaches HEAD at that immutable commit. It neither
+migrates nor changes `C:\Users\sshkolby\tide-bot-live`.
+
+```powershell
+pwsh -NoProfile -File scripts\bootstrap-tide-bot-production-checkout.ps1 `
+  -Commit <40-lowercase-hex-commit>
+```
+
+The schedule installer is disabled by default and its dry run creates no task.
+It uses explicit LocalSystem semantics (`SYSTEM`, documented ACL identity
+`NT AUTHORITY\SYSTEM`) so the identity must match the one supplied to
+`initialize-tide-bot-production-environment.ps1`. Enable it only after the
+manual updater has written a successful state record whose `commit` exactly
+matches the current `tide-bot-deployable` commit. The registered task is exactly
+`\TideBot-Upstream-Deploy`, runs every 15 minutes with `IgnoreNew`, and launches
+the updater through an absolute `pwsh.exe -NoProfile -ExecutionPolicy Bypass`
+action. Its description restricts deployment to a tested Git marker.
+
+```powershell
+pwsh -NoProfile -File scripts\install-tide-bot-production-schedule.ps1 -WhatIf
+pwsh -NoProfile -File scripts\install-tide-bot-production-schedule.ps1 -Enable
+```
+
+To remove only that task, use the explicit disable action. It reads back and
+confirms both the exact task name and task path before unregistering it.
+
+```powershell
+pwsh -NoProfile -File scripts\install-tide-bot-production-schedule.ps1 -Disable
+```
+
 This overlay attaches the existing `tidebot-webui_tidebot-open-webui` and
 `tidebot-webui_tidebot-computer` volumes plus the `tidebot-net` network as
 external resources. Never create replacements or run a volume-removing
