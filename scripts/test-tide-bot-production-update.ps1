@@ -115,19 +115,20 @@ try {
 	$priorUp = @($partial.fixture.calls | Where-Object operation -eq 'docker-compose-up-prior')[0]
 	Assert-True ($priorUp.environment_text.Trim() -eq ('TIDE_BOT_COMMIT=' + ('1' * 40))) 'Recovery Compose interpolation was not supplied from the validated predecessor.'
 
+	$postReplacementRecoveryTrace = @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate', 'docker-inspect-candidate-image', 'docker-compose-up-candidate', 'health', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume', 'docker-compose-up-prior', 'health')
 	foreach ($healthFailure in @('local-health', 'public-health', 'socketio-health')) {
 		$postHealthFailure = Invoke-UpdateFixture -Failures @{ $healthFailure = $true }
 		Assert-True ($null -ne $postHealthFailure.error) "$healthFailure post-replacement failure was accepted."
-		Assert-True ($postHealthFailure.trace -contains 'docker-compose-down') "$healthFailure did not trigger recovery."
+		Assert-Trace $postHealthFailure.trace $postReplacementRecoveryTrace "$healthFailure post-replacement recovery"
 	}
 
 	$stateWriteFailure = Invoke-UpdateFixture -StateWriter { param($path, $state) throw 'synthetic state write failure' }
 	Assert-True ($null -ne $stateWriteFailure.error) 'State write failure was accepted.'
-	Assert-True ($stateWriteFailure.trace -contains 'docker-compose-down') 'State write failure did not trigger recovery.'
+	Assert-Trace $stateWriteFailure.trace $postReplacementRecoveryTrace 'state write failure full recovery'
 
 	$rollbackFailure = Invoke-UpdateFixture -Failures @{ health = $true; 'docker-restore-volume' = $true }
 	Assert-True ($null -ne $rollbackFailure.error) 'Rollback failure was accepted.'
-	Assert-True (-not ($rollbackFailure.trace -contains 'docker-compose-up-prior')) 'Rollback continued after a failed restore.'
+	Assert-Trace $rollbackFailure.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate', 'docker-inspect-candidate-image', 'docker-compose-up-candidate', 'health', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume') 'rollback failure stops before prior up'
 
 	$firstMigration = Invoke-UpdateFixture -NoState -Failures @{ health = $true }
 	Assert-True ($null -ne $firstMigration.error) 'First-migration failure was accepted.'
