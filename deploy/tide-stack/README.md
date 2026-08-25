@@ -3,6 +3,34 @@
 This package starts Tide-Bot alone by default. Tide Terminal and the CPTR
 gateway are privileged integrations and require explicit Compose overlays.
 
+## Canonical production overlay
+
+The local files in this directory remain development-only. Production uses the
+canonical `docker-compose.live.yml` overlay, which attaches the existing
+`tidebot-webui_tidebot-open-webui` data volume,
+`tidebot-webui_tidebot-computer` terminal volume, and `tidebot-net` network as
+explicit external resources. It never publishes a terminal or CPTR port.
+
+Copy only reviewed variable names from the approved legacy environment source
+into the host-only `C:\ProgramData\Tide-Bot\production.env` file using
+`scripts\initialize-tide-bot-production-environment.ps1`. The tracked
+`.env.live.example` contains no usable values. The scheduled updater sets the
+immutable `TIDE_BOT_COMMIT`; a recorded `TIDE_BOT_IMAGE_REF` may be used only
+for a no-build recovery of that recorded image.
+
+Validate the production configuration from the controlled checkout before an
+update:
+
+```powershell
+docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
+  --env-file C:\ProgramData\Tide-Bot\production.env `
+  -f deploy\tide-stack\docker-compose.live.yml config --quiet
+```
+
+See [`PRODUCTION.md`](PRODUCTION.md) for the protected environment, backup,
+release, and recovery procedures. Do not use the local commands below for a
+production deployment.
+
 ## Base application
 
 1. Copy `.env.example` to `.env` and set a fresh `WEBUI_SECRET_KEY`.

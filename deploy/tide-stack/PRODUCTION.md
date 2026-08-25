@@ -2,10 +2,34 @@
 
 This document is for an operator deploying the private Tide-Bot instance at
 `https://tide-bot.com`. It is deliberately separate from the local testing
-stack: the Compose port is a loopback or private-network upstream, never the
-public security boundary. Start this deployment with both Compose files so
-Socket.IO and API CORS permit only `https://tide-bot.com` and
-`https://www.tide-bot.com`.
+stack: the Compose port is a loopback upstream, never the public security
+boundary. Production uses only `docker-compose.live.yml`; do not combine it
+with the local development Compose files.
+
+## Production environment and Compose validation
+
+The host-only environment file is `C:\ProgramData\Tide-Bot\production.env`.
+Initialize it once from the approved legacy source with
+`scripts\initialize-tide-bot-production-environment.ps1`; the initializer
+copies the source without printing its values, leaves the source intact, and
+protects the destination ACL for Administrators and the scheduled task
+identity. Do not place a production environment file in this repository.
+
+The updater supplies an immutable `TIDE_BOT_COMMIT` for each build. Its
+recorded `TIDE_BOT_IMAGE_REF` is the only permitted image override, used for a
+no-build recovery of a recorded image. Before a deployment, validate the
+canonical overlay with:
+
+```powershell
+docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
+  --env-file C:\ProgramData\Tide-Bot\production.env `
+  -f deploy\tide-stack\docker-compose.live.yml config --quiet
+```
+
+This overlay attaches the existing `tidebot-webui_tidebot-open-webui` and
+`tidebot-webui_tidebot-computer` volumes plus the `tidebot-net` network as
+external resources. Never create replacements or run a volume-removing
+command against them.
 
 ## Public proxy
 
@@ -45,14 +69,19 @@ Tide Terminal ports; their overlays remain opt-in internal services.
 
 ## Backup and restore
 
-The `tide-bot-data` named volume contains users, chats, settings, uploads, and
-configuration. Stop writes before taking a consistent backup.
+The external `tidebot-webui_tidebot-open-webui` volume contains users, chats,
+settings, uploads, and configuration. Stop writes before taking a consistent
+backup.
 
 ```bash
-docker compose stop tide-bot
-docker run --rm -v tide-bot-data:/data -v "$PWD/backups":/backup alpine \
-  tar -C /data -czf /backup/tide-bot-data-$(date +%F).tgz .
-docker compose up -d tide-bot
+docker compose --project-directory C:\ProgramData\Tide-Bot\repo \
+  --env-file C:\ProgramData\Tide-Bot\production.env \
+  -f deploy/tide-stack/docker-compose.live.yml stop tidebot-open-webui
+docker run --rm -v tidebot-webui_tidebot-open-webui:/data -v "$PWD/backups":/backup alpine \
+  tar -C /data -czf /backup/tidebot-open-webui-$(date +%F).tgz .
+docker compose --project-directory C:\ProgramData\Tide-Bot\repo \
+  --env-file C:\ProgramData\Tide-Bot\production.env \
+  -f deploy/tide-stack/docker-compose.live.yml up -d tidebot-open-webui
 ```
 
 Encrypt and retain backups according to Changing Tides Treatment Center policy.
