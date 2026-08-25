@@ -1,11 +1,17 @@
 import asyncio
+import base64
 import json
+import time
 
 from fastapi import HTTPException
 
 from open_webui.cli import verify_chatgpt_subscription
 from open_webui.routers import openai
-from open_webui.utils.chatgpt_subscription import CHATGPT_PRIVATE_CREDENTIALS_KEY, ChatGPTSubscriptionError
+from open_webui.utils.chatgpt_subscription import (
+    CHATGPT_PRIVATE_CREDENTIALS_KEY,
+    ChatGPTSubscriptionError,
+    encrypt_credentials,
+)
 
 
 ENCRYPTED_BLOB = 'ENCRYPTED_BLOB_MARKER'
@@ -57,6 +63,44 @@ class _FakeSession:
         return _FakeModelResponse()
 
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self.status = 200
+        self.payload = payload
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    async def json(self):
+        return self.payload
+
+
+class _RefreshAndCatalogSession:
+    def __init__(self, refreshed_access_token, observed):
+        self.refreshed_access_token = refreshed_access_token
+        self.observed = observed
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    def post(self, _url, **kwargs):
+        self.observed['refresh_requested'] = kwargs.get('json', {}).get('grant_type') == 'refresh_token'
+        return _FakeResponse({'access_token': self.refreshed_access_token, 'refresh_token': REFRESH_TOKEN})
+
+    def get(self, _url, **kwargs):
+        self.observed['catalog_requested'] = True
+        self.observed['catalog_used_refreshed_credentials'] = (
+            kwargs.get('headers', {}).get('Authorization') == f'Bearer {self.refreshed_access_token}'
+        )
+        return _FakeModelResponse()
+
+
 def _connection():
     return {
         'auth_type': 'chatgpt_subscription',
@@ -71,6 +115,30 @@ def _credentials():
         'refresh_token': REFRESH_TOKEN,
         'account_id': ACCOUNT_ID,
         'email': EMAIL,
+    }
+
+
+def _jwt(payload):
+    def encode(value):
+        return base64.urlsafe_b64encode(value).decode().rstrip('=')
+
+    return '.'.join(
+        (
+            encode(json.dumps({'alg': 'none'}).encode()),
+            encode(json.dumps(payload).encode()),
+            encode(b'signature'),
+        )
+    )
+
+
+def _expired_credentials():
+    expires_at = int(time.time()) - 60
+    return {
+        'access_token': _jwt({'exp': expires_at}),
+        'refresh_token': REFRESH_TOKEN,
+        'id_token': _jwt({'https://api.openai.com/auth': {'chatgpt_account_id': ACCOUNT_ID}}),
+        'account_id': ACCOUNT_ID,
+        'expires_at': expires_at,
     }
 
 
@@ -138,11 +206,36 @@ def test_reports_connected_catalog_for_decryptable_unexpired_credentials(monkeyp
     )
 
 
-def test_reports_connected_catalog_after_expired_credentials_refresh(monkeypatch):
-    connection = _connection()
-    refreshed_credentials = {**_credentials(), 'access_token': f'{ACCESS_TOKEN}_REFRESHED'}
-    _install_runtime_config(monkeypatch, connection)
-    _install_healthy_probe_dependencies(monkeypatch, refreshed_credentials)
+def test_reports_connected_catalog_after_expired_encrypted_credentials_refresh(monkeypatch):
+    connection = {
+        'auth_type': 'chatgpt_subscription',
+        CHATGPT_PRIVATE_CREDENTIALS_KEY: encrypt_credentials(_expired_credentials()),
+    }
+    api_configs = {'0': connection}
+    refreshed_access_token = _jwt({'exp': int(time.time()) + 3600})
+    observed = {
+        'refresh_requested': False,
+        'persistence_called': False,
+        'catalog_requested': False,
+        'catalog_used_refreshed_credentials': False,
+    }
+
+    async def get_runtime_config():
+        return True, [CONNECTION_URL], [''], api_configs
+
+    async def upsert(values):
+        if 'openai.api_configs' in values:
+            observed['persistence_called'] = True
+            api_configs.clear()
+            api_configs.update(values['openai.api_configs'])
+
+    monkeypatch.setattr(openai, 'get_openai_runtime_config', get_runtime_config)
+    monkeypatch.setattr(openai.Config, 'upsert', upsert)
+    monkeypatch.setattr(
+        openai.aiohttp,
+        'ClientSession',
+        lambda **_kwargs: _RefreshAndCatalogSession(refreshed_access_token, observed),
+    )
 
     result = asyncio.run(verify_chatgpt_subscription.verify_chatgpt_subscription())
 
@@ -156,6 +249,12 @@ def test_reports_connected_catalog_after_expired_credentials_refresh(monkeypatch
             'model_count': 2,
         },
     )
+    assert observed == {
+        'refresh_requested': True,
+        'persistence_called': True,
+        'catalog_requested': True,
+        'catalog_used_refreshed_credentials': True,
+    }
 
 
 def test_reports_reconnect_required_when_credentials_cannot_decrypt(monkeypatch):
