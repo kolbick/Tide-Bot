@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import re
+from typing import Literal, TypedDict
 from urllib.parse import quote, urlparse
 
 import aiohttp
@@ -92,6 +93,22 @@ log = logging.getLogger(__name__)
 # in ZlibError.  See https://github.com/aio-libs/aiohttp/issues/4462.
 _STRIP_PROXY_HEADERS = frozenset({'Content-Encoding', 'Content-Length', 'Transfer-Encoding'})
 _CHATGPT_REFRESH_LOCK = asyncio.Lock()
+
+CredentialState = Literal[
+    'connected',
+    'disconnected',
+    'reconnect_required',
+    'refresh_failed',
+    'catalog_unavailable',
+]
+
+
+class ChatGPTSubscriptionHealth(TypedDict):
+    connection_present: bool
+    credential_decryptable: bool
+    credential_state: CredentialState
+    model_catalog_available: bool
+    model_count: int
 
 
 def _clean_proxy_headers(raw_headers) -> dict:
@@ -478,6 +495,62 @@ async def get_valid_chatgpt_credentials(config: dict) -> dict:
         await Config.upsert({'openai.api_configs': indexed})
         config.update(stored_config)
         return credentials
+
+
+async def probe_chatgpt_subscription_health(url: str, connection: dict) -> ChatGPTSubscriptionHealth:
+    """Return a safe ChatGPT subscription health summary without exposing credentials."""
+    unavailable: ChatGPTSubscriptionHealth = {
+        'connection_present': True,
+        'credential_decryptable': True,
+        'credential_state': 'catalog_unavailable',
+        'model_catalog_available': False,
+        'model_count': 0,
+    }
+
+    try:
+        decrypt_credentials(connection.get(CHATGPT_PRIVATE_CREDENTIALS_KEY))
+    except Exception:
+        return {
+            'connection_present': True,
+            'credential_decryptable': False,
+            'credential_state': 'reconnect_required',
+            'model_catalog_available': False,
+            'model_count': 0,
+        }
+
+    try:
+        await get_valid_chatgpt_credentials(connection)
+    except HTTPException as exc:
+        return {
+            **unavailable,
+            'credential_state': 'reconnect_required' if exc.status_code == 401 else 'refresh_failed',
+        }
+    except Exception:
+        return {**unavailable, 'credential_state': 'refresh_failed'}
+
+    try:
+        headers, cookies = await get_headers_and_cookies(None, url, None, connection)
+        timeout = aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST)
+        async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
+            async with session.get(
+                f'{url}/models?client_version={CHATGPT_CODEX_CLIENT_VERSION}',
+                headers=headers,
+                cookies=cookies,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                if response.status != 200:
+                    return unavailable
+                models = normalize_models_response(await response.json())
+    except Exception:
+        return unavailable
+
+    return {
+        'connection_present': True,
+        'credential_decryptable': True,
+        'credential_state': 'connected',
+        'model_catalog_available': True,
+        'model_count': len(models.get('data', [])),
+    }
 
 
 async def normalize_openai_api_keys(api_base_urls: list[str], api_keys: list[str]) -> list[str]:
