@@ -18,15 +18,18 @@ service or user account Task 4 registers; broad Windows groups are rejected.
 It defaults to `NT AUTHORITY\SYSTEM`. Do not place a production environment
 file in this repository.
 
-The updater supplies an immutable `TIDE_BOT_COMMIT` for each build. Task 3
-validates the stored image ID and creates a private ignored one-use Compose
+The updater supplies an immutable `TIDE_BOT_COMMIT` for each build. Its
+last-successful state is `C:\ProgramData\Tide-Bot\state\last-successful-deployment.json`.
+Task 3 validates the stored image ID and creates a private ignored one-use Compose
 override for a no-build recovery. Before a deployment, validate the canonical
-overlay with:
+overlay with a non-secret placeholder interpolation value:
 
 ```powershell
+$env:TIDE_BOT_COMMIT = '0000000000000000000000000000000000000000'
 docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
   --env-file C:\ProgramData\Tide-Bot\production.env `
   -f deploy\tide-stack\docker-compose.live.yml config --quiet
+Remove-Item Env:TIDE_BOT_COMMIT
 ```
 
 This overlay attaches the existing `tidebot-webui_tidebot-open-webui` and

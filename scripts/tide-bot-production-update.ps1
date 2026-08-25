@@ -33,8 +33,9 @@ function Invoke-TideBotCommand {
 		'docker-archive-volume' { return Invoke-TideBotProcess docker @('run', '--rm', '--mount', 'type=volume,src=tidebot-webui_tidebot-open-webui,dst=/data,readonly', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup", 'alpine:3.20', 'sh', '-ceu', "apk add --no-cache zstd >/dev/null; tar --zstd -C /data -cf /backup/$([IO.Path]::GetFileName($Arguments[0])) .") }
 		'docker-list-archive' { return Invoke-TideBotProcess docker @('run', '--rm', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup,readonly", 'alpine:3.20', 'sh', '-ceu', "apk add --no-cache zstd >/dev/null; tar --zstd -tf /backup/$([IO.Path]::GetFileName($Arguments[0]))") }
 		'docker-build-candidate' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'build', '--quiet') }
+		'docker-inspect-candidate-image' { return Invoke-TideBotProcess docker @('image', 'inspect', '--format', '{{.Id}}', "tidebot-open-webui:$($Arguments[0])") }
 		'docker-compose-up-candidate' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'up', '--detach', '--force-recreate', '--no-build') }
-		'docker-compose-down' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '-f', $Arguments[2], 'down') }
+		'docker-compose-down' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'down') }
 		'docker-restore-volume' { return Invoke-TideBotProcess docker @('run', '--rm', '--mount', 'type=volume,src=tidebot-webui_tidebot-open-webui,dst=/data', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup,readonly", 'alpine:3.20', 'sh', '-ceu', "apk add --no-cache zstd >/dev/null; rm -rf /data/* /data/.[!.]* /data/..?*; tar --zstd -C /data -xf /backup/$([IO.Path]::GetFileName($Arguments[0]))") }
 		'docker-compose-up-prior' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], '-f', $Arguments[4], 'up', '--detach', '--force-recreate', '--no-build') }
 		default { throw "Unknown Tide-Bot command '$Operation'." }
@@ -79,17 +80,27 @@ function New-TideBotBackupManifest {
 function Test-TideBotBackupManifest { param([hashtable] $Manifest, [string] $ArchivePath, [string] $ExpectedImageId); return $Manifest -and $Manifest.volume_name -eq 'tidebot-webui_tidebot-open-webui' -and $Manifest.image_id -eq $ExpectedImageId -and $Manifest.archive_file -eq [IO.Path]::GetFileName($ArchivePath) -and (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -eq $Manifest.archive_sha256 }
 function New-TideBotCommitEnvironment { param([string] $StateRoot, [string] $Commit, [string] $Prefix); if ($Commit -notmatch '^[0-9a-f]{40}$') { throw 'A Compose interpolation commit must be a validated full commit hash.' }; $path = Join-Path $StateRoot (".$Prefix-" + [guid]::NewGuid().ToString('N') + '.env'); "TIDE_BOT_COMMIT=$Commit" | Set-Content -LiteralPath $path -Encoding ascii; return $path }
 function New-TideBotRecoveryOverride { param([string] $StateRoot, [string] $ImageId); $path = Join-Path $StateRoot ('.tide-bot-recovery-' + [guid]::NewGuid().ToString('N') + '.yml'); @('services:', '  tidebot-open-webui:', "    image: $ImageId") | Set-Content -LiteralPath $path -Encoding utf8NoBOM; return $path }
+function Read-TideBotPredecessorRecovery {
+	param([string] $Path, [string] $ComposeFile, [string] $ExpectedImageId, [string] $ExpectedManifestPath, [string] $ArchivePath)
+	if (-not (Test-Path -LiteralPath $Path)) { throw 'The predecessor recovery record is missing.' }
+	$record = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+	$required = @('schema_version', 'image_id', 'prior_commit', 'compose_sha256', 'backup_manifest', 'created_at_utc')
+	if ($record.Keys.Count -ne $required.Count -or @($record.Keys | Where-Object { $_ -notin $required }).Count -ne 0 -or $record.schema_version -ne 1 -or $record.image_id -ne $ExpectedImageId -or $record.prior_commit -notmatch '^[0-9a-f]{40}$' -or $record.compose_sha256 -ne (Get-FileHash -LiteralPath $ComposeFile -Algorithm SHA256).Hash -or [IO.Path]::GetFullPath($record.backup_manifest) -ne [IO.Path]::GetFullPath($ExpectedManifestPath)) { throw 'The predecessor recovery record is invalid.' }
+	$manifest = Get-Content -LiteralPath $record.backup_manifest -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+	if (-not (Test-TideBotBackupManifest $manifest $ArchivePath $record.image_id)) { throw 'The predecessor recovery backup manifest is invalid.' }
+	return $record
+}
 
 function Invoke-TideBotProductionUpdate {
-	param([string] $RepositoryPath = 'C:\ProgramData\Tide-Bot\repo', [string] $StateRoot = 'C:\ProgramData\Tide-Bot', [string] $StatePath, [string] $EnvironmentFile = 'C:\ProgramData\Tide-Bot\production.env', [string] $ComposeFile, [scriptblock] $CommandRunner = ${function:Invoke-TideBotCommand}, [scriptblock] $HealthRunner, [switch] $SkipLock, [switch] $Synthetic, [switch] $WhatIf)
-	if ([string]::IsNullOrWhiteSpace($StatePath)) { $StatePath = Join-Path $StateRoot 'last-successful-deployment.json' }
+	param([string] $RepositoryPath = 'C:\ProgramData\Tide-Bot\repo', [string] $StateRoot = 'C:\ProgramData\Tide-Bot', [string] $StatePath, [string] $EnvironmentFile = 'C:\ProgramData\Tide-Bot\production.env', [string] $ComposeFile, [scriptblock] $CommandRunner = ${function:Invoke-TideBotCommand}, [scriptblock] $HealthRunner, [scriptblock] $StateWriter = ${function:Write-TideBotDeploymentState}, [switch] $SkipLock, [switch] $Synthetic, [switch] $WhatIf)
+	if ([string]::IsNullOrWhiteSpace($StatePath)) { $StatePath = Join-Path $StateRoot 'state\last-successful-deployment.json' }
 	if ([string]::IsNullOrWhiteSpace($ComposeFile)) { $ComposeFile = Join-Path $RepositoryPath 'deploy\tide-stack\docker-compose.live.yml' }
 	if ($WhatIf) { return @{ status = 'planned'; repository_path = $RepositoryPath; state_root = $StateRoot; state_path = $StatePath; compose_file = $ComposeFile; operations = @('fetch tag', 'validate tag ancestry', 'detach controlled checkout', 'backup named volume', 'build candidate', 'recreate service', 'health checks') } }
 	$canonicalRoot = [IO.Path]::GetFullPath('C:\ProgramData\Tide-Bot').TrimEnd('\'); $resolvedRoot = [IO.Path]::GetFullPath($StateRoot).TrimEnd('\')
 	if (-not $Synthetic -and -not $resolvedRoot.Equals($canonicalRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Production state and backup root must be C:\ProgramData\Tide-Bot.' }
 	$resolvedStatePath = [IO.Path]::GetFullPath($StatePath); if (-not $Synthetic -and -not $resolvedStatePath.StartsWith("$resolvedRoot\", [StringComparison]::OrdinalIgnoreCase)) { throw 'Production deployment state must remain under C:\ProgramData\Tide-Bot.' }
 	$lock = $null; if (-not $SkipLock) { $lock = Enter-TideBotDeploymentLock; if ($null -eq $lock) { return @{ status = 'already_running' } } }
-	$replacementAttempted = $false; $recoveryOverride = $null; $recoveryEnvironment = $null
+	$replacementAttempted = $false; $recoveryOverride = $null; $recoveryEnvironment = $null; $predecessorPath = $null
 	try {
 		Invoke-TideBotCheckedCommand $CommandRunner 'git-fetch-tag' @($RepositoryPath) | Out-Null
 		$candidate = (Invoke-TideBotCheckedCommand $CommandRunner 'git-resolve-deployable' @($RepositoryPath)).stdout.Trim(); if ($candidate -notmatch '^[0-9a-f]{40}$') { throw 'The deployable tag did not resolve to a full commit hash.' }
@@ -110,27 +121,30 @@ function Invoke-TideBotProductionUpdate {
 		$manifest = New-TideBotBackupManifest $archivePath $candidate $priorImage; $manifestPath = "$archivePath.manifest.json"; $manifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
 		if ($priorState) { $predecessor = @{ image_id = $priorState.image_id; prior_commit = $priorState.commit; backup_manifest = $manifestPath } } else {
 			$priorCommit = $labels.'org.opencontainers.image.revision'; if ($priorCommit -notmatch '^[0-9a-f]{40}$') { throw 'First migration requires a validated predecessor revision label.' }
-			$predecessor = @{ schema_version = 1; image_id = $priorImage; prior_commit = $priorCommit; compose_sha256 = (Get-FileHash -LiteralPath $ComposeFile -Algorithm SHA256).Hash; backup_manifest = $manifestPath; created_at_utc = [datetime]::UtcNow.ToString('o') }; $predecessor | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateRoot 'predecessor-recovery.json') -Encoding utf8NoBOM
+			$predecessor = @{ schema_version = 1; image_id = $priorImage; prior_commit = $priorCommit; compose_sha256 = (Get-FileHash -LiteralPath $ComposeFile -Algorithm SHA256).Hash; backup_manifest = $manifestPath; created_at_utc = [datetime]::UtcNow.ToString('o') }; $predecessorPath = Join-Path $StateRoot 'predecessor-recovery.json'; $predecessor | ConvertTo-Json | Set-Content -LiteralPath $predecessorPath -Encoding utf8NoBOM
 		}
 		if ($predecessor.image_id -ne $priorImage -or $predecessor.prior_commit -notmatch '^[0-9a-f]{40}$') { throw 'No validated predecessor recovery record is available.' }
 		$candidateEnvironment = New-TideBotCommitEnvironment $StateRoot $candidate 'tide-bot-candidate'
 		try {
-			$candidateImage = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-build-candidate' @($RepositoryPath, $EnvironmentFile, $candidateEnvironment, $ComposeFile)).stdout.Trim(); if ($candidateImage -notmatch '^sha256:') { throw 'The candidate build did not report a Docker image ID.' }
+			Invoke-TideBotCheckedCommand $CommandRunner 'docker-build-candidate' @($RepositoryPath, $EnvironmentFile, $candidateEnvironment, $ComposeFile) | Out-Null
+			$candidateImage = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-inspect-candidate-image' @($candidate)).stdout.Trim(); if ($candidateImage -notmatch '^sha256:') { throw 'The candidate image inspection did not return an immutable image ID.' }
 			$replacementAttempted = $true; Invoke-TideBotCheckedCommand $CommandRunner 'docker-compose-up-candidate' @($RepositoryPath, $EnvironmentFile, $candidateEnvironment, $ComposeFile) | Out-Null
 		} finally { Remove-Item -LiteralPath $candidateEnvironment -Force -ErrorAction SilentlyContinue }
 		if (-not $HealthRunner) { . (Join-Path $PSScriptRoot 'tide-bot-production-health.ps1'); $HealthRunner = { Invoke-TideBotProductionHealth } }
 		$health = & $HealthRunner; if (-not $health.healthy) { throw 'Candidate health checks failed.' }
-		Write-TideBotDeploymentState $StatePath ([ordered]@{ schema_version = 1; commit = $candidate; upstream_sha = $candidate; image_id = $candidateImage; deployed_at_utc = [datetime]::UtcNow.ToString('o'); local_health = [bool]$health.local_health; public_health = [bool]$health.public_health; socketio_health = [bool]$health.socketio_health; oauth = $health.oauth })
+		& $StateWriter $StatePath ([ordered]@{ schema_version = 1; commit = $candidate; upstream_sha = $candidate; image_id = $candidateImage; deployed_at_utc = [datetime]::UtcNow.ToString('o'); local_health = [bool]$health.local_health; public_health = [bool]$health.public_health; socketio_health = [bool]$health.socketio_health; oauth = $health.oauth })
 		return @{ status = 'deployed'; commit = $candidate; oauth_warning = $health.oauth_warning }
 	} catch {
 		$failure = $_; if (-not $replacementAttempted) { throw $failure }
 		$recoveryFailure = $null
 		try {
+			if ($predecessorPath) { $predecessor = Read-TideBotPredecessorRecovery $predecessorPath $ComposeFile $priorImage $manifestPath $archivePath }
 			if (-not (Test-TideBotBackupManifest $manifest $archivePath $predecessor.image_id) -or $predecessor.image_id -ne $priorImage) { throw 'The validated predecessor backup is unavailable for recovery.' }
-			Invoke-TideBotCheckedCommand $CommandRunner 'docker-compose-down' @($RepositoryPath, $EnvironmentFile, $ComposeFile) | Out-Null
+			$recoveryEnvironment = New-TideBotCommitEnvironment $StateRoot $predecessor.prior_commit 'tide-bot-recovery'
+			Invoke-TideBotCheckedCommand $CommandRunner 'docker-compose-down' @($RepositoryPath, $EnvironmentFile, $recoveryEnvironment, $ComposeFile) | Out-Null
 			if ((Invoke-TideBotCheckedCommand $CommandRunner 'docker-list-archive' @($archivePath, $backupDirectory)).stdout.Trim().Length -eq 0) { throw 'The backup archive listing was empty.' }
 			Invoke-TideBotCheckedCommand $CommandRunner 'docker-restore-volume' @($archivePath, $backupDirectory) | Out-Null
-			$recoveryEnvironment = New-TideBotCommitEnvironment $StateRoot $predecessor.prior_commit 'tide-bot-recovery'; $recoveryOverride = New-TideBotRecoveryOverride $StateRoot $predecessor.image_id
+			$recoveryOverride = New-TideBotRecoveryOverride $StateRoot $predecessor.image_id
 			Invoke-TideBotCheckedCommand $CommandRunner 'docker-compose-up-prior' @($RepositoryPath, $EnvironmentFile, $recoveryEnvironment, $ComposeFile, $recoveryOverride) | Out-Null
 			$rollbackHealth = & $HealthRunner
 			if (-not $rollbackHealth.local_health) { throw 'Rollback local health check failed.' }
