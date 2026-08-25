@@ -72,34 +72,34 @@ Tide Terminal ports; their overlays remain opt-in internal services.
 
 ## Backup and restore
 
-The external `tidebot-webui_tidebot-open-webui` volume contains users, chats,
-settings, uploads, and configuration. Stop writes before taking a consistent
-backup.
+Use `scripts\tide-bot-production-update.ps1` for production deployments. It
+fetches only `origin/tide-bot-deployable`, rejects commits outside `origin/main`,
+takes a helper-container archive of exactly
+`tidebot-webui_tidebot-open-webui`, records a SHA-256 manifest, and writes a
+sanitized deployment state record. Backups are UTC-sortable files below
+`C:\ProgramData\Tide-Bot\backups`; they are never deleted by the updater.
+
+The updater acquires the global `TideBot-Upstream-Deploy` mutex. A concurrent
+run exits successfully with `status: already_running`. Use the dry run before a
+maintenance window; it performs no checkout, Docker, environment-file, or
+network access:
 
 ```powershell
-docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
-  --env-file C:\ProgramData\Tide-Bot\production.env `
-  -f deploy\tide-stack\docker-compose.live.yml stop tidebot-open-webui
-docker run --rm -v tidebot-webui_tidebot-open-webui:/data -v "${PWD}\backups:/backup" alpine `
-  tar -C /data -czf /backup/tidebot-open-webui-$(Get-Date -Format yyyy-MM-dd).tgz .
-docker compose --project-directory C:\ProgramData\Tide-Bot\repo `
-  --env-file C:\ProgramData\Tide-Bot\production.env `
-  -f deploy\tide-stack\docker-compose.live.yml up -d tidebot-open-webui
+pwsh -NoProfile -File scripts\tide-bot-production-update.ps1 -WhatIf
 ```
 
-Encrypt and retain backups according to Changing Tides Treatment Center policy.
-Test a restore on an isolated host before relying on it. To restore, stop the
-service, archive the current volume first, extract the chosen backup into the
-same named volume, then start the service and verify `/health` plus an
-administrator sign-in.
+On a post-replacement failure it runs Compose `down` without `-v`, validates the
+immediately preceding archive manifest and listing, restores only the named data
+volume, and starts the recorded prior image through a private ignored one-use
+Compose override. The override is removed in all outcomes. It does not accept
+an image reference from the environment or an operator argument.
 
 ## Release and rollback
 
-1. Build and test the candidate with Node 22 and `docker compose config --quiet`.
-2. Take the volume backup above and record the current image digest.
-3. Build the candidate, start it, and verify `/health`, the signed-in flow,
-   WebSocket connection, and the Tide-Bot/Ted-Bot assets through HTTPS.
-4. If acceptance fails, redeploy the recorded image digest with the unchanged
-   volume. Do not roll back by deleting the data volume.
-5. Record the image digest, Open WebUI source commit, migration outcome, and
-   operator approval in the release record.
+1. Run the updater from the approved checkout and review its sanitized state
+   record against `scripts/tide-bot-production-update.schema.json`.
+2. It verifies loopback `/health`, public HTTPS `/health`, and the local
+   Socket.IO polling handshake. A ChatGPT OAuth reconnect state is recorded as a
+   warning rather than causing a service rollback.
+3. If service health fails after replacement, let the updater finish recovery;
+   do not remove volumes or supply an image override manually.

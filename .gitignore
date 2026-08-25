@@ -11,6 +11,10 @@ node_modules
 !deploy/tide-stack/.env.live.example
 deploy/tide-stack/.env.live
 deploy/tide-stack/production.env
+deploy/tide-stack/.tide-bot-recovery-*.yml
+deploy/tide-stack/.tide-bot-candidate-*.env
+/.tide-bot-recovery-*.yml
+/.tide-bot-candidate-*.env
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # Byte-compiled / optimized / DLL files
