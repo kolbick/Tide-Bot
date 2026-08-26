@@ -9,7 +9,11 @@
 - Official `v0.11.1` tag commit: `d3e8bf3405e848cfba377814d0aa7ba7290e414d`.
 - Ancestry check: `v0.11.1` is an ancestor of fetched `upstream/main` (exit 0).
 - Integration command: `git merge --no-commit --no-ff d3e8bf3405e848cfba377814d0aa7ba7290e414d`.
-- Integration commit: this report is finalized after the explicit merge commit is created.
+- Integration merge: `b0b299c27f3cf3fd682b526c35f89ef4f14ee1af`.
+- Merge parents, in order: Tide-Bot
+  `cf3e495c3f3a551d6b90361b2e8f6df862201944`, then upstream
+  `d3e8bf3405e848cfba377814d0aa7ba7290e414d`.
+- Merge subject: `chore: integrate Open WebUI main d3e8bf3405e8`.
 
 No push, pull request, canonical/origin `main` mutation, deployable-tag move,
 deployment, or live-resource access occurred in this task.
@@ -113,7 +117,9 @@ expected while the merged behavior required six; after wrapping
   because it could not find the Compose plugin in an approved fixed system
   location. `docker compose version` independently reports v5.3.0. The runner's
   location restriction was not weakened.
-- Whitespace/conflict/index verification: finalized immediately before commit.
+- Whitespace/conflict/index verification: staged and unstaged `git diff
+  --check` passed immediately before the merge; zero unmerged entries and zero
+  unstaged paths were present.
 
 The first build attempt reached chunk rendering but exhausted Node's default
 approximately 4 GB heap. A shell-default Node 25 rerun was stopped immediately

@@ -43,7 +43,7 @@ Docker/runtime changes before merging.
 
 | Date | Upstream commit | Record |
 | --- | --- | --- |
-| 2026-08-25 | `d3e8bf3405e848cfba377814d0aa7ba7290e414d` | Open WebUI `v0.11.1`; integrated by this explicit merge commit with Tide-Bot first parent `cf3e495c3f3a551d6b90361b2e8f6df862201944` and upstream second parent `d3e8bf3405e848cfba377814d0aa7ba7290e414d`. |
+| 2026-08-25 | `d3e8bf3405e848cfba377814d0aa7ba7290e414d` | Open WebUI `v0.11.1`; explicit merge `b0b299c27f3cf3fd682b526c35f89ef4f14ee1af`, with Tide-Bot first parent `cf3e495c3f3a551d6b90361b2e8f6df862201944` and upstream second parent `d3e8bf3405e848cfba377814d0aa7ba7290e414d`. |
 
 The `Tide-Bot upstream main` workflow fetches a fresh `upstream/main` SHA and
 does no work when that SHA is already an ancestor of `origin/main`. Before it
