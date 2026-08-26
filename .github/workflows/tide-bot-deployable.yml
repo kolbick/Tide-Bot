@@ -45,7 +45,7 @@ jobs:
       - name: Build local Tide-Bot runtime image
         shell: bash
         env:
-          DOCKER_BUILDKIT: '0'
+          DOCKER_BUILDKIT: '1'
           DOCKER_CONFIG: /tmp/tide-bot-local-image-docker-config
         run: |
           set -euo pipefail

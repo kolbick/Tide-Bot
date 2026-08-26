@@ -277,7 +277,7 @@ test('deployable workflow builds the fixed local Cypress runtime image before th
 	);
 	assert.equal(buildImage.shell, 'bash');
 	assert.deepEqual(buildImage.env, {
-		DOCKER_BUILDKIT: '0',
+		DOCKER_BUILDKIT: '1',
 		DOCKER_CONFIG: '/tmp/tide-bot-local-image-docker-config'
 	});
 	assert.deepEqual(buildImage.run.trimEnd().split('\n'), [
@@ -371,6 +371,11 @@ test('marker runtime and companion fixture Dockerfiles pin every external image 
 
 	for (const [relativePath, expectedFromLines] of expected) {
 		const source = await readFile(join(repoRoot, relativePath), 'utf8');
+		assert.doesNotMatch(
+			source,
+			/^#\s*syntax=/m,
+			`${relativePath} must not select an unpinned remote Dockerfile frontend`
+		);
 		const fromLines = source.split(/\r?\n/).filter((line) => /^FROM\s/.test(line));
 		assert.deepEqual(fromLines, expectedFromLines, relativePath);
 		assert.ok(
