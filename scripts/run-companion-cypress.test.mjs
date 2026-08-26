@@ -126,6 +126,7 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 			},
 			spawn,
 			tempRoot: fixtureRoot,
+			homeDirectory: join(fixtureRoot, 'host-home'),
 			reservePorts: async () => ({ appPort: 49120, fixturePort: 49121 }),
 			randomSecret: () => 'unit-generated-secret',
 			fetchImpl: async () => ({ ok: true }),
@@ -246,6 +247,11 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 		assert.notEqual(cypress.options.cwd, repoRoot);
 		assert.equal(cypress.options.env.CYPRESS_baseUrl, undefined);
 		assert.equal(cypress.options.env.WEBUI_SECRET_KEY, undefined);
+		assert.equal(
+			cypress.options.env.CYPRESS_CACHE_FOLDER,
+			join(fixtureRoot, 'host-home', '.cache', 'Cypress'),
+			'Cypress must receive only its wrapper-derived host binary cache while HOME stays private'
+		);
 		assert.ok(
 			Number.isInteger(cypress.options.timeout) && cypress.options.timeout > 0,
 			'a wedged Cypress run must not strand the isolated project'

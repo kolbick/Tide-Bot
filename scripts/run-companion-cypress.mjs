@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { access, chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -204,6 +204,7 @@ export async function runCompanionCypress({
 	spawn = spawnSync,
 	platform = process.platform,
 	nodeExecutable = process.execPath,
+	homeDirectory = homedir(),
 	accessFile = access,
 	linkFile = symlink,
 	tempRoot = tmpdir(),
@@ -487,6 +488,12 @@ export async function runCompanionCypress({
 				],
 				{
 					HOME: runTmpDir,
+					CYPRESS_CACHE_FOLDER:
+						platform === 'win32'
+							? join(homeDirectory, 'AppData', 'Local', 'Cypress', 'Cache')
+							: platform === 'darwin'
+								? join(homeDirectory, 'Library', 'Caches', 'Cypress')
+								: join(homeDirectory, '.cache', 'Cypress'),
 					CI: '1',
 					NO_COLOR: '1'
 				},
