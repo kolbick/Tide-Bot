@@ -10,6 +10,8 @@
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import SettingsSelect from '$lib/components/common/SettingsSelect.svelte';
+	import ExperimentalBadge from '$lib/components/common/ExperimentalBadge.svelte';
+	import AdvancedParams from '$lib/components/chat/Settings/Advanced/AdvancedParams.svelte';
 	import AdminSettingField from './AdminSettingField.svelte';
 	import AdminSettingRow from './AdminSettingRow.svelte';
 	import AdminSettingSection from './AdminSettingSection.svelte';
@@ -22,6 +24,7 @@
 	let taskConfig = {
 		TASK_MODEL: '',
 		TASK_MODEL_EXTERNAL: '',
+		TASK_MODEL_PARAMS: {},
 		ENABLE_TITLE_GENERATION: true,
 		TITLE_GENERATION_PROMPT_TEMPLATE: '',
 		ENABLE_FOLLOW_UP_GENERATION: true,
@@ -41,15 +44,31 @@
 	};
 
 	let chatConfig = {
+		CONTEXT_COMPACTION_MODEL: '',
 		ENABLE_CONTEXT_COMPACTION: false,
 		CONTEXT_COMPACTION_TOKEN_THRESHOLD: 80000,
 		CONTEXT_COMPACTION_TOKEN_CAP: 80000,
-		CONTEXT_COMPACTION_PROMPT_TEMPLATE: ''
+		CONTEXT_COMPACTION_RETENTION_PERCENTAGE: 40,
+		CONTEXT_COMPACTION_PROMPT_TEMPLATE: '',
+		ENABLE_TOOL_PERMISSIONS: false
 	};
+	let showTaskParameters = false;
+
+	const configuredParams = (params: Record<string, any> = {}) =>
+		Object.fromEntries(
+			Object.entries(params).filter(
+				([_, value]) => value !== null && value !== '' && value !== undefined
+			)
+		);
 
 	const updateInterfaceHandler = async () => {
+		const taskConfigPayload = {
+			...taskConfig,
+			TASK_MODEL_PARAMS: configuredParams(taskConfig.TASK_MODEL_PARAMS)
+		};
+
 		[taskConfig, chatConfig] = await Promise.all([
-			updateTaskConfig(localStorage.token, taskConfig),
+			updateTaskConfig(localStorage.token, taskConfigPayload),
 			updateChatConfig(localStorage.token, chatConfig)
 		]);
 		appConfig.update((current) =>
@@ -58,7 +77,8 @@
 						...current,
 						features: {
 							...current.features,
-							enable_context_compaction: chatConfig.ENABLE_CONTEXT_COMPACTION
+							enable_context_compaction: chatConfig.ENABLE_CONTEXT_COMPACTION,
+							enable_tool_permissions: chatConfig.ENABLE_TOOL_PERMISSIONS
 						}
 					}
 				: current
@@ -70,6 +90,27 @@
 
 	let models: any[] | null = null;
 	$: modelOptions = models ?? [];
+	const normalizeModelSelection = (modelId: string | null | undefined) => {
+		if (!modelId) {
+			return '';
+		}
+
+		const model = modelOptions.find((m: any) => m.id === modelId);
+		if (!model) {
+			return '';
+		}
+
+		if (
+			model?.access_grants &&
+			!model.access_grants.some(
+				(g: any) => g.principal_type === 'user' && g.principal_id === '*' && g.permission === 'read'
+			)
+		) {
+			toast.error($i18n.t('This model is not publicly available. Please select another model.'));
+		}
+
+		return model.id;
+	};
 	const inputClass =
 		'w-full h-7 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
 	const textareaClass =
@@ -81,6 +122,7 @@
 				getTaskConfig(localStorage.token),
 				getChatConfig(localStorage.token)
 			]);
+			taskConfig.TASK_MODEL_PARAMS = taskConfig.TASK_MODEL_PARAMS ?? {};
 
 			workspaceModels = await getBaseModels(localStorage.token);
 			baseModels = await getModels(localStorage.token, null, false);
@@ -149,30 +191,7 @@
 								className="w-full"
 								placeholder={$i18n.t('Select a model')}
 								on:change={() => {
-									if (taskConfig.TASK_MODEL) {
-										const model = modelOptions.find((m: any) => m.id === taskConfig.TASK_MODEL);
-										if (model) {
-											if (
-												model?.access_grants &&
-												!model.access_grants.some(
-													(g: any) =>
-														g.principal_type === 'user' &&
-														g.principal_id === '*' &&
-														g.permission === 'read'
-												)
-											) {
-												toast.error(
-													$i18n.t(
-														'This model is not publicly available. Please select another model.'
-													)
-												);
-											}
-
-											taskConfig.TASK_MODEL = model.id;
-										} else {
-											taskConfig.TASK_MODEL = '';
-										}
-									}
+									taskConfig.TASK_MODEL = normalizeModelSelection(taskConfig.TASK_MODEL);
 								}}
 							>
 								<option value="" selected>{$i18n.t('Current Model')}</option>
@@ -191,32 +210,9 @@
 								className="w-full"
 								placeholder={$i18n.t('Select a model')}
 								on:change={() => {
-									if (taskConfig.TASK_MODEL_EXTERNAL) {
-										const model = modelOptions.find(
-											(m: any) => m.id === taskConfig.TASK_MODEL_EXTERNAL
-										);
-										if (model) {
-											if (
-												model?.access_grants &&
-												!model.access_grants.some(
-													(g: any) =>
-														g.principal_type === 'user' &&
-														g.principal_id === '*' &&
-														g.permission === 'read'
-												)
-											) {
-												toast.error(
-													$i18n.t(
-														'This model is not publicly available. Please select another model.'
-													)
-												);
-											}
-
-											taskConfig.TASK_MODEL_EXTERNAL = model.id;
-										} else {
-											taskConfig.TASK_MODEL_EXTERNAL = '';
-										}
-									}
+									taskConfig.TASK_MODEL_EXTERNAL = normalizeModelSelection(
+										taskConfig.TASK_MODEL_EXTERNAL
+									);
 								}}
 							>
 								<option value="" selected>{$i18n.t('Current Model')}</option>
@@ -229,20 +225,86 @@
 							</SettingsSelect>
 						</AdminSettingField>
 					</div>
+
+					<div class="mt-2.5">
+						<button
+							class="flex w-full items-center justify-between gap-4 py-0.5 text-left"
+							type="button"
+							on:click={() => {
+								showTaskParameters = !showTaskParameters;
+							}}
+						>
+							<span class="text-xs text-gray-600 dark:text-gray-400">
+								{$i18n.t('Task Model Parameters')}
+							</span>
+							<span class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+								{showTaskParameters ? $i18n.t('Close') : $i18n.t('Configure')}
+							</span>
+						</button>
+
+						{#if showTaskParameters}
+							<div class="max-h-[24rem] overflow-y-auto pb-2 pr-1 scrollbar-hover">
+								<AdvancedParams
+									admin={true}
+									custom={true}
+									bind:params={taskConfig.TASK_MODEL_PARAMS}
+								/>
+							</div>
+						{/if}
+					</div>
 				</div>
 			</AdminSettingSection>
 
 			<AdminSettingSection title={$i18n.t('Chat')}>
 				<AdminSettingRow
+					label={$i18n.t('Tool Permissions')}
+					description={$i18n.t('Show Full access and Ask for approval in the chat input menu.')}
+					let:labelId
+				>
+					<div slot="label" class="flex items-center gap-2">
+						<span>{$i18n.t('Tool Permissions')}</span>
+						<ExperimentalBadge />
+					</div>
+					<Switch bind:state={chatConfig.ENABLE_TOOL_PERMISSIONS} ariaLabelledbyId={labelId} />
+				</AdminSettingRow>
+
+				<AdminSettingRow
 					label={$i18n.t('Context Compaction')}
 					description={$i18n.t(
 						'Summarize older chat history when the conversation context grows large.'
 					)}
+					let:labelId
 				>
-					<Switch bind:state={chatConfig.ENABLE_CONTEXT_COMPACTION} />
+					<Switch bind:state={chatConfig.ENABLE_CONTEXT_COMPACTION} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				{#if chatConfig.ENABLE_CONTEXT_COMPACTION}
+					<AdminSettingField
+						label={$i18n.t('Context Compaction Model')}
+						description={$i18n.t(
+							'Choose a dedicated model for context compaction summaries. Current Model follows the active chat model.'
+						)}
+					>
+						<SettingsSelect
+							bind:value={chatConfig.CONTEXT_COMPACTION_MODEL}
+							className="w-full"
+							placeholder={$i18n.t('Select a model')}
+							on:change={() => {
+								chatConfig.CONTEXT_COMPACTION_MODEL = normalizeModelSelection(
+									chatConfig.CONTEXT_COMPACTION_MODEL
+								);
+							}}
+						>
+							<option value="" selected>{$i18n.t('Current Model')}</option>
+							{#each modelOptions as model}
+								<option value={model.id} class="bg-gray-100 dark:bg-gray-700">
+									{model.name}
+									{model?.connection_type === 'local' ? `(${$i18n.t('Local')})` : ''}
+								</option>
+							{/each}
+						</SettingsSelect>
+					</AdminSettingField>
+
 					<AdminSettingField
 						label={$i18n.t('Token Threshold')}
 						description={$i18n.t(
@@ -270,6 +332,22 @@
 							step="1"
 							class={inputClass}
 							bind:value={chatConfig.CONTEXT_COMPACTION_TOKEN_CAP}
+						/>
+					</AdminSettingField>
+
+					<AdminSettingField
+						label={$i18n.t('Retained Messages')}
+						description={$i18n.t(
+							'Percentage of recent messages to keep after older messages are summarized.'
+						)}
+					>
+						<input
+							type="number"
+							min="10"
+							max="50"
+							step="1"
+							class={inputClass}
+							bind:value={chatConfig.CONTEXT_COMPACTION_RETENTION_PERCENTAGE}
 						/>
 					</AdminSettingField>
 
@@ -302,8 +380,9 @@
 				<AdminSettingRow
 					label={$i18n.t('Title Generation')}
 					description={$i18n.t('Allow automatic names for new chats.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_TITLE_GENERATION} />
+					<Switch bind:state={taskConfig.ENABLE_TITLE_GENERATION} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				{#if taskConfig.ENABLE_TITLE_GENERATION}
@@ -324,8 +403,9 @@
 				<AdminSettingRow
 					label={$i18n.t('Voice Mode Prompt')}
 					description={$i18n.t('Apply voice-specific instructions while voice mode is active.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_VOICE_MODE_PROMPT} />
+					<Switch bind:state={taskConfig.ENABLE_VOICE_MODE_PROMPT} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				{#if taskConfig.ENABLE_VOICE_MODE_PROMPT}
@@ -346,8 +426,9 @@
 				<AdminSettingRow
 					label={$i18n.t('Follow Up Generation')}
 					description={$i18n.t('Show suggested next questions after assistant responses.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_FOLLOW_UP_GENERATION} />
+					<Switch bind:state={taskConfig.ENABLE_FOLLOW_UP_GENERATION} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				{#if taskConfig.ENABLE_FOLLOW_UP_GENERATION}
@@ -368,8 +449,9 @@
 				<AdminSettingRow
 					label={$i18n.t('Tags Generation')}
 					description={$i18n.t('Create chat tags from conversation content.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_TAGS_GENERATION} />
+					<Switch bind:state={taskConfig.ENABLE_TAGS_GENERATION} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				{#if taskConfig.ENABLE_TAGS_GENERATION}
@@ -390,15 +472,23 @@
 				<AdminSettingRow
 					label={$i18n.t('Retrieval Query Generation')}
 					description={$i18n.t('Rewrite user requests for knowledge retrieval.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_RETRIEVAL_QUERY_GENERATION} />
+					<Switch
+						bind:state={taskConfig.ENABLE_RETRIEVAL_QUERY_GENERATION}
+						ariaLabelledbyId={labelId}
+					/>
 				</AdminSettingRow>
 
 				<AdminSettingRow
 					label={$i18n.t('Web Search Query Generation')}
 					description={$i18n.t('Rewrite user requests into web-search queries.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_SEARCH_QUERY_GENERATION} />
+					<Switch
+						bind:state={taskConfig.ENABLE_SEARCH_QUERY_GENERATION}
+						ariaLabelledbyId={labelId}
+					/>
 				</AdminSettingRow>
 
 				<AdminSettingField
@@ -415,8 +505,12 @@
 				<AdminSettingRow
 					label={$i18n.t('Autocomplete Generation')}
 					description={$i18n.t('Suggest completions while users type chat messages.')}
+					let:labelId
 				>
-					<Switch bind:state={taskConfig.ENABLE_AUTOCOMPLETE_GENERATION} />
+					<Switch
+						bind:state={taskConfig.ENABLE_AUTOCOMPLETE_GENERATION}
+						ariaLabelledbyId={labelId}
+					/>
 				</AdminSettingRow>
 
 				{#if taskConfig.ENABLE_AUTOCOMPLETE_GENERATION}

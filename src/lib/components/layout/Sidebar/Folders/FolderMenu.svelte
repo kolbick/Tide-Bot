@@ -12,6 +12,7 @@
 	import TrashIcon from '../icons/Trash.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Download from '../icons/Download.svelte';
+	import CheckIcon from '$lib/components/icons/Check.svelte';
 
 	export let align: 'start' | 'end' = 'start';
 	export let onEdit = () => {};
@@ -19,6 +20,7 @@
 	export let onShare = () => {};
 	export let onDelete = () => {};
 	export let onCreateSubFolder = () => {};
+	export let onMarkAllRead = () => {};
 
 	let show = false;
 </script>
@@ -44,9 +46,9 @@
 	</Tooltip>
 
 	<div slot="content">
-		<DropdownMenu className="min-w-[170px]">
+		<DropdownMenu className="min-w-[10.625rem]">
 			<button
-				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
 				on:click={() => {
 					onCreateSubFolder();
 				}}
@@ -58,7 +60,20 @@
 			<hr class="border-gray-50/30 dark:border-gray-800/30 mx-1 my-0.5" />
 
 			<button
-				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+				on:click={() => {
+					show = false;
+					onMarkAllRead();
+				}}
+			>
+				<CheckIcon className="size-3.5" />
+				<div class="flex items-center">{$i18n.t('Mark all as read')}</div>
+			</button>
+
+			<hr class="border-gray-50/30 dark:border-gray-800/30 mx-1 my-0.5" />
+
+			<button
+				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
 				on:click={() => {
 					onEdit();
 				}}
@@ -68,7 +83,7 @@
 			</button>
 
 			<button
-				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
 				on:click={() => {
 					onExport();
 				}}
@@ -78,7 +93,7 @@
 			</button>
 
 			<button
-				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
 				on:click={() => {
 					onShare();
 				}}
@@ -90,7 +105,7 @@
 			<hr class="border-gray-50/30 dark:border-gray-800/30 mx-1 my-0.5" />
 
 			<button
-				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+				class="flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] select-none cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
 				on:click={() => {
 					onDelete();
 				}}

@@ -23,12 +23,15 @@ export enum Shortcut {
 	DELETE_CHAT = 'deleteChat',
 	OPEN_MODEL_SELECTOR = 'openModelSelector',
 	TOGGLE_DICTATION = 'toggleDictation',
+	NAVIGATE_CHAT_UP = 'navigateChatUp',
+	NAVIGATE_CHAT_DOWN = 'navigateChatDown',
 
 	//Global
 	SEARCH = 'search',
 	OPEN_SETTINGS = 'openSettings',
 	SHOW_SHORTCUTS = 'showShortcuts',
 	TOGGLE_SIDEBAR = 'toggleSidebar',
+	TOGGLE_CONTROLS = 'toggleControls',
 	CLOSE_MODAL = 'closeModal',
 
 	//Input
@@ -43,6 +46,8 @@ export enum Shortcut {
 	//Message
 	GENERATE_MESSAGE_PAIR = 'generateMessagePair',
 	REGENERATE_RESPONSE = 'regenerateResponse',
+	ALLOW_TOOL_CALL = 'allowToolCall',
+	DENY_TOOL_CALL = 'denyToolCall',
 	COPY_LAST_CODE_BLOCK = 'copyLastCodeBlock',
 	COPY_LAST_RESPONSE = 'copyLastResponse',
 	STOP_GENERATING = 'stopGenerating',
@@ -57,14 +62,19 @@ export const CONFIGURABLE_SHORTCUTS = [
 	Shortcut.DELETE_CHAT,
 	Shortcut.OPEN_MODEL_SELECTOR,
 	Shortcut.TOGGLE_DICTATION,
+	Shortcut.NAVIGATE_CHAT_UP,
+	Shortcut.NAVIGATE_CHAT_DOWN,
 	Shortcut.SEARCH,
 	Shortcut.OPEN_SETTINGS,
 	Shortcut.SHOW_SHORTCUTS,
 	Shortcut.TOGGLE_SIDEBAR,
+	Shortcut.TOGGLE_CONTROLS,
 	Shortcut.CLOSE_MODAL,
 	Shortcut.FOCUS_INPUT,
 	Shortcut.GENERATE_MESSAGE_PAIR,
 	Shortcut.REGENERATE_RESPONSE,
+	Shortcut.ALLOW_TOOL_CALL,
+	Shortcut.DENY_TOOL_CALL,
 	Shortcut.COPY_LAST_CODE_BLOCK,
 	Shortcut.COPY_LAST_RESPONSE
 ] as const;
@@ -78,14 +88,19 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
 	[Shortcut.DELETE_CHAT]: 'Cmd+Shift+Backspace',
 	[Shortcut.OPEN_MODEL_SELECTOR]: 'Cmd+Shift+M',
 	[Shortcut.TOGGLE_DICTATION]: 'Cmd+Shift+L',
+	[Shortcut.NAVIGATE_CHAT_UP]: '',
+	[Shortcut.NAVIGATE_CHAT_DOWN]: '',
 	[Shortcut.SEARCH]: 'Cmd+K',
 	[Shortcut.OPEN_SETTINGS]: 'Cmd+.',
 	[Shortcut.SHOW_SHORTCUTS]: 'Cmd+/',
 	[Shortcut.TOGGLE_SIDEBAR]: 'Cmd+Shift+S',
+	[Shortcut.TOGGLE_CONTROLS]: '',
 	[Shortcut.CLOSE_MODAL]: 'Escape',
 	[Shortcut.FOCUS_INPUT]: 'Shift+Escape',
 	[Shortcut.GENERATE_MESSAGE_PAIR]: 'Cmd+Shift+Enter',
 	[Shortcut.REGENERATE_RESPONSE]: 'Cmd+R',
+	[Shortcut.ALLOW_TOOL_CALL]: 'Cmd+Alt+Enter',
+	[Shortcut.DENY_TOOL_CALL]: 'Cmd+Alt+Backspace',
 	[Shortcut.COPY_LAST_CODE_BLOCK]: 'Cmd+Shift+;',
 	[Shortcut.COPY_LAST_RESPONSE]: 'Cmd+Shift+C'
 };
@@ -225,6 +240,18 @@ export const shortcuts: ShortcutRegistry = {
 		category: 'Chat',
 		configurable: true
 	},
+	[Shortcut.NAVIGATE_CHAT_UP]: {
+		name: 'Navigate to Previous Chat',
+		keys: [],
+		category: 'Chat',
+		configurable: true
+	},
+	[Shortcut.NAVIGATE_CHAT_DOWN]: {
+		name: 'Navigate to Next Chat',
+		keys: [],
+		category: 'Chat',
+		configurable: true
+	},
 
 	//Global
 	[Shortcut.SEARCH]: {
@@ -248,6 +275,12 @@ export const shortcuts: ShortcutRegistry = {
 	[Shortcut.TOGGLE_SIDEBAR]: {
 		name: 'Toggle Sidebar',
 		keys: ['mod', 'shift', 'S'],
+		category: 'Global',
+		configurable: true
+	},
+	[Shortcut.TOGGLE_CONTROLS]: {
+		name: 'Toggle Controls',
+		keys: [],
 		category: 'Global',
 		configurable: true
 	},
@@ -305,6 +338,20 @@ export const shortcuts: ShortcutRegistry = {
 		keys: ['mod', 'R'],
 		category: 'Message',
 		configurable: true
+	},
+	[Shortcut.ALLOW_TOOL_CALL]: {
+		name: 'Allow Tool Call',
+		keys: ['mod', 'alt', 'Enter'],
+		category: 'Message',
+		configurable: true,
+		tooltip: 'Only active when a tool call is waiting for approval.'
+	},
+	[Shortcut.DENY_TOOL_CALL]: {
+		name: 'Deny Tool Call',
+		keys: ['mod', 'alt', 'Backspace'],
+		category: 'Message',
+		configurable: true,
+		tooltip: 'Only active when a tool call is waiting for approval.'
 	},
 	[Shortcut.STOP_GENERATING]: {
 		name: 'Stop Generating',

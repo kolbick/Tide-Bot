@@ -411,6 +411,11 @@ class EventDefinitions(BaseModel):
         description='Retrieval content was processed.',
         message='Retrieval Content processed',
     )
+    RETRIEVAL_CONTENT_PROCESS_FAILED: EventDefinition = EventDefinition(
+        name='retrieval.content.process_failed',
+        description='Retrieval content processing failed.',
+        message='Retrieval Content process failed',
+    )
     RETRIEVAL_COLLECTION_DELETED: EventDefinition = EventDefinition(
         name='retrieval.collection.deleted',
         description='A retrieval collection was deleted.',
@@ -482,6 +487,16 @@ class EventDefinitions(BaseModel):
     )
     FUNCTION_DISABLED: EventDefinition = EventDefinition(
         name='function.disabled', description='A function was disabled.', message='Function disabled'
+    )
+    FUNCTION_ENABLE_STARTED: EventDefinition = EventDefinition(
+        name='function.enable_started',
+        description='A function is about to be enabled.',
+        message='Function enable started',
+    )
+    FUNCTION_DISABLE_STARTED: EventDefinition = EventDefinition(
+        name='function.disable_started',
+        description='A function is about to be disabled.',
+        message='Function disable started',
     )
     FUNCTION_VALVES_UPDATED: EventDefinition = EventDefinition(
         name='function.valves_updated', description='Function valves were updated.', message='Function valves updated'
@@ -656,6 +671,7 @@ NOTIFICATION_EVENTS = (
     EVENTS.CHAT_FAILED.name,
     EVENTS.CHANNEL_MESSAGE.name,
     EVENTS.CALENDAR_ALERT.name,
+    EVENTS.RETRIEVAL_CONTENT_PROCESS_FAILED.name,
 )
 
 
@@ -1016,6 +1032,9 @@ def build_event(
 
 
 async def dispatch_webhook_event(app: Any, event: Event) -> None:
+    # LICENSE covers this Open WebUI webhook identifier.
+    # Do not alter, remove, obscure, or replace it except as LICENSE permits:
+    # https://docs.openwebui.com/license.
     name = getattr(getattr(app, 'state', None), 'WEBUI_NAME', 'Open WebUI')
     subject = event.subject or {}
     subject_id = subject.get('id')
@@ -1067,7 +1086,23 @@ class NotificationEventSink:
             schedule_notification_dispatch(app, event)
 
 
-async def dispatch_event_functions(app: Any, event: Event, request: Any | None = None) -> None:
+class SocketSessionEventSink:
+    async def handle_event(self, app: Any, event: Event, request: Any | None = None) -> None:
+        if event.event not in {EVENTS.USER_DELETED.name, EVENTS.USER_ROLE_UPDATED.name}:
+            return
+
+        subject = event.subject or {}
+        if subject.get('type') != 'user' or not subject.get('id'):
+            return
+
+        from open_webui.socket.main import disconnect_user_sessions
+
+        await disconnect_user_sessions(str(subject['id']))
+
+
+async def dispatch_event_functions(
+    app: Any, event: Event, request: Any | None = None, extra_function_ids: list[str] | None = None
+) -> None:
     if not ENABLE_PLUGINS:
         return
 
@@ -1079,6 +1114,12 @@ async def dispatch_event_functions(app: Any, event: Event, request: Any | None =
 
     try:
         event_functions = await Functions.get_functions_by_type('event', active_only=True)
+        if extra_function_ids:
+            extra_functions = await Functions.get_functions_by_ids(extra_function_ids)
+            existing_ids = {function.id for function in event_functions}
+            event_functions.extend(
+                function for function in extra_functions if function.type == 'event' and function.id not in existing_ids
+            )
     except Exception:
         log.exception('Event functions could not be loaded for %s', event.event)
         return
@@ -1127,7 +1168,7 @@ class EventFunctionSink:
         schedule_event_function_dispatch(app, event, request)
 
 
-EVENT_SINKS = [EventFunctionSink(), WebhookEventSink(), NotificationEventSink()]
+EVENT_SINKS = [SocketSessionEventSink(), EventFunctionSink(), WebhookEventSink(), NotificationEventSink()]
 
 
 async def publish_event(

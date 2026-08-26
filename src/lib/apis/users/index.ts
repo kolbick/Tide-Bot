@@ -198,7 +198,8 @@ export const searchUsers = async (
 	query?: string,
 	orderBy?: string,
 	direction?: string,
-	page = 1
+	page = 1,
+	signal?: AbortSignal
 ) => {
 	let error = null;
 	let res = null;
@@ -221,6 +222,7 @@ export const searchUsers = async (
 
 	res = await fetch(`${WEBUI_API_BASE_URL}/users/search?${searchParams.toString()}`, {
 		method: 'GET',
+		signal,
 		headers: {
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${token}`
@@ -231,6 +233,7 @@ export const searchUsers = async (
 			return res.json();
 		})
 		.catch((err) => {
+			if (signal?.aborted) return null;
 			console.error(err);
 			error = err.detail;
 			return null;
@@ -271,9 +274,9 @@ export const getAllUsers = async (token: string) => {
 	return res;
 };
 
-export const getUserSettings = async (token: string) => {
+export const getUserSettings = async (token: string, raw = false) => {
 	let error = null;
-	const res = await fetch(`${WEBUI_API_BASE_URL}/users/user/settings`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/users/user/settings${raw ? '?raw=true' : ''}`, {
 		method: 'GET',
 		headers: {
 			'Content-Type': 'application/json',
@@ -286,7 +289,7 @@ export const getUserSettings = async (token: string) => {
 		})
 		.catch((err) => {
 			console.error(err);
-			error = err.detail;
+			error = err?.detail ?? err;
 			return null;
 		});
 
@@ -421,6 +424,62 @@ export const updateUserInfo = async (token: string, info: object) => {
 		},
 		body: JSON.stringify({
 			...info
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err.detail;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const getUserVariables = async (token: string) => {
+	let error = null;
+	const res = await fetch(`${WEBUI_API_BASE_URL}/users/user/variables`, {
+		method: 'GET',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err.detail;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const updateUserVariables = async (token: string, variables: Record<string, string>) => {
+	let error = null;
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/users/user/variables/update`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({
+			variables
 		})
 	})
 		.then(async (res) => {

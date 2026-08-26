@@ -61,6 +61,24 @@ export const refreshChatList = async (
 	return { accepted: true, allLoaded };
 };
 
+// The sidebar owns folder state. This bridge lets other components refresh it.
+type FolderRefreshHandler = (folderId?: string | null, chat?: ChatListItem | null) => unknown;
+const folderRefreshHandlers = new Set<FolderRefreshHandler>();
+
+export const registerFolderRefreshHandler = (handler: FolderRefreshHandler) => {
+	folderRefreshHandlers.add(handler);
+	return () => {
+		folderRefreshHandlers.delete(handler);
+	};
+};
+
+export const refreshFolderChatLists = async (
+	folderId?: string | null,
+	chat?: ChatListItem | null
+) => {
+	await Promise.all([...folderRefreshHandlers].map((handler) => handler(folderId, chat)));
+};
+
 export const loadNextChatListPage = async (token: string = ''): Promise<ChatListResult> => {
 	if (!paginationReady || allLoaded || loadingNextPage) {
 		return { accepted: false, allLoaded };
@@ -103,6 +121,28 @@ export const setChatActive = (chatId: string, active: boolean): boolean => {
 	chatsStore.update((items) => (items ? items.map(updateChat) : items));
 	pinnedChatsStore.update((items) => items.map(updateChat));
 	return found;
+};
+
+export const setChatReadAt = (chatId: string, lastReadAt: number): boolean => {
+	let found = false;
+	const updateChat = (chat: ChatListItem) => {
+		if (chat.id !== chatId) {
+			return chat;
+		}
+		found = true;
+		return { ...chat, last_read_at: lastReadAt };
+	};
+
+	chatsStore.update((items) => (items ? items.map(updateChat) : items));
+	pinnedChatsStore.update((items) => items.map(updateChat));
+	return found;
+};
+
+export const setAllChatsRead = () => {
+	const updateChat = (chat: ChatListItem) => ({ ...chat, last_read_at: chat.updated_at });
+
+	chatsStore.update((items) => (items ? items.map(updateChat) : items));
+	pinnedChatsStore.update((items) => items.map(updateChat));
 };
 
 export const resetChatListState = () => {

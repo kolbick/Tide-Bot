@@ -45,10 +45,10 @@
 	</Tooltip>
 
 	<div slot="content">
-		<DropdownMenu className="min-w-[180px]">
+		<DropdownMenu className="min-w-[11.25rem]">
 			{#if ['filter', 'action'].includes(func.type)}
 				<div
-					class="flex gap-2 justify-between items-center h-[1.6875rem] px-2 text-[13px] font-normal cursor-pointer rounded-xl"
+					class="flex gap-2 justify-between items-center h-[1.6875rem] px-2 text-[0.8125rem] font-normal cursor-pointer rounded-xl"
 				>
 					<div class="flex gap-2 items-center">
 						<GlobeAlt />
@@ -64,7 +64,7 @@
 			{/if}
 
 			<button
-				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[13px] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
+				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[0.8125rem] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
 				on:click={() => {
 					editHandler();
 					closeMenu();
@@ -102,7 +102,7 @@
 			{/if}
 
 			<button
-				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[13px] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
+				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[0.8125rem] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
 				on:click={() => {
 					cloneHandler();
 					closeMenu();
@@ -113,7 +113,7 @@
 			</button>
 
 			<button
-				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[13px] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
+				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[0.8125rem] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
 				on:click={() => {
 					exportHandler();
 					closeMenu();
@@ -126,7 +126,7 @@
 			<hr class="border-gray-50 dark:border-gray-850/30 my-1" />
 
 			<button
-				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[13px] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
+				class="select-none flex gap-2 items-center h-[1.6875rem] px-2 text-[0.8125rem] font-normal cursor-pointer hover:bg-gray-50/40 dark:hover:bg-gray-800/40 rounded-xl w-full"
 				on:click={() => {
 					deleteHandler();
 					closeMenu();

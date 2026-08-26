@@ -1,10 +1,9 @@
-import { browser, dev } from '$app/environment';
 // import { version } from '../../package.json';
 
 export const APP_NAME = 'Tide-Bot';
 
-export const WEBUI_HOSTNAME = browser ? (dev ? `${location.hostname}:8080` : ``) : '';
-export const WEBUI_BASE_URL = browser ? (dev ? `http://${WEBUI_HOSTNAME}` : ``) : ``;
+export const WEBUI_HOSTNAME = '';
+export const WEBUI_BASE_URL = '';
 export const WEBUI_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1`;
 
 export const OLLAMA_API_BASE_URL = `${WEBUI_BASE_URL}/ollama`;
@@ -29,6 +28,9 @@ export const SUPPORTED_FILE_TYPE = [
 	'text/x-python',
 	'text/css',
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'application/vnd.oasis.opendocument.text',
+	'application/vnd.oasis.opendocument.spreadsheet',
+	'application/vnd.oasis.opendocument.presentation',
 	'application/octet-stream',
 	'application/x-javascript',
 	'text/markdown',
@@ -87,13 +89,16 @@ export const SUPPORTED_FILE_EXTENSIONS = [
 	'svelte',
 	'doc',
 	'docx',
+	'odt',
 	'pdf',
 	'csv',
 	'txt',
 	'xls',
 	'xlsx',
+	'ods',
 	'pptx',
 	'ppt',
+	'odp',
 	'msg'
 ];
 
@@ -108,6 +113,7 @@ export const DEFAULT_CAPABILITIES = {
 	citations: true,
 	status_updates: true,
 	usage: undefined,
+	memory: true,
 	builtin_tools: true
 };
 

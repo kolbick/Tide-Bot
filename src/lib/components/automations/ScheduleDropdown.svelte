@@ -194,13 +194,13 @@
 		slot="content"
 		class="rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-850 w-48 p-0.5"
 	>
-		<div class="px-2 text-[11px] text-gray-500 pt-0.5">
+		<div class="px-2 text-[0.6875rem] text-gray-500 pt-0.5">
 			{$i18n.t('Schedule')}
 		</div>
 
 		<div class="px-1.5 py-0.5">
 			<select
-				class="w-full h-[1.6875rem] bg-transparent rounded-xl text-[13px] px-1.5 outline-hidden"
+				class="w-full h-[1.6875rem] bg-transparent rounded-xl text-[0.8125rem] px-1.5 outline-hidden"
 				bind:value={frequency}
 				on:click={(e) => e.stopPropagation()}
 				on:change={onChange}
@@ -217,20 +217,20 @@
 					type="text"
 					bind:value={customRrule}
 					placeholder="RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
-					class="w-full bg-transparent outline-hidden text-[13px] placeholder:text-gray-400 dark:placeholder:text-gray-600"
+					class="w-full bg-transparent outline-hidden text-[0.8125rem] placeholder:text-gray-400 dark:placeholder:text-gray-600"
 					on:click={(e) => e.stopPropagation()}
 					on:input={onChange}
 				/>
 			</div>
 		{:else if frequency !== 'HOURLY'}
-			<div class="flex gap-2 flex-wrap items-center px-3 pb-2 text-[13px]">
+			<div class="flex gap-2 flex-wrap items-center px-3 pb-2 text-[0.8125rem]">
 				{#if frequency === 'ONCE'}
 					<div class="flex items-center gap-1.5">
 						<input
 							type="date"
 							bind:value={onceDate}
 							min={new Date().toISOString().split('T')[0]}
-							class="bg-transparent outline-hidden text-xs dark:color-scheme-dark"
+							class="bg-transparent outline-hidden text-xs dark:scheme-dark"
 							on:click={(e) => e.stopPropagation()}
 							on:input={onChange}
 						/>
@@ -239,7 +239,7 @@
 						<input
 							type="time"
 							bind:value={onceTime}
-							class="bg-transparent outline-hidden text-xs dark:color-scheme-dark"
+							class="bg-transparent outline-hidden text-xs dark:scheme-dark"
 							on:click={(e) => e.stopPropagation()}
 							on:input={onChange}
 						/>
@@ -256,7 +256,7 @@
 								minute = m;
 								onChange();
 							}}
-							class="bg-transparent text-center outline-hidden text-xs dark:color-scheme-dark"
+							class="bg-transparent text-center outline-hidden text-xs dark:scheme-dark"
 							on:click={(e) => e.stopPropagation()}
 						/>
 					</div>

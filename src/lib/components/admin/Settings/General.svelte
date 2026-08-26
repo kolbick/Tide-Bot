@@ -6,6 +6,8 @@
 	import { BRAND } from '$lib/branding';
 	import { getAdminConfig, updateAdminConfig } from '$lib/apis/auths';
 	import { getBanners, setBanners } from '$lib/apis/configs';
+	import InterfaceSettings from '$lib/components/common/InterfaceSettings.svelte';
+	import SettingsSelect from '$lib/components/common/SettingsSelect.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import { WEBUI_BUILD_HASH, WEBUI_VERSION } from '$lib/constants';
@@ -33,13 +35,14 @@
 	};
 
 	let adminConfig: any = null;
+	let defaultInterfaceSettings: Record<string, any> = {};
+	let showUserUiDefaults = false;
 
 	let banners: Banner[] = [];
 	const inputClass =
 		'w-full h-7 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
 	const textareaClass =
 		'w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
-
 	const checkForVersionUpdates = async () => {
 		updateAvailable = null;
 		version = await getVersionUpdates(localStorage.token).catch((error) => {
@@ -59,7 +62,18 @@
 		_banners.set(await setBanners(localStorage.token, banners));
 	};
 
+	const saveDefaultInterfaceSettings = (updated: Record<string, any>) => {
+		defaultInterfaceSettings = { ...defaultInterfaceSettings, ...updated };
+	};
+
+	const getDefaultInterfaceSettings = () => {
+		const value = adminConfig?.DEFAULT_INTERFACE_SETTINGS;
+		return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+	};
+
 	const updateHandler = async () => {
+		adminConfig.DEFAULT_INTERFACE_SETTINGS = defaultInterfaceSettings;
+
 		const res = await updateAdminConfig(localStorage.token, adminConfig);
 
 		await updateBanners();
@@ -75,6 +89,7 @@
 
 	onMount(async () => {
 		adminConfig = await getAdminConfig(localStorage.token);
+		defaultInterfaceSettings = getDefaultInterfaceSettings();
 
 		banners = [...$_banners];
 	});
@@ -179,20 +194,23 @@
 				<AdminSettingRow
 					label={$i18n.t('Community Sharing')}
 					description={$i18n.t('Allow users to share chats with the configured community service.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_COMMUNITY_SHARING} />
+					<Switch bind:state={adminConfig.ENABLE_COMMUNITY_SHARING} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				<AdminSettingRow
 					label={$i18n.t('Message Rating')}
 					description={$i18n.t('Let users rate assistant responses.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_MESSAGE_RATING} />
+					<Switch bind:state={adminConfig.ENABLE_MESSAGE_RATING} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				<AdminSettingRow
 					label={$i18n.t('Folders')}
 					description={$i18n.t('Allow users to organize chats into folders.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_FOLDERS} />
+					<Switch bind:state={adminConfig.ENABLE_FOLDERS} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				{#if adminConfig.ENABLE_FOLDERS}
@@ -213,53 +231,82 @@
 				<AdminSettingRow
 					label={$i18n.t('Memories')}
 					description={$i18n.t('Allow users to save memories for more personalized responses.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_MEMORIES} />
+					<Switch bind:state={adminConfig.ENABLE_MEMORIES} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				{#if adminConfig.ENABLE_MEMORIES}
 					<AdminSettingRow
 						label={$i18n.t('Memory System Context')}
 						description={$i18n.t('Include saved memories in the system context.')}
 						labelClassName="text-gray-500 dark:text-gray-500"
+						let:labelId
 					>
-						<Switch bind:state={adminConfig.ENABLE_MEMORY_SYSTEM_CONTEXT} />
+						<Switch
+							bind:state={adminConfig.ENABLE_MEMORY_SYSTEM_CONTEXT}
+							ariaLabelledbyId={labelId}
+						/>
 					</AdminSettingRow>
 				{/if}
 				<AdminSettingRow
 					label={$i18n.t('Notes')}
 					description={$i18n.t('Allow users to create and manage notes.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_NOTES} />
+					<Switch bind:state={adminConfig.ENABLE_NOTES} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				<AdminSettingRow
 					label={$i18n.t('Channels')}
 					description={$i18n.t('Allow users to use channels for shared conversations.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_CHANNELS} />
+					<Switch bind:state={adminConfig.ENABLE_CHANNELS} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
+				{#if adminConfig.ENABLE_CHANNELS}
+					<AdminSettingRow
+						label={$i18n.t('Model Response Mode')}
+						description={$i18n.t(
+							'Choose where model responses to root-level channel mentions are posted.'
+						)}
+						labelClassName="text-gray-500 dark:text-gray-500"
+						let:labelId
+					>
+						<SettingsSelect
+							bind:value={adminConfig.CHANNEL_MODEL_RESPONSE_MODE}
+							aria-labelledby={labelId}
+						>
+							<option value="thread">{$i18n.t('Thread')}</option>
+							<option value="channel">{$i18n.t('Channel')}</option>
+						</SettingsSelect>
+					</AdminSettingRow>
+				{/if}
 				<AdminSettingRow
 					label={$i18n.t('Calendar')}
 					description={$i18n.t('Allow users to access calendar features.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_CALENDAR} />
+					<Switch bind:state={adminConfig.ENABLE_CALENDAR} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				<AdminSettingRow
 					label={$i18n.t('Automations')}
 					description={$i18n.t('Allow users to create and run automations.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_AUTOMATIONS} />
+					<Switch bind:state={adminConfig.ENABLE_AUTOMATIONS} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				<AdminSettingRow
 					label={$i18n.t('User Webhooks')}
 					description={$i18n.t('Allow users to configure webhooks from their account.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_USER_WEBHOOKS} />
+					<Switch bind:state={adminConfig.ENABLE_USER_WEBHOOKS} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 				<AdminSettingRow
 					label={$i18n.t('User Status')}
 					description={$i18n.t('Show user status information in the app.')}
+					let:labelId
 				>
-					<Switch bind:state={adminConfig.ENABLE_USER_STATUS} />
+					<Switch bind:state={adminConfig.ENABLE_USER_STATUS} ariaLabelledbyId={labelId} />
 				</AdminSettingRow>
 
 				<AdminSettingField
@@ -291,6 +338,65 @@
 			<Events />
 
 			<AdminSettingSection title={$i18n.t('UI')}>
+				<div class="shrink-0">
+					<div class="flex items-center justify-between gap-4 py-0.5">
+						<button
+							class="min-w-0 flex-1 text-left text-xs text-gray-600 transition hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+							type="button"
+							on:click={() => {
+								showUserUiDefaults = !showUserUiDefaults;
+							}}
+						>
+							<div>{$i18n.t('Default Interface Settings')}</div>
+							<div class="mt-1.5 text-[0.6875rem] text-gray-400 dark:text-gray-600">
+								{$i18n.t(
+									'Set system-wide interface defaults for every account. Personal settings override these defaults.'
+								)}
+							</div>
+						</button>
+
+						<button
+							class="shrink-0 text-[0.6875rem] text-gray-400 transition hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300"
+							type="button"
+							on:click={() => {
+								showUserUiDefaults = !showUserUiDefaults;
+							}}
+						>
+							{showUserUiDefaults ? $i18n.t('Close') : $i18n.t('Configure')}
+						</button>
+					</div>
+
+					{#if showUserUiDefaults}
+						<div class="mt-0.5 space-y-2">
+							<div class="flex items-center justify-between gap-4 py-0.5">
+								<div class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+									{Object.keys(defaultInterfaceSettings).length}
+									{$i18n.t('settings configured')}
+								</div>
+
+								{#if Object.keys(defaultInterfaceSettings).length > 0}
+									<button
+										class="shrink-0 text-[0.6875rem] text-gray-400 transition hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300"
+										type="button"
+										on:click={() => {
+											defaultInterfaceSettings = {};
+										}}
+									>
+										{$i18n.t('Clear')}
+									</button>
+								{/if}
+							</div>
+
+							<div class="max-h-[28rem] overflow-y-auto pb-2 pr-1 scrollbar-hover">
+								<InterfaceSettings
+									settingsValue={defaultInterfaceSettings}
+									saveSettings={saveDefaultInterfaceSettings}
+								/>
+							</div>
+						</div>
+					{/if}
+				</div>
+
 				<div>
 					<div class="mb-2 flex w-full items-start justify-between gap-4">
 						<div class="min-w-0">

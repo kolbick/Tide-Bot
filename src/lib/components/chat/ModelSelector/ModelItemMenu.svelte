@@ -9,7 +9,7 @@
 	import PinSlash from '$lib/components/icons/PinSlash.svelte';
 	import Link from '$lib/components/icons/Link.svelte';
 	import Pencil from '$lib/components/icons/Pencil.svelte';
-	import { settings, showSettings, user } from '$lib/stores';
+	import { pinnedModels, settings, showSettings, user } from '$lib/stores';
 
 	const i18n = getContext('i18n');
 
@@ -21,6 +21,8 @@
 	export let deleteModelHandler: Function = () => {};
 
 	export let onClose: Function = () => {};
+
+	const providerSupportsDelete = (provider = '') => provider === 'llama.cpp';
 </script>
 
 <Dropdown
@@ -43,11 +45,11 @@
 	</Tooltip>
 
 	<div slot="content">
-		<DropdownMenu className="min-w-[210px] z-[9999999]">
+		<DropdownMenu className="min-w-[13.125rem] z-[9999999]">
 			{#if model?.preset || model?.info?.base_model_id ? model?.info?.user_id === $user?.id : $user?.role === 'admin'}
 				<button
 					type="button"
-					class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
+					class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
 					on:click={(e) => {
 						e.stopPropagation();
 						e.preventDefault();
@@ -65,10 +67,10 @@
 					<div class="flex items-center">{$i18n.t('Edit')}</div>
 				</button>
 
-				{#if $user?.role === 'admin' && model?.owned_by === 'ollama'}
+				{#if $user?.role === 'admin' && (model?.owned_by === 'ollama' || providerSupportsDelete(model?.provider))}
 					<button
 						type="button"
-						class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
+						class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
 						on:click={(e) => {
 							e.stopPropagation();
 							e.preventDefault();
@@ -101,8 +103,8 @@
 
 			<button
 				type="button"
-				aria-pressed={($settings?.pinnedModels ?? []).includes(model?.id)}
-				class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
+				aria-pressed={$pinnedModels.includes(model?.id)}
+				class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
 				on:click={(e) => {
 					e.stopPropagation();
 					e.preventDefault();
@@ -111,14 +113,14 @@
 					show = false;
 				}}
 			>
-				{#if ($settings?.pinnedModels ?? []).includes(model?.id)}
+				{#if $pinnedModels.includes(model?.id)}
 					<PinSlash className="size-3.5" />
 				{:else}
 					<Pin className="size-3.5" />
 				{/if}
 
 				<div class="flex items-center">
-					{#if ($settings?.pinnedModels ?? []).includes(model?.id)}
+					{#if $pinnedModels.includes(model?.id)}
 						{$i18n.t('Hide from Sidebar')}
 					{:else}
 						{$i18n.t('Keep in Sidebar')}
@@ -128,7 +130,7 @@
 
 			<button
 				type="button"
-				class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[13px] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
+				class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
 				on:click={(e) => {
 					e.stopPropagation();
 					e.preventDefault();

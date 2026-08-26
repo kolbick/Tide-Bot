@@ -1,4 +1,3 @@
-import json
 import logging
 
 import aiohttp
@@ -9,8 +8,11 @@ from open_webui.env import (
 )
 from open_webui.models.users import UserModel
 from open_webui.utils.headers import include_user_info_headers
+from open_webui.utils.json_codec import JSONCodec
 
 log = logging.getLogger(__name__)
+
+ANTHROPIC_VERSION = '2023-06-01'
 
 ANTHROPIC_CONVERTED_REQUEST_PARAMS = {
     'model',
@@ -48,7 +50,7 @@ async def get_anthropic_models(url: str, key: str, user: UserModel = None) -> di
         async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
             headers = {
                 'x-api-key': key,
-                'anthropic-version': '2023-06-01',
+                'anthropic-version': ANTHROPIC_VERSION,
             }
 
             if ENABLE_FORWARD_USER_INFO_HEADERS and user:
@@ -126,6 +128,13 @@ def _finalize_openai_content(blocks: list) -> str | list:
     return blocks
 
 
+def is_anthropic_messages_passthrough(url: str, api_config: dict | None = None) -> bool:
+    api_config = api_config or {}
+    provider = str(api_config.get('provider', '')).lower()
+
+    return is_anthropic_url(url or '') or provider == 'litellm'
+
+
 def convert_anthropic_to_openai_payload(
     anthropic_payload: dict, passthrough_params: list[str] | str | None = None
 ) -> dict:
@@ -192,6 +201,8 @@ def convert_anthropic_to_openai_payload(
                             },
                         )
                     )
+                elif block_type in ('thinking', 'redacted_thinking'):
+                    openai_content.append(_copy_cache_control(block, dict(block)))
                 elif block_type == 'image':
                     source = block.get('source', {})
                     if source.get('type') == 'base64':
@@ -226,7 +237,7 @@ def convert_anthropic_to_openai_payload(
                             'function': {
                                 'name': block.get('name', ''),
                                 'arguments': (
-                                    json.dumps(block.get('input', {}))
+                                    JSONCodec.dumps(block.get('input', {}))
                                     if isinstance(block.get('input'), dict)
                                     else str(block.get('input', '{}'))
                                 ),
@@ -492,6 +503,11 @@ def convert_openai_to_anthropic_response(
         if not isinstance(block, dict):
             continue
 
+        if block.get('type') == 'redacted_thinking':
+            content.append({k: v for k, v in block.items() if k in {'type', 'data'}})
+            has_thinking = True
+            continue
+
         thinking = block.get('thinking') or block.get('content') or block.get('text')
         if not thinking:
             continue
@@ -517,8 +533,8 @@ def convert_openai_to_anthropic_response(
     for tool_call in tool_calls:
         function = tool_call.get('function', {})
         try:
-            tool_input = json.loads(function.get('arguments', '{}'))
-        except (json.JSONDecodeError, TypeError):
+            tool_input = JSONCodec.loads(function.get('arguments', '{}'))
+        except (JSONCodec.JSONDecodeError, TypeError):
             tool_input = {}
         content.append(
             {
@@ -530,19 +546,37 @@ def convert_openai_to_anthropic_response(
         )
 
     # Usage
-    openai_usage = openai_response.get('usage', {})
+    openai_usage = openai_response.get('usage') or {}
+    cache_creation = openai_usage.get('cache_creation_input_tokens')
+    cache_read = openai_usage.get('cache_read_input_tokens')
+    prompt_details = openai_usage.get('prompt_tokens_details')
+    if cache_read is None and isinstance(prompt_details, dict):
+        cache_read = prompt_details.get('cached_tokens')
+
+    usage_input = openai_usage.get('input_tokens')
+    if usage_input is None:
+        prompt_tokens = openai_usage.get('prompt_tokens')
+        if prompt_tokens is not None:
+            usage_input = max(prompt_tokens - (cache_creation or 0) - (cache_read or 0), 0)
+
+    usage_output = openai_usage.get('output_tokens')
+    if usage_output is None:
+        usage_output = openai_usage.get('completion_tokens')
+
     usage = {
-        'input_tokens': (
-            input_tokens
-            if input_tokens is not None
-            else openai_usage.get('input_tokens', openai_usage.get('prompt_tokens', 0))
-        ),
-        'output_tokens': openai_usage.get('output_tokens', openai_usage.get('completion_tokens', 0)),
+        'input_tokens': usage_input if usage_input is not None else (input_tokens if input_tokens is not None else 0),
+        'output_tokens': usage_output if usage_output is not None else 0,
     }
-    if 'cache_creation_input_tokens' in openai_usage:
-        usage['cache_creation_input_tokens'] = openai_usage['cache_creation_input_tokens']
-    if 'cache_read_input_tokens' in openai_usage:
-        usage['cache_read_input_tokens'] = openai_usage['cache_read_input_tokens']
+    if cache_creation is not None:
+        usage['cache_creation_input_tokens'] = cache_creation
+    if cache_read is not None:
+        usage['cache_read_input_tokens'] = cache_read
+    if isinstance(openai_usage.get('output_tokens_details'), dict):
+        usage['output_tokens_details'] = openai_usage['output_tokens_details']
+    if isinstance(openai_usage.get('server_tool_use'), dict):
+        usage['server_tool_use'] = openai_usage['server_tool_use']
+    if openai_usage.get('service_tier') is not None:
+        usage['service_tier'] = openai_usage['service_tier']
 
     return {
         'id': openai_response.get('id', f'msg_{_uuid.uuid4().hex[:24]}'),
@@ -556,7 +590,7 @@ def convert_openai_to_anthropic_response(
     }
 
 
-async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str = '', input_tokens: int = 0):
+async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str = '', input_tokens: int | None = None):
     """
     Convert an OpenAI SSE streaming response to Anthropic Messages SSE format.
 
@@ -574,6 +608,11 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
 
     message_id = f'msg_{_uuid.uuid4().hex[:24]}'
     output_tokens = 0
+    cache_creation_input_tokens = None
+    cache_read_input_tokens = None
+    output_tokens_details = None
+    server_tool_use = None
+    service_tier = None
     stop_reason = 'end_turn'
 
     # Track content blocks with a running index.
@@ -603,10 +642,10 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
             'model': model,
             'stop_reason': None,
             'stop_sequence': None,
-            'usage': {'input_tokens': input_tokens, 'output_tokens': 0},
+            'usage': {'input_tokens': input_tokens or 0, 'output_tokens': 0},
         },
     }
-    yield f'event: message_start\ndata: {json.dumps(message_start)}\n\n'.encode()
+    yield f'event: message_start\ndata: {JSONCodec.dumps(message_start)}\n\n'.encode()
 
     try:
         async for chunk in openai_stream_generator:
@@ -626,32 +665,50 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                     continue
 
                 try:
-                    data = json.loads(data_string)
-                except (json.JSONDecodeError, TypeError):
+                    data = JSONCodec.loads(data_string)
+                except (JSONCodec.JSONDecodeError, TypeError):
                     continue
+
+                usage_data = data.get('usage')
+                if isinstance(usage_data, dict):
+                    cache_creation = usage_data.get('cache_creation_input_tokens')
+                    cache_read = usage_data.get('cache_read_input_tokens')
+                    prompt_details = usage_data.get('prompt_tokens_details')
+                    if cache_read is None and isinstance(prompt_details, dict):
+                        cache_read = prompt_details.get('cached_tokens')
+
+                    usage_input = usage_data.get('input_tokens')
+                    if usage_input is None:
+                        prompt_tokens = usage_data.get('prompt_tokens')
+                        if prompt_tokens is not None:
+                            usage_input = max(prompt_tokens - (cache_creation or 0) - (cache_read or 0), 0)
+
+                    usage_output = usage_data.get('output_tokens')
+                    if usage_output is None:
+                        usage_output = usage_data.get('completion_tokens')
+
+                    if usage_input is not None:
+                        input_tokens = usage_input
+                    if usage_output is not None:
+                        output_tokens = usage_output
+                    if cache_creation is not None:
+                        cache_creation_input_tokens = cache_creation
+                    if cache_read is not None:
+                        cache_read_input_tokens = cache_read
+                    if isinstance(usage_data.get('output_tokens_details'), dict):
+                        output_tokens_details = usage_data['output_tokens_details']
+                    if isinstance(usage_data.get('server_tool_use'), dict):
+                        server_tool_use = usage_data['server_tool_use']
+                    if usage_data.get('service_tier') is not None:
+                        service_tier = usage_data['service_tier']
 
                 choices = data.get('choices', [])
                 if not choices:
-                    # Check for usage in the final chunk
-                    if data.get('usage'):
-                        input_tokens = data['usage'].get(
-                            'input_tokens', data['usage'].get('prompt_tokens', input_tokens)
-                        )
-                        output_tokens = data['usage'].get(
-                            'output_tokens', data['usage'].get('completion_tokens', output_tokens)
-                        )
                     continue
 
                 delta = choices[0].get('delta', {})
                 finish_reason = choices[0].get('finish_reason')
                 message = choices[0].get('message') or {}
-
-                # Update usage if present
-                if data.get('usage'):
-                    input_tokens = data['usage'].get('input_tokens', data['usage'].get('prompt_tokens', input_tokens))
-                    output_tokens = data['usage'].get(
-                        'output_tokens', data['usage'].get('completion_tokens', output_tokens)
-                    )
 
                 reasoning_content = (
                     delta.get('reasoning_content')
@@ -675,7 +732,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                             'index': current_block_index,
                             'content_block': {'type': 'thinking', 'thinking': ''},
                         }
-                        yield f'event: content_block_start\ndata: {json.dumps(block_start)}\n\n'.encode()
+                        yield f'event: content_block_start\ndata: {JSONCodec.dumps(block_start)}\n\n'.encode()
                         thinking_block_open = True
 
                     block_delta = {
@@ -683,7 +740,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                         'index': current_block_index,
                         'delta': {'type': 'thinking_delta', 'thinking': reasoning_content},
                     }
-                    yield f'event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n'.encode()
+                    yield f'event: content_block_delta\ndata: {JSONCodec.dumps(block_delta)}\n\n'.encode()
 
                 # --- Handle text content ---
                 # Anthropic expects text blocks before tool blocks, so skip
@@ -695,7 +752,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                             'type': 'content_block_stop',
                             'index': current_block_index,
                         }
-                        yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
+                        yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
                         thinking_block_open = False
                         current_block_index += 1
 
@@ -705,7 +762,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                             'index': current_block_index,
                             'content_block': {'type': 'text', 'text': ''},
                         }
-                        yield f'event: content_block_start\ndata: {json.dumps(block_start)}\n\n'.encode()
+                        yield f'event: content_block_start\ndata: {JSONCodec.dumps(block_start)}\n\n'.encode()
                         text_block_open = True
 
                     block_delta = {
@@ -713,7 +770,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                         'index': current_block_index,
                         'delta': {'type': 'text_delta', 'text': content},
                     }
-                    yield f'event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n'.encode()
+                    yield f'event: content_block_delta\ndata: {JSONCodec.dumps(block_delta)}\n\n'.encode()
 
                 # --- Handle tool calls ---
                 # Some providers put tool_calls on the final message object
@@ -729,7 +786,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                             'type': 'content_block_stop',
                             'index': current_block_index,
                         }
-                        yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
+                        yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
                         thinking_block_open = False
                         current_block_index += 1
 
@@ -738,7 +795,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                             'type': 'content_block_stop',
                             'index': current_block_index,
                         }
-                        yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
+                        yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
                         text_block_open = False
                         current_block_index += 1
 
@@ -801,7 +858,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                                     'input': {},
                                 },
                             }
-                            yield f'event: content_block_start\ndata: {json.dumps(block_start)}\n\n'.encode()
+                            yield f'event: content_block_start\ndata: {JSONCodec.dumps(block_start)}\n\n'.encode()
                             current_block_index += 1
 
                         # Buffer arguments and emit as input_json_delta
@@ -817,19 +874,19 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                                         'partial_json': arguments_chunk,
                                     },
                                 }
-                                yield f'event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n'.encode()
+                                yield f'event: content_block_delta\ndata: {JSONCodec.dumps(block_delta)}\n\n'.encode()
 
                             # Close the block once arguments form complete JSON
                             if tool['started'] and not tool['stopped']:
                                 try:
-                                    json.loads(tool['arguments'])
+                                    JSONCodec.loads(tool['arguments'])
                                     tool['stopped'] = True
                                     block_stop = {
                                         'type': 'content_block_stop',
                                         'index': tool['block_index'],
                                     }
-                                    yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
-                                except (json.JSONDecodeError, ValueError):
+                                    yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
+                                except (JSONCodec.JSONDecodeError, ValueError):
                                     pass
 
                 # --- Handle finish reason ---
@@ -847,7 +904,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
     # Close any open thinking block
     if thinking_block_open:
         block_stop = {'type': 'content_block_stop', 'index': current_block_index}
-        yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
+        yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
         current_block_index += 1
 
     # Flush any tools that buffered arguments but never emitted a block
@@ -866,7 +923,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                     'input': {},
                 },
             }
-            yield f'event: content_block_start\ndata: {json.dumps(block_start)}\n\n'.encode()
+            yield f'event: content_block_start\ndata: {JSONCodec.dumps(block_start)}\n\n'.encode()
             current_block_index += 1
 
             if tool['arguments']:
@@ -878,29 +935,43 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                         'partial_json': tool['arguments'],
                     },
                 }
-                yield f'event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n'.encode()
+                yield f'event: content_block_delta\ndata: {JSONCodec.dumps(block_delta)}\n\n'.encode()
 
     # Close any open text block
     if text_block_open:
         block_stop = {'type': 'content_block_stop', 'index': current_block_index}
-        yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
+        yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
 
     # Close any tool call blocks that are still open
     for tool in tracked_tool_calls.values():
         if tool['started'] and not tool['stopped']:
             block_stop = {'type': 'content_block_stop', 'index': tool['block_index']}
-            yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
+            yield f'event: content_block_stop\ndata: {JSONCodec.dumps(block_stop)}\n\n'.encode()
 
     # Emit message_delta with stop reason
+    usage = {'output_tokens': output_tokens}
+    if input_tokens is not None:
+        usage['input_tokens'] = input_tokens
+    if cache_creation_input_tokens is not None:
+        usage['cache_creation_input_tokens'] = cache_creation_input_tokens
+    if cache_read_input_tokens is not None:
+        usage['cache_read_input_tokens'] = cache_read_input_tokens
+    if output_tokens_details is not None:
+        usage['output_tokens_details'] = output_tokens_details
+    if server_tool_use is not None:
+        usage['server_tool_use'] = server_tool_use
+    if service_tier is not None:
+        usage['service_tier'] = service_tier
+
     message_delta = {
         'type': 'message_delta',
         'delta': {
             'stop_reason': stop_reason,
             'stop_sequence': None,
         },
-        'usage': {'output_tokens': output_tokens},
+        'usage': usage,
     }
-    yield f'event: message_delta\ndata: {json.dumps(message_delta)}\n\n'.encode()
+    yield f'event: message_delta\ndata: {JSONCodec.dumps(message_delta)}\n\n'.encode()
 
     # Emit message_stop
-    yield f'event: message_stop\ndata: {json.dumps({"type": "message_stop"})}\n\n'.encode()
+    yield f'event: message_stop\ndata: {JSONCodec.dumps({"type": "message_stop"})}\n\n'.encode()

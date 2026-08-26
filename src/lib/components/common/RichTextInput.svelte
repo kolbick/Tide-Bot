@@ -94,6 +94,12 @@
 		}
 	});
 
+	// Registered after use(gfm) to override its checkbox rule; taskListItems owns the marker.
+	turndownService.addRule('taskItemCheckbox', {
+		filter: (node) => node.nodeName === 'INPUT' && node.getAttribute('type') === 'checkbox',
+		replacement: () => ''
+	});
+
 	turndownService.addRule('taskListItems', {
 		filter: (node) =>
 			node.nodeName === 'LI' &&
@@ -101,7 +107,8 @@
 				node.getAttribute('data-checked') === 'false'),
 		replacement: function (content, node) {
 			const checked = node.getAttribute('data-checked') === 'true';
-			content = content.replace(/^\s+/, '');
+			// Trim TipTap's block wrapper; 4-space continuation keeps sublists and fences nested.
+			content = content.trim().replace(/\n(?=.)/g, '\n    ');
 			return `- [${checked ? 'x' : ' '}] ${content}\n`;
 		}
 	});
@@ -113,10 +120,14 @@
 			const id = node.getAttribute('data-id') || '';
 			// TipTap stores the trigger char in data-mention-suggestion-char (usually "@")
 			const ch = node.getAttribute('data-mention-suggestion-char') || '@';
-			// Skills are always serialized as <$id|label>, even when selected from "/".
-			const mentionChar = id.includes('|') ? '$' : ch;
+			const mentionChar = ch === '/' ? '$' : ch;
 			return `<${mentionChar}${id}>`;
 		}
+	});
+
+	turndownService.addRule('underline', {
+		filter: 'u',
+		replacement: (content) => `<u>${content}</u>`
 	});
 
 	import { onMount, onDestroy, tick, getContext } from 'svelte';
@@ -284,7 +295,8 @@
 	const getMentionText = ({ node, suggestion }) => {
 		const id = node.attrs.id ?? '';
 		const label = node.attrs.label ?? id;
-		const char = id.includes('|') ? '$' : (suggestion?.char ?? '@');
+		const ch = node.attrs.mentionSuggestionChar ?? suggestion?.char ?? '@';
+		const char = ch === '/' ? '$' : ch;
 		return `${char}${label}`;
 	};
 
@@ -576,7 +588,7 @@
 		}
 	};
 
-	export const focus = () => {
+	export const focus = (options: FocusOptions = {}) => {
 		if (editor && editor.view) {
 			// Check if the editor is destroyed
 			if (editor.isDestroyed) {
@@ -584,9 +596,13 @@
 			}
 
 			try {
-				editor.view.focus();
-				// Scroll to the current selection
-				editor.view.dispatch(editor.view.state.tr.scrollIntoView());
+				if (options.preventScroll && editor.view.dom instanceof HTMLElement) {
+					editor.view.dom.focus(options);
+				} else {
+					editor.view.focus();
+					// Scroll to the current selection
+					editor.view.dispatch(editor.view.state.tr.scrollIntoView());
+				}
 			} catch (e) {
 				// sometimes focusing throws an error, ignore
 				console.warn('Error focusing editor', e);
@@ -749,7 +765,7 @@
 			}
 		}
 
-		if (collaboration && documentId && socket && user) {
+		if (collaboration && editable && documentId && socket && user) {
 			const { SocketIOCollaborationProvider } = await import('./RichTextInput/Collaboration');
 			provider = new SocketIOCollaborationProvider(documentId, socket, user, content);
 		}
@@ -893,7 +909,7 @@
 					: []),
 				...(collaboration && provider ? [provider.getEditorExtension()] : [])
 			],
-			content: collaboration ? undefined : content,
+			content: provider ? undefined : content,
 			autofocus: messageInput ? true : false,
 			onTransaction: () => {
 				if (!editor) return;
@@ -965,7 +981,9 @@
 				}
 			},
 			editorProps: {
-				attributes: { id },
+				// the tiptap placeholder never becomes the field's accessible name;
+				// function form so a placeholder change is picked up after mount
+				attributes: () => ({ id, 'aria-label': _placeholder }),
 				handleDrop: (view, event) => {
 					// Intercept sidebar chat item drops to prevent ProseMirror
 					// from inserting the raw JSON as text. The actual handling

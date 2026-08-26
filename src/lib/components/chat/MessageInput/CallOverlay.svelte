@@ -428,7 +428,7 @@
 
 	let finishedMessages = {};
 	let currentMessageId = null;
-	let currentUtterance = null;
+	let currentUtterance: SpeechSynthesisUtterance | null = null;
 
 	// Get voice: model-specific > user settings > config default
 	const getVoiceId = () => {
@@ -475,30 +475,47 @@
 		}
 	};
 
-	const playAudio = (audio) => {
+	const playAudio = (audio: HTMLAudioElement) => {
 		if ($showCallOverlay) {
 			return new Promise((resolve) => {
 				const audioElement = document.getElementById('audioElement') as HTMLAudioElement;
 
-				if (audioElement) {
-					audioElement.src = audio.src;
-					audioElement.muted = true;
-					audioElement.playbackRate = $settings.audio?.tts?.playbackRate ?? 1;
-
-					audioElement
-						.play()
-						.then(() => {
-							audioElement.muted = false;
-						})
-						.catch((error) => {
-							console.error(error);
-						});
-
-					audioElement.onended = async (e) => {
-						await new Promise((r) => setTimeout(r, 100));
-						resolve(e);
-					};
+				if (!audioElement) {
+					resolve(null);
+					return;
 				}
+
+				let settled = false;
+				const finish = async (e: Event | Error | null = null) => {
+					if (settled) {
+						return;
+					}
+
+					settled = true;
+					audioElement.onended = null;
+					audioElement.onerror = null;
+					audioElement.onpause = null;
+
+					await new Promise((r) => setTimeout(r, 100));
+					resolve(e);
+				};
+
+				audioElement.src = audio.src;
+				audioElement.muted = true;
+				audioElement.playbackRate = $settings.audio?.tts?.playbackRate ?? 1;
+				audioElement.onended = finish;
+				audioElement.onerror = () => finish();
+				audioElement.onpause = finish;
+
+				audioElement
+					.play()
+					.then(() => {
+						audioElement.muted = false;
+					})
+					.catch((error) => {
+						console.error(error);
+						finish(error);
+					});
 			});
 		} else {
 			return Promise.resolve();
@@ -518,7 +535,7 @@
 			currentUtterance = null;
 		}
 
-		const audioElement = document.getElementById('audioElement');
+		const audioElement = document.getElementById('audioElement') as HTMLAudioElement;
 		if (audioElement) {
 			audioElement.muted = true;
 			audioElement.pause();
@@ -537,7 +554,12 @@
 			try {
 				// Set the emoji for the content if needed
 				if ($settings?.showEmojiInCall ?? false) {
-					const emoji = await generateEmoji(localStorage.token, modelId, content, chatId);
+					const emoji = await generateEmoji(localStorage.token, modelId, content, chatId).catch(
+						(error) => {
+							console.error(error);
+							return null;
+						}
+					);
 					if (emoji) {
 						emojiCache.set(content, emoji);
 					}
@@ -1002,6 +1024,7 @@
 					<div class=" absolute top-4 md:top-8 left-4">
 						<button
 							type="button"
+							aria-label={$i18n.t('Stop camera')}
 							class="p-1.5 text-white cursor-pointer backdrop-blur-xl bg-black/10 rounded-full"
 							on:click={() => {
 								stopCamera();
@@ -1058,7 +1081,11 @@
 							await startVideoStream();
 						}}
 					>
-						<button class="p-3 rounded-full bg-gray-50 dark:bg-gray-900" type="button">
+						<button
+							aria-label={$i18n.t('Switch camera')}
+							class="p-3 rounded-full bg-gray-50 dark:bg-gray-900"
+							type="button"
+						>
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 20 20"
@@ -1076,6 +1103,7 @@
 				{:else}
 					<Tooltip content={$i18n.t('Camera')}>
 						<button
+							aria-label={$i18n.t('Camera')}
 							class="p-3 rounded-full bg-gray-50 dark:bg-gray-900"
 							type="button"
 							on:click={async () => {
@@ -1161,6 +1189,7 @@
 				</Tooltip>
 
 				<button
+					aria-label={$i18n.t('End call')}
 					class="p-3 rounded-full bg-gray-50 dark:bg-gray-900"
 					on:click={async () => {
 						await stopAudioStream();

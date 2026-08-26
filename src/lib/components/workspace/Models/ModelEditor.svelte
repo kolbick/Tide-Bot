@@ -33,6 +33,7 @@
 	import TTSVoiceInput from './TTSVoiceInput.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import AccessButton from '$lib/components/common/AccessButton.svelte';
+	import { extractInputVariables } from '$lib/utils';
 
 	const i18n = getContext('i18n');
 
@@ -80,6 +81,9 @@
 		base_model_id: null,
 		name: '',
 		meta: {
+			// LICENSE covers this Open WebUI fallback logo.
+			// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+			// https://docs.openwebui.com/license.
 			profile_image_url: `${WEBUI_BASE_URL}/static/favicon.png`,
 			description: '',
 			suggestion_prompts: null,
@@ -112,6 +116,60 @@
 	let tts = { voice: '' };
 	export let suggestionTags: { name: string }[] = [];
 	let voices: { id: string; name?: string }[] = [];
+
+	const chatVariableKeyRegex = /^[a-z][a-z0-9_]*$/;
+	const getChatVariablesPreview = (prompt: string) => {
+		const variables = extractInputVariables(prompt);
+		const warnings: string[] = [];
+		const seenDefinitions: Record<string, string> = {};
+		const typedRegex = /{{\s*chat\.variables\.([a-zA-Z0-9_.-]+)\s*\|\s*([^}]*)\s*}}/g;
+		const typedUserRegex = /{{\s*user\.variables\.([a-zA-Z0-9_.-]+)\s*\|\s*([^}]*)\s*}}/g;
+
+		for (const match of prompt.matchAll(typedRegex)) {
+			const key = match[1];
+			const definition = match[2].trim();
+			if (seenDefinitions[key] && seenDefinitions[key] !== definition) {
+				warnings.push(`${key} has conflicting duplicate definitions`);
+			}
+			seenDefinitions[key] = definition;
+		}
+
+		const fields = Object.entries(variables)
+			.filter(([name]) => name.startsWith('chat.variables.'))
+			.map(([name, field]) => ({ key: name.replace('chat.variables.', ''), ...(field as any) }));
+		const userFields = Object.entries(variables)
+			.filter(([name]) => name.startsWith('user.variables.'))
+			.map(([name]) => ({ key: name.replace('user.variables.', '') }));
+
+		for (const match of prompt.matchAll(typedUserRegex)) {
+			warnings.push(`${match[1]} uses metadata, but User Variables are configured by each user`);
+		}
+
+		for (const field of fields) {
+			const key = field.key;
+			if (!chatVariableKeyRegex.test(key)) {
+				warnings.push(`${key} must be lowercase snake case`);
+				continue;
+			}
+
+			if (
+				field.type === 'select' &&
+				(!Array.isArray(field.options) || field.options.length === 0)
+			) {
+				warnings.push(`${key} select needs options=[...]`);
+			}
+		}
+
+		for (const field of userFields) {
+			if (!chatVariableKeyRegex.test(field.key)) {
+				warnings.push(`${field.key} must be lowercase snake case`);
+			}
+		}
+
+		return { fields, userFields, warnings };
+	};
+
+	$: chatVariablesPreview = getChatVariablesPreview(system ?? '');
 
 	const getBaseModelItems = (models: any[] = []) => {
 		const currentModelId = (model as any)?.id;
@@ -546,58 +604,75 @@
 						<div class="flex w-full flex-col gap-3">
 							<div class="flex w-full min-w-0 items-center gap-3 py-0.5">
 								<div class="flex min-w-0 flex-1 items-center gap-3">
-									<button
-										class="group relative flex size-12 shrink-0 items-center overflow-hidden rounded-xl md:size-14 {info
-											.meta.profile_image_url !== `${WEBUI_BASE_URL}/static/favicon.png`
-											? 'bg-transparent'
-											: 'bg-gray-50 dark:bg-gray-850'} ring-1 ring-gray-200/70 transition hover:ring-gray-300 dark:ring-white/10 dark:hover:ring-white/20"
-										type="button"
-										aria-label={$i18n.t('Upload profile image')}
-										on:click={() => {
-											filesInputElement.click();
-										}}
-									>
-										{#if info.meta.profile_image_url}
-											<img
-												src={info.meta.profile_image_url}
-												alt="model profile"
-												class="size-full object-cover"
-											/>
-										{:else}
-											<img
-												src="{WEBUI_BASE_URL}/static/favicon.png"
-												alt="model profile"
-												class="size-full object-cover"
-											/>
-										{/if}
-
-										<div
-											class="absolute bottom-0 right-0 z-10 opacity-0 transition group-hover:opacity-100"
+									<!-- LICENSE covers this Open WebUI fallback logo.
+									Do not alter, remove, obscure, or replace it except as LICENSE permits:
+									https://docs.openwebui.com/license. -->
+									<div class="group relative size-12 shrink-0 md:size-14">
+										<button
+											class="group relative flex size-full items-center overflow-hidden rounded-xl {info
+												.meta.profile_image_url !== `${WEBUI_BASE_URL}/static/favicon.png`
+												? 'bg-transparent'
+												: 'bg-gray-50 dark:bg-gray-850'} ring-1 ring-gray-200/70 transition hover:ring-gray-300 dark:ring-white/10 dark:hover:ring-white/20"
+											type="button"
+											aria-label={$i18n.t('Upload profile image')}
+											on:click={() => {
+												filesInputElement.click();
+											}}
 										>
-											<div class="m-1">
-												<div
-													class="rounded-full bg-gray-900 p-1 text-white shadow-sm transition dark:bg-white dark:text-black"
-												>
-													<svg
-														xmlns="http://www.w3.org/2000/svg"
-														viewBox="0 0 16 16"
-														fill="currentColor"
-														class="size-3"
+											{#if info.meta.profile_image_url}
+												<img
+													src={info.meta.profile_image_url}
+													alt="model profile"
+													class="size-full object-cover"
+												/>
+											{:else}
+												<img
+													src="{WEBUI_BASE_URL}/static/favicon.png"
+													alt="model profile"
+													class="size-full object-cover"
+												/>
+											{/if}
+
+											<div
+												class="absolute bottom-0 right-0 z-10 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+											>
+												<div class="m-1">
+													<div
+														class="rounded-full bg-gray-900 p-1 text-white shadow-sm transition dark:bg-white dark:text-black"
 													>
-														<path
-															fill-rule="evenodd"
-															d="M2 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4Zm10.5 5.707a.5.5 0 0 0-.146-.353l-1-1a.5.5 0 0 0-.708 0L9.354 9.646a.5.5 0 0 1-.708 0L6.354 7.354a.5.5 0 0 0-.708 0l-2 2a.5.5 0 0 0-.146.353V12a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V9.707ZM12 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"
-															clip-rule="evenodd"
-														/>
-													</svg>
+														<svg
+															xmlns="http://www.w3.org/2000/svg"
+															viewBox="0 0 16 16"
+															fill="currentColor"
+															class="size-3"
+														>
+															<path
+																fill-rule="evenodd"
+																d="M2 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4Zm10.5 5.707a.5.5 0 0 0-.146-.353l-1-1a.5.5 0 0 0-.708 0L9.354 9.646a.5.5 0 0 1-.708 0L6.354 7.354a.5.5 0 0 0-.708 0l-2 2a.5.5 0 0 0-.146.353V12a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V9.707ZM12 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"
+																clip-rule="evenodd"
+															/>
+														</svg>
+													</div>
 												</div>
 											</div>
-										</div>
 
-										<div
-											class="absolute inset-0 bg-white opacity-0 transition group-hover:opacity-20 dark:bg-black"
-										></div>
-									</button>
+											<div
+												class="absolute inset-0 bg-white opacity-0 transition group-hover:opacity-20 dark:bg-black"
+											></div>
+										</button>
+
+										{#if info.meta.profile_image_url && info.meta.profile_image_url !== `${WEBUI_BASE_URL}/static/favicon.png`}
+											<button
+												class="absolute left-1/2 top-full mt-1 -translate-x-1/2 text-[0.5rem] leading-none text-gray-400 opacity-0 transition group-hover:opacity-60 hover:text-gray-500 hover:opacity-100 group-focus-within:opacity-60 dark:text-gray-600 dark:hover:text-gray-400"
+												on:click={() => {
+													info.meta.profile_image_url = `${WEBUI_BASE_URL}/static/favicon.png`;
+												}}
+												type="button"
+											>
+												{$i18n.t('Reset')}</button
+											>
+										{/if}
+									</div>
 
 									<div class="min-w-0 flex-1">
 										<div class="flex min-w-0 items-center gap-2">
@@ -721,6 +796,61 @@
 											bind:value={system}
 										/>
 									</div>
+									{#if chatVariablesPreview.fields.length > 0 || chatVariablesPreview.userFields.length > 0 || chatVariablesPreview.warnings.length > 0}
+										<div class="mt-2 border-t border-gray-100/60 pt-2 dark:border-gray-850/60">
+											<div class="mb-1.5 flex items-center justify-between gap-2">
+												<div class="text-xs text-gray-500 dark:text-gray-400">
+													{$i18n.t('Detected Variables')}
+												</div>
+												{#if chatVariablesPreview.fields.length + chatVariablesPreview.userFields.length > 0}
+													<div class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+														{chatVariablesPreview.fields.length +
+															chatVariablesPreview.userFields.length}
+													</div>
+												{/if}
+											</div>
+
+											{#if chatVariablesPreview.fields.length > 0}
+												<div class="mb-1 text-[0.6875rem] text-gray-400 dark:text-gray-600">
+													{$i18n.t('Chat Variables')}
+												</div>
+												<div class="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+													{#each chatVariablesPreview.fields as field}
+														<div class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+															<span class="font-medium">{field.key}</span>
+															<span class="text-gray-400 dark:text-gray-600">{field.type}</span>
+															{#if field.required}
+																<span class="text-amber-600 dark:text-amber-400">required</span>
+															{/if}
+														</div>
+													{/each}
+												</div>
+											{/if}
+
+											{#if chatVariablesPreview.userFields.length > 0}
+												<div class="mb-1 mt-2 text-[0.6875rem] text-gray-400 dark:text-gray-600">
+													{$i18n.t('User Variables')}
+												</div>
+												<div class="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+													{#each chatVariablesPreview.userFields as field}
+														<div class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+															<span class="font-medium">{field.key}</span>
+														</div>
+													{/each}
+												</div>
+											{/if}
+
+											{#if chatVariablesPreview.warnings.length > 0}
+												<div
+													class="mt-2 flex flex-col gap-1 text-xs text-amber-600 dark:text-amber-400"
+												>
+													{#each chatVariablesPreview.warnings as warning}
+														<div>{warning}</div>
+													{/each}
+												</div>
+											{/if}
+										</div>
+									{/if}
 								</div>
 
 								<div class="flex h-7 w-full justify-between">

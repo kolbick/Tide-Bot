@@ -41,6 +41,10 @@ Docker/runtime changes before merging.
 
 ## Automated upstream/main integrations
 
+| Date | Upstream commit | Record |
+| --- | --- | --- |
+| 2026-08-25 | `d3e8bf3405e848cfba377814d0aa7ba7290e414d` | Open WebUI `v0.11.1`; integrated by this explicit merge commit with Tide-Bot first parent `cf3e495c3f3a551d6b90361b2e8f6df862201944` and upstream second parent `d3e8bf3405e848cfba377814d0aa7ba7290e414d`. |
+
 The `Tide-Bot upstream main` workflow fetches a fresh `upstream/main` SHA and
 does no work when that SHA is already an ancestor of `origin/main`. Before it
 attempts a merge, it fetches `v0.11.1`, verifies that its commit begins with
@@ -53,3 +57,15 @@ The deployable-marker workflow reruns the common gate for eligible `main`
 commits before force-updating only the annotated `tide-bot-deployable` tag. The
 production updater deploys that tag's commit only after it verifies the commit
 is an ancestor of `origin/main`.
+
+### 2026-08-25 Open WebUI v0.11.1 integration
+
+The official `v0.11.1` tag and the fetched `upstream/main` both resolved to
+`d3e8bf3405e848cfba377814d0aa7ba7290e414d`; the tag was verified as an
+ancestor of the fetched branch before the merge began. The integration keeps
+Tide-Bot branding, ChatGPT subscription device OAuth and encrypted credential
+handling, Responses streaming, the ElevenLabs call overlay and fallback voice
+path, companion presence and restricted desktop origins, browser-extension
+authorization boundaries, and the local-only external-volume production
+topology. Upstream workflows, telemetry, public signup defaults, promotional
+sharing, and public terminal or CPTR exposure were not inherited.

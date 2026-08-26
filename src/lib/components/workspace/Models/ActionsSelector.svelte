@@ -61,10 +61,11 @@
 
 		<div class="flex flex-col">
 			<div class=" flex items-center flex-wrap mt-1">
-				{#each selectedActions as action, actionIdx}
+				{#each selectedActions as action, actionIdx (action.id)}
 					<div class=" flex items-center gap-2 mr-3">
 						<div class="self-center flex items-center">
 							<Checkbox
+								ariaLabel={action.name}
 								state="checked"
 								disabled={action.is_global}
 								on:change={(e) => {

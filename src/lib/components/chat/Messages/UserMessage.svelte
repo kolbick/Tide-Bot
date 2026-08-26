@@ -39,6 +39,7 @@
 
 	export let isFirstMessage: boolean;
 	export let readOnly: boolean;
+	export let allowDelete = true;
 	export let compactPreview = false;
 	export let editCodeBlock = true;
 	export let topPadding = false;
@@ -136,6 +137,9 @@
 >
 	{#if !($settings?.chatBubble ?? true) && !(message?.meta?.internal === true && message?.meta?.type === 'subagent') && !(message?.meta?.internal === true && message?.meta?.type === 'timer')}
 		<div class={`shrink-0 ltr:mr-2 rtl:ml-2 hidden @lg:flex mt-0.5`}>
+			<!-- LICENSE covers this Open WebUI fallback logo.
+			Do not alter, remove, obscure, or replace it except as LICENSE permits:
+			https://docs.openwebui.com/license. -->
 			<ProfileImage
 				src={user?.id
 					? `${WEBUI_API_BASE_URL}/users/${user.id}/profile/image`
@@ -217,10 +221,11 @@
 										</div>
 										<div class=" absolute -top-1 -right-1">
 											<button
+												aria-label={$i18n.t('Remove file')}
 												class=" bg-white text-black border border-white rounded-full {($settings?.highContrastMode ??
 												false)
 													? ''
-													: 'group-hover:visible invisible transition'}"
+													: 'hover-reveal transition'}"
 												type="button"
 												on:click={() => {
 													editedFiles.splice(fileIdx, 1);
@@ -416,9 +421,7 @@
 						>
 							<time
 								datetime={new Date(message.timestamp * 1000).toISOString()}
-								class="{compactPreview
-									? ''
-									: 'invisible group-hover:visible'} {($settings?.chatBubble ?? true)
+								class="{compactPreview ? '' : 'hover-reveal'} {($settings?.chatBubble ?? true)
 									? 'mr-1'
 									: 'ml-1 shrink-0 whitespace-nowrap'} text-[0.6875rem] tabular-nums text-gray-400 dark:text-gray-600 select-none"
 							>
@@ -431,6 +434,7 @@
 						{#if siblings.length > 1}
 							<div class="flex self-center" dir="ltr">
 								<button
+									aria-label={$i18n.t('Previous message')}
 									class="self-center p-1 hover:bg-black/5 dark:hover:bg-white/5 dark:hover:text-white hover:text-black rounded-md transition"
 									on:click={() => {
 										showPreviousMessage(message);
@@ -498,6 +502,7 @@
 								{/if}
 
 								<button
+									aria-label={$i18n.t('Next message')}
 									class="self-center p-1 hover:bg-black/5 dark:hover:bg-white/5 dark:hover:text-white hover:text-black rounded-md transition"
 									on:click={() => {
 										showNextMessage(message);
@@ -526,7 +531,8 @@
 							<button
 								class="{($settings?.highContrastMode ?? false)
 									? ''
-									: 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition edit-user-message-button"
+									: 'hover-reveal'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition edit-user-message-button"
+								aria-label={$i18n.t('Edit')}
 								on:click={() => {
 									editMessageHandler();
 								}}
@@ -554,7 +560,8 @@
 							<button
 								class="{($settings?.highContrastMode ?? false)
 									? ''
-									: 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition"
+									: 'hover-reveal'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition"
+								aria-label={$i18n.t('Copy')}
 								on:click={() => {
 									copyToClipboard(message.content);
 								}}
@@ -578,12 +585,13 @@
 					{/if}
 
 					{#if $_user?.role === 'admin' || ($_user?.permissions?.chat?.delete_message ?? false)}
-						{#if !compactPreview && !readOnly && (!isFirstMessage || siblings.length > 1)}
+						{#if !compactPreview && !readOnly && allowDelete && (!isFirstMessage || siblings.length > 1)}
 							<Tooltip content={$i18n.t('Delete')} placement="bottom">
 								<button
+									aria-label={$i18n.t('Delete')}
 									class="{($settings?.highContrastMode ?? false)
 										? ''
-										: 'invisible group-hover:visible'} p-1 rounded-sm dark:hover:text-white hover:text-black transition"
+										: 'hover-reveal'} p-1 rounded-sm dark:hover:text-white hover:text-black transition"
 									on:click={(e) => {
 										if (e.shiftKey) {
 											deleteMessageHandler();
@@ -615,6 +623,7 @@
 						{#if siblings.length > 1}
 							<div class="flex self-center" dir="ltr">
 								<button
+									aria-label={$i18n.t('Previous message')}
 									class="self-center p-1 hover:bg-black/5 dark:hover:bg-white/5 dark:hover:text-white hover:text-black rounded-md transition"
 									on:click={() => {
 										showPreviousMessage(message);
@@ -682,6 +691,7 @@
 								{/if}
 
 								<button
+									aria-label={$i18n.t('Next message')}
 									class="self-center p-1 hover:bg-black/5 dark:hover:bg-white/5 dark:hover:text-white hover:text-black rounded-md transition"
 									on:click={() => {
 										showNextMessage(message);

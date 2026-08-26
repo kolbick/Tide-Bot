@@ -9,12 +9,19 @@ without recording its exact reviewed commit.
 ```bash
 git status --short
 git remote get-url upstream
-git fetch upstream --tags --prune
+git fetch --no-tags upstream main
+git fetch upstream refs/tags/v0.11.1:refs/tags/v0.11.1
+git rev-parse upstream/main^{commit}
+git rev-parse refs/tags/v0.11.1^{commit}
+git merge-base --is-ancestor refs/tags/v0.11.1^{commit} upstream/main
 ```
 
 The expected remote is `https://github.com/open-webui/open-webui.git`. Preserve
 or commit Tide-Bot work before starting a sync. Never use `git clean` to make
-the tree appear clean.
+the tree appear clean. For the 2026-08-25 integration, both the official
+`v0.11.1` tag and `upstream/main` resolved to
+`d3e8bf3405e848cfba377814d0aa7ba7290e414d`; stop without merging if the tag
+does not resolve exactly or is not ancestral to the fetched candidate.
 
 ## Automated main tracking
 
@@ -56,18 +63,25 @@ assets, localization, and every user-visible upstream brand surface.
 
 Create a local backup reference before merging. Merge without committing,
 preserve Tide-Bot security and branding decisions, then record the chosen tag
-or SHA in `docs/UPSTREAM.md`.
+or SHA in `docs/UPSTREAM.md`. The completed integration must be an explicit
+merge commit: first parent is the reviewed Tide-Bot branch and second parent is
+the exact fetched upstream commit.
 
 ```bash
 git branch backup/pre-open-webui-sync-<revision> HEAD
-git merge --no-ff --no-commit <tag-or-sha>
+git merge --no-ff --no-commit <exact-upstream-sha>
 git diff --check
-git commit -m 'chore: sync Open WebUI <revision>'
+git commit -m 'chore: integrate Open WebUI main <sha12>'
 ```
 
 Do not inherit upstream workflows, telemetry, public-signup defaults, public
 terminal or CPTR exposure, or upstream promotional material without an
-explicit Tide-Bot review.
+explicit Tide-Bot review. Resolve each conflict deliberately. In particular,
+retain Tide-Bot branding and its audit; ChatGPT subscription device OAuth,
+encrypted persistence, refresh, model discovery, Responses streaming, and safe
+probe; the ElevenLabs `CallOverlay` plus STT/chat/TTS fallback; companion and
+desktop origin restrictions; browser-extension pairing and authorization; and
+the local-only external-volume production overlay.
 
 ## Verify and roll back
 

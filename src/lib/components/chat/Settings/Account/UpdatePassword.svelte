@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { updateUserPassword } from '$lib/apis/auths';
+	import { updateUserPassword, userSignOut } from '$lib/apis/auths';
+	import { user } from '$lib/stores';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 
 	const i18n = getContext('i18n');
@@ -23,7 +24,20 @@
 			);
 
 			if (res) {
-				toast.success($i18n.t('Successfully updated.'));
+				// This session is no longer trusted once the password it was issued under changes
+				toast.success($i18n.t('Password updated. Please sign in again.'));
+
+				localStorage.removeItem('token');
+				user.set(null);
+
+				const signOutRes = await userSignOut().catch((error) => {
+					console.error(error);
+					return null;
+				});
+
+				if (signOutRes?.redirect_url) {
+					location.href = signOutRes.redirect_url;
+				}
 			}
 
 			currentPassword = '';
@@ -55,7 +69,7 @@
 			}}>{show ? $i18n.t('Hide') : $i18n.t('Show')}</button
 		>
 	</div>
-	<p class="-mt-1 text-[0.6875rem] text-gray-400 dark:text-gray-600">
+	<p class="mt-0.5 text-[0.6875rem] text-gray-400 dark:text-gray-600">
 		{$i18n.t('Update the password used for email and password sign-in.')}
 	</p>
 
@@ -113,10 +127,8 @@
 			</div>
 		</div>
 
-		<div class="mt-3 flex justify-end">
-			<button
-				class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
-			>
+		<div class="flex justify-end">
+			<button class={actionButtonClass}>
 				{$i18n.t('Update password')}
 			</button>
 		</div>

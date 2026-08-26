@@ -254,6 +254,7 @@
 					class="flex items-center justify-center gap-3 py-1.5 px-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 shrink-0"
 				>
 					<button
+						aria-label={$i18n.t('Previous page')}
 						class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30"
 						disabled={page === 0}
 						on:click={() => {
@@ -276,6 +277,7 @@
 					</button>
 					<span>{page + 1} / {totalPages} ({totalRows.toLocaleString()} rows)</span>
 					<button
+						aria-label={$i18n.t('Next page')}
 						class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30"
 						disabled={page >= totalPages - 1}
 						on:click={() => {
@@ -309,7 +311,7 @@
 	}
 	.sqlite-table th,
 	.sqlite-table td {
-		padding: 4px 8px;
+		padding: 0.25rem 0.5rem;
 		text-align: left;
 		white-space: nowrap;
 		border: 1px solid rgba(128, 128, 128, 0.15);
@@ -339,7 +341,7 @@
 	}
 	.sqlite-table td {
 		color: #374151;
-		max-width: 300px;
+		max-width: 18.75rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
@@ -352,7 +354,7 @@
 		text-align: right !important;
 		user-select: none;
 		width: 1px;
-		padding-right: 6px !important;
+		padding-right: 0.375rem !important;
 	}
 	:global(.dark) .sqlite-row-num {
 		color: #6b7280;

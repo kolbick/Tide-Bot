@@ -61,7 +61,7 @@
 
 	onMount(async () => {
 		if (!$config?.features?.enable_plugins) {
-			goto('/admin');
+			goto('/admin', { replaceState: true });
 			return;
 		}
 
@@ -81,7 +81,7 @@
 </script>
 
 {#if func}
-	<div class="px-[16px] h-full min-w-0 overflow-x-hidden">
+	<div class="px-[1rem] h-full min-w-0 overflow-x-hidden">
 		<FunctionEditor
 			edit={true}
 			id={func.id}

@@ -14,6 +14,7 @@
 	} from '$lib/shortcuts';
 	import type { KeybindingsMap, ShortcutDefinition } from '$lib/shortcuts';
 	import { settings } from '$lib/stores';
+	import Switch from '$lib/components/common/Switch.svelte';
 	import ShortcutItem from '../ShortcutItem.svelte';
 
 	type ShortcutEntry = {
@@ -29,12 +30,16 @@
 
 	const i18n: I18nStore = getContext('i18n');
 
+	export let saveSettings: (updated: Record<string, unknown>) => Promise<void>;
+
 	let categorizedShortcuts: CategorizedShortcuts = {};
 	let isMac = false;
 	let recordingShortcut: Shortcut | null = null;
+	let enableKeyboardShortcuts = true;
 
 	onMount(() => {
 		isMac = /Mac/i.test(navigator.userAgent);
+		enableKeyboardShortcuts = $settings?.keyboardShortcuts ?? true;
 	});
 
 	$: {
@@ -112,6 +117,31 @@
 		</button>
 	</div>
 
+	<div class="mb-3">
+		<div class="flex items-center justify-between gap-2.5">
+			<div
+				id="enable-keyboard-shortcuts-label"
+				class="min-w-0 text-xs text-gray-600 dark:text-gray-400"
+			>
+				{$i18n.t('Enable Keyboard Shortcuts')}
+			</div>
+
+			<div class="flex shrink-0 items-center justify-end gap-1.5">
+				<Switch
+					ariaLabelledbyId="enable-keyboard-shortcuts-label"
+					tooltip={true}
+					bind:state={enableKeyboardShortcuts}
+					on:change={() => {
+						saveSettings({ keyboardShortcuts: enableKeyboardShortcuts });
+					}}
+				/>
+			</div>
+		</div>
+		<p class="mt-1.5 text-[0.6875rem] text-gray-400 dark:text-gray-600">
+			{$i18n.t('When disabled, keyboard shortcuts will not trigger any actions.')}
+		</p>
+	</div>
+
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 		<div class="flex items-center gap-2 px-1 pb-1">
 			<span class="flex-1 text-[0.625rem] text-gray-400 dark:text-gray-600">
@@ -138,10 +168,13 @@
 					<!-- {$i18n.t('Delete Chat')} -->
 					<!-- {$i18n.t('Open Model Selector')} -->
 					<!-- {$i18n.t('Toggle Dictation')} -->
+					<!-- {$i18n.t('Navigate to Previous Chat')} -->
+					<!-- {$i18n.t('Navigate to Next Chat')} -->
 					<!-- {$i18n.t('Search')} -->
 					<!-- {$i18n.t('Open Settings')} -->
 					<!-- {$i18n.t('Show Shortcuts')} -->
 					<!-- {$i18n.t('Toggle Sidebar')} -->
+					<!-- {$i18n.t('Toggle Controls')} -->
 					<!-- {$i18n.t('Close Modal')} -->
 					<!-- {$i18n.t('Focus Chat Input')} -->
 					<!-- {$i18n.t('Accept Autocomplete Generation\nJump to Prompt Variable')} -->
@@ -151,6 +184,8 @@
 					<!-- {$i18n.t('Talk to Model')} -->
 					<!-- {$i18n.t('Generate Message Pair')} -->
 					<!-- {$i18n.t('Regenerate Response')} -->
+					<!-- {$i18n.t('Allow Tool Call')} -->
+					<!-- {$i18n.t('Deny Tool Call')} -->
 					<!-- {$i18n.t('Stop Generating')} -->
 					<!-- {$i18n.t('Edit Last Message')} -->
 					<!-- {$i18n.t('Copy Last Response')} -->
@@ -158,6 +193,7 @@
 
 					<!-- {$i18n.t('Only active when "Paste Large Text as File" setting is toggled on.')} -->
 					<!-- {$i18n.t('Only active when the chat input is in focus.')} -->
+					<!-- {$i18n.t('Only active when a tool call is waiting for approval.')} -->
 					<!-- {$i18n.t('Only active when the chat input is in focus and an LLM is generating a response.')} -->
 					<!-- {$i18n.t('Only can be triggered when the chat input is in focus.')} -->
 

@@ -35,6 +35,7 @@
 	import ChatPlus from '../icons/ChatPlus.svelte';
 	import ChatCheck from '../icons/ChatCheck.svelte';
 	import Knobs from '../icons/Knobs.svelte';
+	import { isTemporaryChatId } from '$lib/utils/chatId';
 
 	const i18n = getContext('i18n');
 
@@ -117,7 +118,7 @@
 					{#if chat?.id}
 						<div class="flex max-w-full min-w-0 items-center gap-2 mr-2">
 							<div
-								class="min-w-0 truncate py-1 text-left text-[15px] font-normal text-gray-700 dark:text-gray-300"
+								class="min-w-0 truncate py-1 text-left text-[0.9375rem] font-normal text-gray-700 dark:text-gray-300"
 							>
 								{title || chat?.chat?.title || $i18n.t('New Chat')}
 							</div>
@@ -152,7 +153,7 @@
 					{:else}
 						<div class="pointer-events-none invisible flex max-w-full min-w-0 items-center gap-2">
 							<div
-								class="min-w-0 truncate py-1 text-left text-[15px] font-normal text-gray-700 dark:text-gray-300"
+								class="min-w-0 truncate py-1 text-left text-[0.9375rem] font-normal text-gray-700 dark:text-gray-300"
 							>
 								{$i18n.t('New Chat')}
 							</div>
@@ -160,8 +161,8 @@
 					{/if}
 				</div>
 
-				<div class="mr-1 flex flex-none items-center gap-2 self-center">
-					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
+				<div class="lg:mr-1 flex flex-none items-center gap-2 self-center">
+					<!-- <div class="md:hidden flex self-center w-[0.0625rem] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 
 					{#if $user?.role === 'user' ? ($user?.permissions?.chat?.temporary ?? true) && !($user?.permissions?.chat?.temporary_enforced ?? false) : true}
 						{#if !chat?.id}
@@ -247,7 +248,7 @@
 		</div>
 	</div>
 
-	{#if $temporaryChatEnabled && ($chatId ?? '').startsWith('local:')}
+	{#if $temporaryChatEnabled && isTemporaryChatId($chatId)}
 		<div class=" w-full z-30 text-center">
 			<div class="text-xs text-gray-500">{$i18n.t('Temporary Chat')}</div>
 		</div>
