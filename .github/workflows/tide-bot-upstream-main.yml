@@ -1,0 +1,87 @@
+name: Tide-Bot upstream main
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    if: github.repository == 'kolbick/Tide-Bot' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gate dependencies
+        run: |
+          npm ci
+          python -m pip install --requirement backend/requirements.txt "pytest-asyncio>=1.0.0"
+      - name: Fetch and validate upstream baseline
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/open-webui/open-webui.git 2>/dev/null || git remote set-url upstream https://github.com/open-webui/open-webui.git
+          git fetch --no-tags upstream main refs/tags/v0.11.1:refs/tags/v0.11.1
+          UPSTREAM_SHA="$(git rev-parse upstream/main^{commit})"
+          BASELINE_SHA="$(git rev-parse refs/tags/v0.11.1^{commit})"
+          test "${BASELINE_SHA:0:7}" = 'd3e8bf3'
+          if ! git merge-base --is-ancestor "$BASELINE_SHA" "$UPSTREAM_SHA"; then
+            gh issue create --title "Upstream baseline v0.11.1 is not ancestral" --body "v0.11.1 (${BASELINE_SHA}) is not an ancestor of upstream/main (${UPSTREAM_SHA}). No Tide-Bot branch or marker was changed."
+            exit 1
+          fi
+          git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main && exit 0
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+      - name: Merge upstream into a review branch
+        if: steps.upstream.outputs.upstream_sha != ''
+        id: merge
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          git switch --create "automation/upstream-main-${UPSTREAM_SHA:0:12}" origin/main
+          if ! git merge --no-ff --no-commit "$UPSTREAM_SHA"; then
+            CONFLICTS="$(git diff --name-only --diff-filter=U)"
+            git merge --abort
+            gh issue create --title "Upstream/main merge conflict ${UPSTREAM_SHA:0:12}" --body "Upstream SHA: ${UPSTREAM_SHA}\nConflicting paths:\n${CONFLICTS}"
+            exit 1
+          fi
+      - name: Run common update gate
+        if: steps.upstream.outputs.upstream_sha != ''
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          if ! npm run test:update-gate; then
+            gh issue create --title "Upstream/main gate failed ${UPSTREAM_SHA:0:12}" --body "The common Tide-Bot update gate failed for upstream SHA ${UPSTREAM_SHA}. No merge was committed and no deployable marker was moved."
+            exit 1
+          fi
+      - name: Record and propose passing integration
+        if: steps.upstream.outputs.upstream_sha != ''
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/record-upstream-integration.mjs --upstream-sha "$UPSTREAM_SHA"
+          git add docs/UPSTREAM.md
+          git commit -m "chore: integrate Open WebUI main ${UPSTREAM_SHA:0:12}"
+          git push origin "automation/upstream-main-${UPSTREAM_SHA:0:12}"
+          PR_URL="$(gh pr create --base main --head "automation/upstream-main-${UPSTREAM_SHA:0:12}" --title "chore: integrate Open WebUI main ${UPSTREAM_SHA:0:12}" --body "Automated upstream/main integration passed the common Tide-Bot gate.")"
+          gh pr merge "$PR_URL" --merge --auto

@@ -21,6 +21,7 @@
 		"i18n:parse": "i18next --config i18next-parser.config.ts && prettier --write \"src/lib/i18n/**/*.{js,json}\"",
 		"cy:open": "cypress open",
 		"test:companion:e2e": "node scripts/run-companion-cypress.mjs",
+		"test:update-gate": "node scripts/run-tide-bot-update-gate.mjs",
 		"test:browser-extension:build": "node --test scripts/build-browser-extension.test.mjs",
 		"test:browser-extension:e2e": "node scripts/run-browser-extension-playwright.mjs",
 		"test:browser-extension:unit": "vitest run browser-extension/src --passWithNoTests",

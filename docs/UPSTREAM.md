@@ -38,3 +38,18 @@ must return to explicit release tags and follow the documented sync procedure.
 Use the process in `docs/UPSTREAM_SYNC.md`. Every sync must be reviewed for
 user-visible branding, security-sensitive configuration, licensing, and
 Docker/runtime changes before merging.
+
+## Automated upstream/main integrations
+
+The `Tide-Bot upstream main` workflow fetches a fresh `upstream/main` SHA and
+does no work when that SHA is already an ancestor of `origin/main`. Before it
+attempts a merge, it fetches `v0.11.1`, verifies that its commit begins with
+`d3e8bf3`, and verifies that it is ancestral to the fetched upstream SHA. A
+failed baseline, merge conflict, or gate failure creates a sanitized issue and
+leaves `main` and `tide-bot-deployable` unchanged. Passing integrations use a
+review branch and the repository's protected GitHub pull-request merge path.
+
+The deployable-marker workflow reruns the common gate for eligible `main`
+commits before force-updating only the annotated `tide-bot-deployable` tag. The
+production updater deploys that tag's commit only after it verifies the commit
+is an ancestor of `origin/main`.

@@ -1,0 +1,48 @@
+name: Tide-Bot deployable marker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Tide-Bot upstream main
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  mark-deployable:
+    if: >-
+      github.repository == 'kolbick/Tide-Bot' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gate dependencies
+        run: |
+          npm ci
+          python -m pip install --requirement backend/requirements.txt "pytest-asyncio>=1.0.0"
+      - name: Run common update gate
+        run: npm run test:update-gate
+      - name: Move tested deployable marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag -fa tide-bot-deployable "$GITHUB_SHA" -m "Tide-Bot deployable $GITHUB_SHA"
+          git push origin refs/tags/tide-bot-deployable --force

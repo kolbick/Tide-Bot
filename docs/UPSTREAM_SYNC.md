@@ -16,6 +16,25 @@ The expected remote is `https://github.com/open-webui/open-webui.git`. Preserve
 or commit Tide-Bot work before starting a sync. Never use `git clean` to make
 the tree appear clean.
 
+## Automated main tracking
+
+The hourly `Tide-Bot upstream main` workflow is the only automated path for
+moving `main` from Open WebUI's moving `main` branch. It fetches and verifies
+the binding `v0.11.1` baseline (`d3e8bf3`) as an ancestor of the candidate
+before merging. It creates a review branch, runs the common update gate, and
+uses the protected GitHub pull-request merge path. Conflicts and gate failures
+create a sanitized issue; they never change `main`, deployment state, or the
+deployable marker.
+
+The common gate uses Node 22.18.x, focused companion/voice frontend checks,
+ChatGPT subscription and Responses streaming backend tests, the branding
+audit, production build, disposable isolated smoke, and `git diff --check`.
+It deliberately does not treat the inherited global `npm run check` diagnostic
+baseline as an all-clear signal. The `tide-bot-deployable` marker is annotated
+and moves only after the same gate passes on an eligible `main` commit. The
+production updater independently rejects a marker commit that is not ancestral
+to `origin/main`.
+
 ## Select and review
 
 Production syncs use an explicit upstream release tag. The 2026-07-23 recovery
