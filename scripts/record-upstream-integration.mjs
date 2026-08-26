@@ -44,8 +44,10 @@ export function updateUpstreamIntegrationMarkdown(current, { date, upstreamSha }
 async function main() {
 	const upstreamShaIndex = process.argv.indexOf('--upstream-sha');
 	const upstreamSha = upstreamShaIndex >= 0 ? process.argv[upstreamShaIndex + 1] : undefined;
+	const upstreamPathIndex = process.argv.indexOf('--upstream-path');
 	const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-	const upstreamPath = join(repoRoot, 'docs', 'UPSTREAM.md');
+	const upstreamPath =
+		upstreamPathIndex >= 0 ? process.argv[upstreamPathIndex + 1] : join(repoRoot, 'docs', 'UPSTREAM.md');
 	const current = await readFile(upstreamPath, 'utf8');
 	const updated = updateUpstreamIntegrationMarkdown(current, {
 		date: new Date().toISOString().slice(0, 10),

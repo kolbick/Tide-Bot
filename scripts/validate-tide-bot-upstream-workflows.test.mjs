@@ -50,27 +50,18 @@ function gitIdentityStepIsBefore(workflow, writerStep) {
 function assertNoOpControlFlow(workflow) {
 	const noOp = namedStep(workflow, 'Fetch and validate upstream baseline');
 	const ancestryGuard = noOp.run.indexOf('if git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main; then');
-	const noOpDecision = noOp.run.indexOf('upstream --already-on-main true');
-	const reviewDecision = noOp.run.indexOf('upstream --already-on-main false');
-	const earlyExit = noOp.run.indexOf("if [ \"$UPSTREAM_DECISION\" = 'no-op' ]; then");
+	const noOpDecision = noOp.run.indexOf("OUTCOME='no-op'");
 	const output = noOp.run.indexOf('echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"');
 
-	for (const index of [ancestryGuard, noOpDecision, reviewDecision, earlyExit, output]) {
+	for (const index of [ancestryGuard, noOpDecision, output]) {
 		assert.ok(index >= 0, 'missing a required no-op control-flow operation');
 	}
 	assert.ok(ancestryGuard < noOpDecision);
-	assert.ok(noOpDecision < reviewDecision);
-	assert.ok(reviewDecision < earlyExit);
-	assert.ok(earlyExit < output);
-	assert.match(noOp.run.slice(earlyExit, output), /exit 0/);
+	assert.ok(noOpDecision < output);
 
-	for (const name of [
-		'Merge upstream into a review branch',
-		'Run common update gate',
-		'Record and propose passing integration'
-	]) {
-		assert.equal(namedStep(workflow, name).if, "steps.upstream.outputs.upstream_sha != ''");
-	}
+	assert.equal(namedStep(workflow, 'Merge upstream into a review branch').if, "steps.upstream.outputs.outcome == 'review'");
+	assert.match(namedStep(workflow, 'Run common update gate').if, /steps\.upstream\.outputs\.outcome == 'review'/);
+	assert.match(workflow.jobs.publish.if, /outputs\.outcome != 'no-op'/);
 }
 
 const upstream = await readWorkflow('tide-bot-upstream-main.yml');
@@ -93,8 +84,19 @@ test('workflow directory contains only approved Tide-Bot workflows', async () =>
 test('upstream workflow has a trusted hourly review path with configured commit identity', () => {
 	assert.equal(upstream.on.schedule[0].cron, '0 * * * *');
 	assert.ok(Object.hasOwn(upstream.on, 'workflow_dispatch'));
-	assert.equal(upstream.permissions.contents, 'write');
-	assert.equal(upstream.permissions.issues, 'write');
+	assert.equal(upstream.permissions.contents, 'read');
+	const verify = upstream.jobs.verify;
+	const publish = upstream.jobs.publish;
+	assert.ok(verify);
+	assert.ok(publish);
+	assert.deepEqual(verify.permissions, { contents: 'read' });
+	assert.deepEqual(publish.permissions, {
+		contents: 'write',
+		issues: 'write',
+		'pull-requests': 'write'
+	});
+	assert.equal(publish.needs, 'verify');
+	assert.equal(verify.steps.find((step) => step.uses === 'actions/checkout@v4').with['persist-credentials'], false);
 	assert.equal(namedStep(upstream, 'Install Node').with['node-version'], '22.18.0');
 	assert.equal(namedStep(upstream, 'Install Python').with['python-version'], '3.12');
 	gitIdentityStepIsBefore(upstream, 'Record and propose passing integration');
@@ -107,9 +109,20 @@ test('upstream workflow has a trusted hourly review path with configured commit 
 	assert.doesNotMatch(commands, /git push[^\n]*--force[^\n]*main/);
 });
 
+test('untrusted upstream merge and gate are credential-free and mutation-free', () => {
+	const verify = upstream.jobs.verify;
+	const commands = (verify.steps ?? []).map((step) => step.run ?? '').join('\n');
+	for (const step of verify.steps ?? []) {
+		assert.equal(Object.hasOwn(step.env ?? {}, 'GH_TOKEN'), false);
+	}
+	assert.doesNotMatch(commands, /gh (?:issue|pr)|git push|git tag/);
+	assert.match(commands, /git merge --no-ff --no-commit/);
+	assert.match(commands, /npm run test:update-gate/);
+});
+
 test('every sanitized upstream issue path has an explicit GitHub token', () => {
 	const issueSteps = steps(upstream).filter((step) => step.run?.includes('gh issue create'));
-	assert.equal(issueSteps.length, 3);
+	assert.equal(issueSteps.length, 1);
 	for (const step of issueSteps) {
 		assert.equal(step.env.GH_TOKEN, '${{ github.token }}');
 	}
@@ -118,8 +131,13 @@ test('every sanitized upstream issue path has an explicit GitHub token', () => {
 test('upstream workflow handles a wrong baseline hash through the sanitized issue branch', () => {
 	const baseline = namedStep(upstream, 'Fetch and validate upstream baseline');
 	assert.match(baseline.run, /node scripts\/tide-bot-update-policy\.mjs baseline/);
-	assert.match(baseline.run, /gh issue create/);
+	assert.doesNotMatch(baseline.run, /gh issue create|GH_TOKEN/);
+	assert.match(baseline.run, /OUTCOME='baseline-mismatch'/);
+	assert.match(namedStep(upstream, 'Create sanitized failure issue').run, /gh issue create/);
 	assert.match(baseline.run, /git merge-base --is-ancestor/);
+	const trusted = namedStep(upstream, 'Validate trusted verification output').run;
+	assert.match(trusted, /baseline-mismatch\) test "\$BASELINE_SHA" != "\$EXPECTED_BASELINE_SHA"/);
+	assert.match(trusted, /git merge-base --is-ancestor "\$UPSTREAM_SHA" upstream\/main/);
 });
 
 test('workflow no-op decision prevents every later upstream mutation', () => {
@@ -192,6 +210,17 @@ test('synthetic out-of-order marker jobs never roll the tag back', () => {
 test('synthetic baseline mismatch blocks before a merge attempt and requests an issue', () => {
 	const result = validateBaselineTag('f'.repeat(40));
 	assert.deepEqual(result, { outcome: 'blocked', reason: 'baseline-hash-mismatch', createIssue: true });
+});
+
+test('baseline validation requires the exact full v0.11.1 commit', () => {
+	assert.deepEqual(validateBaselineTag('d3e8bf3400000000000000000000000000000000'), {
+		outcome: 'blocked',
+		reason: 'baseline-hash-mismatch',
+		createIssue: true
+	});
+	assert.deepEqual(validateBaselineTag('d3e8bf3405e848cfba377814d0aa7ba7290e414d'), {
+		outcome: 'ready'
+	});
 });
 
 test('upstream record keeps one table and accumulates distinct SHA rows', () => {

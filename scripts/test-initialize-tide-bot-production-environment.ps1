@@ -70,6 +70,19 @@ try {
 	Assert-True (-not $initializerOutput.Contains($sentinel)) 'Initialization output contained a fixture value.'
 	Assert-True ($sourceHash -eq (Get-FileHash -LiteralPath $sourcePath).Hash) 'Initialization altered the source file.'
 	Assert-True ($sourceHash -eq (Get-FileHash -LiteralPath $destinationPath).Hash) 'Initialization did not copy the source unchanged.'
+	Assert-True ((Get-Content -LiteralPath $destinationPath -Raw).Contains("OAUTH_CLIENT_INFO_ENCRYPTION_KEY=$sentinel")) 'Initialization did not preserve an explicit OAuth encryption key.'
+
+	$emptyOauthSource = Join-Path $fixtureRoot 'legacy-empty-oauth.env'
+	$emptyOauthDestination = Join-Path $fixtureRoot 'empty-oauth-production.env'
+	@("WEBUI_SECRET_KEY=$sentinel", 'OAUTH_CLIENT_INFO_ENCRYPTION_KEY=') | Set-Content -LiteralPath $emptyOauthSource -Encoding utf8NoBOM
+	$null = Invoke-Initializer -SourceEnvFile $emptyOauthSource -DestinationPath $emptyOauthDestination
+	Assert-True ((Get-Content -LiteralPath $emptyOauthDestination -Raw) -notmatch '(?m)^OAUTH_CLIENT_INFO_ENCRYPTION_KEY=') 'Initialization retained an empty OAuth key instead of preserving backend fallback semantics.'
+
+	$omittedOauthSource = Join-Path $fixtureRoot 'legacy-omitted-oauth.env'
+	$omittedOauthDestination = Join-Path $fixtureRoot 'omitted-oauth-production.env'
+	"WEBUI_SECRET_KEY=$sentinel" | Set-Content -LiteralPath $omittedOauthSource -Encoding utf8NoBOM
+	$null = Invoke-Initializer -SourceEnvFile $omittedOauthSource -DestinationPath $omittedOauthDestination
+	Assert-True ((Get-Content -LiteralPath $omittedOauthDestination -Raw) -notmatch '(?m)^OAUTH_CLIENT_INFO_ENCRYPTION_KEY=') 'Initialization invented an OAuth key when the legacy source omitted it.'
 
 	$acl = Get-Acl -LiteralPath $destinationPath
 	$readRights = [System.Security.AccessControl.FileSystemRights]::Read
@@ -125,6 +138,9 @@ try {
 } finally {
 	if (Test-Path -LiteralPath $destinationPath) {
 		& icacls $destinationPath /reset /C | Out-Null
+	}
+	foreach ($path in @($emptyOauthDestination, $omittedOauthDestination)) {
+		if ($path -and (Test-Path -LiteralPath $path)) { & icacls $path /reset /C | Out-Null }
 	}
 	Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

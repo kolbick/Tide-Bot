@@ -38,19 +38,11 @@ function Read-TideBotScheduleState {
 
 function Get-TideBotScheduleDeployableCommit {
 	param([string] $RepositoryPath)
-	$start = [Diagnostics.ProcessStartInfo]::new()
-	$start.FileName = 'git'
-	$start.UseShellExecute = $false
-	$start.RedirectStandardOutput = $true
-	$start.RedirectStandardError = $true
-	foreach ($argument in @('-C', $RepositoryPath, 'rev-parse', 'origin/tide-bot-deployable^{commit}')) { $null = $start.ArgumentList.Add($argument) }
-	$process = [Diagnostics.Process]::new()
-	$process.StartInfo = $start
-	$null = $process.Start()
-	$stdout = $process.StandardOutput.ReadToEnd()
-	$process.WaitForExit()
-	if ($process.ExitCode -ne 0) { throw 'Unable to resolve tide-bot-deployable from the controlled checkout.' }
-	return $stdout.Trim()
+	$commit = Get-TideBotDeployableCommit -RepositoryPath $RepositoryPath
+	if (-not (Test-TideBotCandidateIsOnMain -RepositoryPath $RepositoryPath -Commit $commit)) {
+		throw 'The exact tide-bot-deployable tag is not contained in refreshed origin/main.'
+	}
+	return $commit
 }
 
 function New-TideBotScheduleDefinition {

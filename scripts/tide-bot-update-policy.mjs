@@ -1,13 +1,13 @@
 import { fileURLToPath } from 'node:url';
 
-const expectedBaselinePrefix = 'd3e8bf3';
+const expectedBaselineSha = 'd3e8bf3405e848cfba377814d0aa7ba7290e414d';
 
 function isSha(value) {
 	return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value);
 }
 
 export function validateBaselineTag(baselineSha) {
-	if (!isSha(baselineSha) || !baselineSha.startsWith(expectedBaselinePrefix)) {
+	if (!isSha(baselineSha) || baselineSha.toLowerCase() !== expectedBaselineSha) {
 		return { outcome: 'blocked', reason: 'baseline-hash-mismatch', createIssue: true };
 	}
 

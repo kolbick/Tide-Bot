@@ -11,7 +11,9 @@ with the local development Compose files.
 The host-only environment file is `C:\ProgramData\Tide-Bot\production.env`.
 Initialize it once from the approved legacy source with
 `scripts\initialize-tide-bot-production-environment.ps1`; the initializer
-copies the source without printing its values, leaves the source intact, and
+copies the source without printing its values, leaves the source intact, removes
+only a legacy empty `OAUTH_CLIENT_INFO_ENCRYPTION_KEY=` declaration so the
+backend continues to fall back to `WEBUI_SECRET_KEY`, and
 protects the destination ACL for Administrators and the scheduled task
 identity. The optional `-ScheduledTaskIdentity` must name the same specific
 service or user account Task 4 registers; broad Windows groups are rejected.
@@ -76,35 +78,12 @@ command against them.
 
 ## Public proxy
 
-Terminate TLS at a managed reverse proxy. Forward WebSocket upgrades and keep
-the origin allow-list exact. The application should be reachable only from the
-proxy network or loopback interface.
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name tide-bot.com www.tide-bot.com;
-
-    # Configure these certificate paths with your certificate provider.
-    ssl_certificate /etc/letsencrypt/live/tide-bot.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/tide-bot.com/privkey.pem;
-
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header Referrer-Policy strict-origin-when-cross-origin always;
-
-    location / {
-        proxy_pass http://127.0.0.1:3102;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600;
-    }
-}
-```
+The existing Windows `Cloudflared` service remains the production ingress. Its
+service registration, `C:\ProgramData\cloudflared\config.yml`, hostname rules,
+WebSocket forwarding, and established loopback routing are retained unchanged;
+this Compose/update procedure does not replace Cloudflared with Nginx or rewrite
+its routes. Keep the application port loopback-only and verify the existing
+Cloudflared target before any separately reviewed port change.
 
 Do not configure a trusted-authentication header until the identity proxy and
 signature verification have been reviewed together. Do not publish CPTR or
@@ -113,11 +92,15 @@ Tide Terminal ports; their overlays remain opt-in internal services.
 ## Backup and restore
 
 Use `scripts\tide-bot-production-update.ps1` for production deployments. It
-fetches only `origin/tide-bot-deployable`, rejects commits outside `origin/main`,
-takes a helper-container archive of exactly
+force-refreshes only the exact `refs/tags/tide-bot-deployable` tag ref plus
+`origin/main`, rejects tagged commits outside refreshed `origin/main`, and
+builds the candidate before stopping the application writer. While the service
+is stopped it uses the already-local immutable predecessor image (with pulls
+disabled) to take a consistent archive of exactly
 `tidebot-webui_tidebot-open-webui`, records a SHA-256 manifest, and writes a
 sanitized deployment state record. Backups are UTC-sortable files below
-`C:\ProgramData\Tide-Bot\backups`; they are never deleted by the updater.
+`C:\ProgramData\Tide-Bot\backups`; they are never deleted by the updater. The
+production root and backup tree use protected SYSTEM/Administrators-only ACLs.
 
 The updater acquires the global `TideBot-Upstream-Deploy` mutex. A concurrent
 run exits successfully with `status: already_running`. Use the dry run before a

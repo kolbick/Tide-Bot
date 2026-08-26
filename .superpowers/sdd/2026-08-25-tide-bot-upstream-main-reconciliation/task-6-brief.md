@@ -42,3 +42,25 @@
   production-build, deployment-safeguard, and whitespace checks pass, subject
   only to explicitly recorded environment limitations for disposable smoke.
 - The task report contains RED/GREEN evidence and the final commits and status.
+
+### Whole-branch release-review repair
+
+- Preserve legacy ChatGPT OAuth ciphertext continuity: an omitted optional key
+  must remain unset so `WEBUI_SECRET_KEY` fallback works, while an explicit
+  nonempty OAuth key remains unchanged. Reconnect-required remains a safe
+  service warning but cannot qualify the automatic schedule for enablement.
+- Resolve and fetch the exact annotated `refs/tags/tide-bot-deployable`, refresh
+  `origin/main`, and reject the similarly named remote-branch namespace.
+- Run upstream merge/gate code in a read-only credential-free workflow job;
+  permit only a separate post-verification job to perform sanitized issue,
+  branch, and pull-request mutations.
+- Build before downtime, stop the application before a consistent data-volume
+  snapshot, use only an immutable already-local tool image with pulls disabled,
+  and protect production/backup directories for SYSTEM and Administrators.
+- Derive `upstream_sha` from validated checked-out provenance rather than the
+  Tide deployment commit, and write sanitized failure state for every
+  pre-replacement setup category.
+- Compare the complete v0.11.1 SHA
+  `d3e8bf3405e848cfba377814d0aa7ba7290e414d` in policy and workflow code.
+- Keep the existing Windows Cloudflared service, ProgramData configuration,
+  and routing unchanged; do not represent Nginx as the production ingress.

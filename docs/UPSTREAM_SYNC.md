@@ -26,12 +26,13 @@ does not resolve exactly or is not ancestral to the fetched candidate.
 ## Automated main tracking
 
 The hourly `Tide-Bot upstream main` workflow is the only automated path for
-moving `main` from Open WebUI's moving `main` branch. It fetches and verifies
-the binding `v0.11.1` baseline (`d3e8bf3`) as an ancestor of the candidate
-before merging. It creates a review branch, runs the common update gate, and
-uses the protected GitHub pull-request merge path. Conflicts and gate failures
-create a sanitized issue; they never change `main`, deployment state, or the
-deployable marker.
+moving `main` from Open WebUI's moving `main` branch. Its read-only,
+credential-free job verifies the exact binding `v0.11.1` baseline
+(`d3e8bf3405e848cfba377814d0aa7ba7290e414d`), performs the review merge, and
+runs the common gate. Only a separate post-verification job receives narrowly
+scoped write permissions; it revalidates sanitized outputs and then creates an
+issue or review branch through the protected GitHub pull-request path. Failures
+never change `main`, deployment state, or the deployable marker.
 
 The common gate uses Node 22.18.x, focused companion/voice frontend checks,
 ChatGPT subscription and Responses streaming backend tests, the branding
@@ -63,7 +64,8 @@ assets, localization, and every user-visible upstream brand surface.
 
 Create a local backup reference before merging. Merge without committing,
 preserve Tide-Bot security and branding decisions, then record the chosen tag
-or SHA in `docs/UPSTREAM.md`. The completed integration must be an explicit
+or SHA in `docs/UPSTREAM.md` and update the single-line machine-readable
+`docs/UPSTREAM_MAIN_SHA`. The completed integration must be an explicit
 merge commit: first parent is the reviewed Tide-Bot branch and second parent is
 the exact fetched upstream commit.
 

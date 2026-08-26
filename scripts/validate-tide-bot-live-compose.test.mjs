@@ -27,7 +27,8 @@ function composeConfig(environment) {
 		'COMPOSE_PROJECT_NAME',
 		'COMPOSE_PROFILES',
 		'COMPOSE_ENV_FILES',
-		'COMPOSE_DISABLE_ENV_FILE'
+		'COMPOSE_DISABLE_ENV_FILE',
+		'OAUTH_CLIENT_INFO_ENCRYPTION_KEY'
 	]) {
 		delete configEnvironment[name];
 	}
@@ -101,6 +102,26 @@ test('live Compose requires a commit and ignores an arbitrary image override', (
 	assert.equal(JSON.parse(arbitraryImageOverride.stdout).services['tidebot-open-webui'].image, 'tidebot-open-webui:fixture-commit');
 });
 
+test('live Compose omits the OAuth encryption key unless an explicit key is configured', () => {
+	const omitted = composeConfig({ TIDE_BOT_COMMIT: 'fixture-commit' });
+	assert.equal(omitted.status, 0, omitted.stderr);
+	assert.equal(
+		JSON.parse(omitted.stdout).services['tidebot-open-webui'].environment.OAUTH_CLIENT_INFO_ENCRYPTION_KEY,
+		null,
+		'Compose null pass-through must remain unset, never an empty string'
+	);
+
+	const explicit = composeConfig({
+		TIDE_BOT_COMMIT: 'fixture-commit',
+		OAUTH_CLIENT_INFO_ENCRYPTION_KEY: 'fixture-explicit-oauth-key'
+	});
+	assert.equal(explicit.status, 0, explicit.stderr);
+	assert.equal(
+		JSON.parse(explicit.stdout).services['tidebot-open-webui'].environment.OAUTH_CLIENT_INFO_ENCRYPTION_KEY,
+		'fixture-explicit-oauth-key'
+	);
+});
+
 test('environment migration utility is tracked beside the secret-free example', async () => {
 	const [initializer, envExample] = await Promise.all([
 		readFile(initializerPath, 'utf8'),
@@ -110,6 +131,7 @@ test('environment migration utility is tracked beside the secret-free example', 
 	assert.match(initializer, /SourceEnvFile/);
 	assert.match(initializer, /SupportsShouldProcess/);
 	assert.match(envExample, /^WEBUI_SECRET_KEY=$/m);
+	assert.doesNotMatch(envExample, /^OAUTH_CLIENT_INFO_ENCRYPTION_KEY=$/m);
 	assert.match(envExample, /^TIDE_BOT_COMMIT=$/m);
 	assert.doesNotMatch(envExample, /^TIDE_BOT_IMAGE_REF=/m);
 });

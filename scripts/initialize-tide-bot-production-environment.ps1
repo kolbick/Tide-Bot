@@ -86,10 +86,42 @@ function Set-ProductionEnvironmentAcl {
 	Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
+function Set-ProductionDirectoryAcl {
+	param([string] $Path)
+
+	$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+	$administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+	$rights = [System.Security.AccessControl.FileSystemRights]::FullControl
+	$allow = [System.Security.AccessControl.AccessControlType]::Allow
+	$inheritance = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+	$propagation = [System.Security.AccessControl.PropagationFlags]::None
+	$acl = [System.Security.AccessControl.DirectorySecurity]::new()
+	$acl.SetAccessRuleProtection($true, $false)
+	foreach ($sid in @($system, $administrators)) {
+		$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid, $rights, $inheritance, $propagation, $allow))
+	}
+	Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Copy-ValidatedProductionEnvironment {
+	param([string] $SourcePath, [string] $DestinationPath)
+
+	$lines = @(Get-Content -LiteralPath $SourcePath -ErrorAction Stop)
+	$hasEmptyOAuthKey = @($lines | Where-Object { $_ -match '^\s*OAUTH_CLIENT_INFO_ENCRYPTION_KEY=\s*$' }).Count -gt 0
+	if (-not $hasEmptyOAuthKey) {
+		Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath
+		return
+	}
+
+	@($lines | Where-Object { $_ -notmatch '^\s*OAUTH_CLIENT_INFO_ENCRYPTION_KEY=\s*$' }) |
+		Set-Content -LiteralPath $DestinationPath -Encoding utf8NoBOM
+}
+
 $sourcePath = (Resolve-Path -LiteralPath $SourceEnvFile -ErrorAction Stop).Path
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $destinationPath = [System.IO.Path]::GetFullPath($DestinationPath)
 $destinationDirectory = Split-Path -Parent $destinationPath
+$canonicalProductionDirectory = [System.IO.Path]::GetFullPath('C:\ProgramData\Tide-Bot').TrimEnd('\')
 $scheduledTaskIdentitySid = Resolve-ScheduledTaskIdentitySid -Identity $ScheduledTaskIdentity
 
 if (Test-PathIsWithin -Path $sourcePath -ParentPath $repositoryRoot) {
@@ -118,8 +150,12 @@ if (-not (Test-Path -LiteralPath $destinationDirectory)) {
 	}
 }
 
+if ((Test-Path -LiteralPath $destinationDirectory) -and [System.IO.Path]::GetFullPath($destinationDirectory).TrimEnd('\').Equals($canonicalProductionDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+	Set-ProductionDirectoryAcl -Path $destinationDirectory
+}
+
 if ($PSCmdlet.ShouldProcess($destinationPath, 'Copy validated production environment file')) {
-	Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
+	Copy-ValidatedProductionEnvironment -SourcePath $sourcePath -DestinationPath $destinationPath
 	Set-ProductionEnvironmentAcl -Path $destinationPath -ScheduledTaskIdentitySid $scheduledTaskIdentitySid
 	Write-Output 'Production environment file initialized with protected ACL.'
 }

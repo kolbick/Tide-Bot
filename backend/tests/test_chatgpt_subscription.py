@@ -1,6 +1,9 @@
 import asyncio
 import base64
 import json
+import os
+import subprocess
+import sys
 import time
 
 import pytest
@@ -111,6 +114,43 @@ def test_credentials_round_trip_encrypted():
     assert 'refresh-secret' not in encrypted
     assert decrypt_credentials(encrypted) == credentials
     assert CHATGPT_PRIVATE_CREDENTIALS_KEY.startswith('_')
+
+
+def test_legacy_webui_secret_ciphertext_decrypts_when_oauth_key_is_omitted():
+    synthetic_secret = 'legacy-webui-secret-continuity-fixture'
+    encrypt_script = """
+import json
+from open_webui.utils.chatgpt_subscription import encrypt_credentials
+print(encrypt_credentials({'refresh_token': 'synthetic-refresh'}))
+"""
+    environment = os.environ.copy()
+    environment['PYTHONPATH'] = 'backend'
+    environment['WEBUI_SECRET_KEY'] = synthetic_secret
+    environment['OAUTH_CLIENT_INFO_ENCRYPTION_KEY'] = synthetic_secret
+    ciphertext = subprocess.run(
+        [sys.executable, '-c', encrypt_script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    ).stdout.strip().splitlines()[-1]
+
+    environment.pop('OAUTH_CLIENT_INFO_ENCRYPTION_KEY')
+    decrypt_script = """
+import os
+import sys
+from open_webui.env import OAUTH_CLIENT_INFO_ENCRYPTION_KEY, WEBUI_SECRET_KEY
+from open_webui.utils.chatgpt_subscription import decrypt_credentials
+assert OAUTH_CLIENT_INFO_ENCRYPTION_KEY == WEBUI_SECRET_KEY
+assert decrypt_credentials(sys.argv[1]) == {'refresh_token': 'synthetic-refresh'}
+"""
+    subprocess.run(
+        [sys.executable, '-c', decrypt_script, ciphertext],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
 
 
 def test_device_login_handle_is_opaque_and_round_trips():

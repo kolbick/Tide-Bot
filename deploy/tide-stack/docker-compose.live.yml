@@ -15,7 +15,9 @@ services:
     environment:
       WEBUI_NAME: Tide-Bot
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY is required}
-      OAUTH_CLIENT_INFO_ENCRYPTION_KEY: ${OAUTH_CLIENT_INFO_ENCRYPTION_KEY:-}
+      # A null mapping is pass-through: Compose omits the variable when it is absent,
+      # preserving the backend's WEBUI_SECRET_KEY compatibility fallback.
+      OAUTH_CLIENT_INFO_ENCRYPTION_KEY:
       ENABLE_SIGNUP: 'false'
       ENABLE_VERSION_UPDATE_CHECK: 'false'
       ENABLE_COMMUNITY_SHARING: 'false'

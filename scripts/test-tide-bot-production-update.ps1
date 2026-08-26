@@ -17,6 +17,8 @@ function New-UpdateFixture {
 	}
 	$composePath = Join-Path $root 'docker-compose.live.yml'
 	Set-Content -LiteralPath $composePath -Value 'name: tidebot-webui' -Encoding utf8NoBOM
+	New-Item -ItemType Directory -Path (Join-Path $root 'docs') -Force | Out-Null
+	Set-Content -LiteralPath (Join-Path $root 'docs\UPSTREAM_MAIN_SHA') -Value ('3' * 40) -Encoding ascii
 	return @{ root = $root; state_path = $statePath; compose_path = $composePath; commit = ('2' * 40); calls = [Collections.Generic.List[object]]::new() }
 }
 
@@ -25,18 +27,22 @@ function New-FakeUpdateRunner {
 	$runner = {
 		param([string] $Operation, [string[]] $Arguments)
 		$Trace.Add($Operation); $entry = @{ operation = $Operation; arguments = @($Arguments) }
-		if ($Operation -in @('docker-compose-up-candidate', 'docker-compose-up-prior', 'docker-compose-down')) { $entry.environment_text = Get-Content -LiteralPath $Arguments[2] -Raw }
+		if ($Operation -in @('docker-compose-up-candidate', 'docker-compose-up-prior', 'docker-compose-down', 'docker-compose-stop-current', 'docker-compose-start-current')) { $entry.environment_text = Get-Content -LiteralPath $Arguments[2] -Raw }
 		$Fixture.calls.Add($entry)
 		if ($Failures.ContainsKey($Operation)) { return @{ exit_code = 1; stdout = ''; stderr = 'secret stderr' } }
-		switch ($Operation) {
+			switch ($Operation) {
 			'git-fetch-tag' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
+			'git-fetch-main' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'git-resolve-deployable' { return @{ exit_code = 0; stdout = "$($Fixture.commit)`n"; stderr = '' } }
 			'git-test-ancestor-main' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
+			'git-test-upstream-provenance' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'git-status-clean' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'git-switch-detach' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'git-head' { return @{ exit_code = 0; stdout = "$($Fixture.commit)`n"; stderr = '' } }
 			'docker-inspect-current-image' { return @{ exit_code = 0; stdout = 'sha256:prior'; stderr = '' } }
 			'docker-inspect-current-labels' { if ($Failures.ContainsKey('bad-predecessor-label')) { return @{ exit_code = 0; stdout = '{"com.docker.compose.project":"tidebot-webui"}'; stderr = '' } }; return @{ exit_code = 0; stdout = '{"com.docker.compose.project":"tidebot-webui","org.opencontainers.image.revision":"1111111111111111111111111111111111111111"}'; stderr = '' } }
+			'docker-compose-stop-current' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
+			'docker-compose-start-current' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'docker-archive-volume' { Set-Content -LiteralPath $Arguments[0] -Value 'fixture archive' -Encoding utf8NoBOM; return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'docker-list-archive' { return @{ exit_code = 0; stdout = '.`n'; stderr = '' } }
 			'docker-build-candidate' { return @{ exit_code = 0; stdout = 'sha256:candidate'; stderr = '' } }
@@ -67,55 +73,90 @@ function New-FakeHealthRunner {
 }
 
 function Invoke-UpdateFixture {
-	param([hashtable] $Failures = @{}, [switch] $NoState, [scriptblock] $StateWriter)
+	param([hashtable] $Failures = @{}, [switch] $NoState, [scriptblock] $StateWriter, [scriptblock] $UpstreamProvenanceReader, [scriptblock] $DirectoryProtector)
 	$fixture = New-UpdateFixture -NoState:$NoState; $trace = [Collections.Generic.List[string]]::new()
 	try {
 		$arguments = @{ RepositoryPath = $fixture.root; StateRoot = $fixture.root; StatePath = $fixture.state_path; ComposeFile = $fixture.compose_path; CommandRunner = (New-FakeUpdateRunner $fixture $Failures $trace); HealthRunner = (New-FakeHealthRunner $Failures $trace $fixture); Synthetic = $true; SkipLock = $true }
 		if ($null -ne $StateWriter) { $arguments.StateWriter = $StateWriter }
+		if ($null -ne $UpstreamProvenanceReader) { $arguments.UpstreamProvenanceReader = $UpstreamProvenanceReader }
+		if ($null -ne $DirectoryProtector) { $arguments.DirectoryProtector = $DirectoryProtector }
 		$result = Invoke-TideBotProductionUpdate @arguments
 		return @{ result = $result; trace = @($trace); fixture = $fixture }
 	} catch { return @{ error = $_; trace = @($trace); fixture = $fixture } }
 }
 
 try {
+	$checkoutTrace = @('git-fetch-tag', 'git-fetch-main', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'git-test-upstream-provenance')
+	$preparedTrace = @($checkoutTrace + @('docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-build-candidate', 'docker-inspect-candidate-image'))
+	$backupTrace = @($preparedTrace + @('docker-compose-stop-current', 'docker-archive-volume', 'docker-list-archive'))
 	$success = Invoke-UpdateFixture
 	Assert-True ($null -eq $success.error) "Successful deployment unexpectedly failed: $($success.error.Exception.Message)"
-	Assert-Trace $success.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate', 'docker-inspect-candidate-image', 'docker-compose-up-candidate', 'health') 'controlled successful deployment'
+	Assert-Trace $success.trace @($backupTrace + @('docker-compose-up-candidate', 'health')) 'controlled successful deployment'
 	Assert-True ((Read-TideBotDeploymentState $success.fixture.state_path).image_id -eq 'sha256:candidate') 'Successful state did not persist the candidate image.'
+	Assert-True ((Read-TideBotDeploymentState $success.fixture.state_path).upstream_sha -eq ('3' * 40)) 'Successful state did not persist exact upstream provenance.'
 	$gitSwitch = @($success.fixture.calls | Where-Object operation -eq 'git-switch-detach')[0]
 	Assert-True ($gitSwitch.arguments[-1] -eq $success.fixture.commit) 'Candidate checkout was not detached to the validated commit.'
 	$candidateUp = @($success.fixture.calls | Where-Object operation -eq 'docker-compose-up-candidate')[0]
 	Assert-True ($candidateUp.environment_text.Trim() -eq "TIDE_BOT_COMMIT=$($success.fixture.commit)") 'Candidate Compose interpolation was not supplied.'
 	Assert-True ($success.result.oauth_warning -eq 'reconnect_required') 'Safe OAuth reconnect warning was not retained on a healthy deployment.'
+	$protectedDirectories = [Collections.Generic.List[string]]::new()
+	$aclFixture = Invoke-UpdateFixture -DirectoryProtector { param([string] $Path) $protectedDirectories.Add([IO.Path]::GetFullPath($Path)) }
+	Assert-True ($null -eq $aclFixture.error) 'Synthetic ACL-order fixture failed.'
+	Assert-True ($protectedDirectories.Count -eq 2) 'Production root and backup root were not both protected.'
+	Assert-True ($protectedDirectories[0] -eq [IO.Path]::GetFullPath($aclFixture.fixture.root)) 'Production root ACL was not established first.'
+	Assert-True ($protectedDirectories[1] -eq [IO.Path]::GetFullPath((Join-Path $aclFixture.fixture.root 'backups'))) 'Backup ACL was not established before archive writing.'
 
 	$alreadyFixture = New-UpdateFixture
 	$alreadyFixture.commit = ('1' * 40)
 	$alreadyTrace = [Collections.Generic.List[string]]::new()
 	$alreadyResult = Invoke-TideBotProductionUpdate -RepositoryPath $alreadyFixture.root -StateRoot $alreadyFixture.root -StatePath $alreadyFixture.state_path -ComposeFile $alreadyFixture.compose_path -CommandRunner (New-FakeUpdateRunner $alreadyFixture @{} $alreadyTrace) -HealthRunner (New-FakeHealthRunner @{} $alreadyTrace $alreadyFixture) -Synthetic -SkipLock
 	Assert-True ($alreadyResult.status -eq 'already_deployed') 'Recorded deployable tag was not a no-op.'
-	Assert-Trace @($alreadyTrace) @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head') 'already deployed no-op'
+	Assert-Trace @($alreadyTrace) $checkoutTrace 'already deployed no-op'
 
 	$notOnMain = Invoke-UpdateFixture -Failures @{ 'git-test-ancestor-main' = $true }
 	Assert-True ($null -ne $notOnMain.error) 'Candidate outside origin/main was accepted.'
-	Assert-Trace $notOnMain.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main') 'non-ancestor rejection'
+	Assert-Trace $notOnMain.trace @('git-fetch-tag', 'git-fetch-main', 'git-resolve-deployable', 'git-test-ancestor-main') 'non-ancestor rejection'
 
 	$buildFailure = Invoke-UpdateFixture -Failures @{ 'docker-build-candidate' = $true }
 	Assert-True ($null -ne $buildFailure.error) 'Candidate build failure was accepted.'
-	Assert-Trace $buildFailure.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate') 'build failure without rollback'
+	Assert-Trace $buildFailure.trace @($checkoutTrace + @('docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-build-candidate')) 'build failure without rollback'
 
 	$dirty = Invoke-UpdateFixture -Failures @{ 'git-status-clean' = $true }
 	Assert-True ($null -ne $dirty.error) 'Dirty controlled checkout was accepted.'
-	Assert-Trace $dirty.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean') 'dirty checkout rejection'
+	Assert-Trace $dirty.trace @('git-fetch-tag', 'git-fetch-main', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean') 'dirty checkout rejection'
+
+	$setupFailureCases = [ordered]@{
+		marker = 'git-fetch-tag'
+		ref = 'git-resolve-deployable'
+		ancestry = 'git-test-ancestor-main'
+		checkout = 'git-status-clean'
+		provenance = 'git-test-upstream-provenance'
+		build = 'docker-build-candidate'
+		backup = 'docker-archive-volume'
+	}
+	foreach ($case in $setupFailureCases.GetEnumerator()) {
+		$failedSetup = Invoke-UpdateFixture -Failures @{ $case.Value = $true }
+		Assert-True ($null -ne $failedSetup.error) "$($case.Key) setup failure was accepted."
+		$recordPath = Get-ChildItem -LiteralPath $failedSetup.fixture.root -Filter 'failed-deployment-*.json' | Select-Object -First 1
+		Assert-True ($null -ne $recordPath) "$($case.Key) setup failure did not write sanitized state."
+		$record = Get-Content -LiteralPath $recordPath.FullName -Raw | ConvertFrom-Json
+		Assert-True ($record.stage -eq $case.Key -and $record.status -in @('failed', 'rollback_failed')) "$($case.Key) setup failure state was not classified safely."
+		Assert-True ((Get-Content -LiteralPath $recordPath.FullName -Raw) -notmatch 'secret stderr') "$($case.Key) setup failure leaked command stderr."
+	}
+	$missingProvenance = Invoke-UpdateFixture -UpstreamProvenanceReader { param($path) throw 'synthetic malformed provenance detail' }
+	Assert-True ($null -ne $missingProvenance.error) 'Unavailable upstream provenance was accepted.'
+	$missingProvenanceRecord = Get-ChildItem -LiteralPath $missingProvenance.fixture.root -Filter 'failed-deployment-*.json' | Select-Object -First 1
+	Assert-True ((Get-Content -LiteralPath $missingProvenanceRecord.FullName -Raw | ConvertFrom-Json).stage -eq 'provenance') 'Unavailable provenance did not write sanitized failure state.'
 
 	$partial = Invoke-UpdateFixture -Failures @{ 'docker-compose-up-candidate' = $true }
 	Assert-True ($null -ne $partial.error) 'Partial candidate replacement failure was accepted.'
-	Assert-Trace $partial.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate', 'docker-inspect-candidate-image', 'docker-compose-up-candidate', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume', 'docker-compose-up-prior', 'health') 'partial replacement recovery'
+	Assert-Trace $partial.trace @($backupTrace + @('docker-compose-up-candidate', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume', 'docker-compose-up-prior', 'health')) 'partial replacement recovery'
 	$recoveryDown = @($partial.fixture.calls | Where-Object operation -eq 'docker-compose-down')[0]
 	Assert-True ($recoveryDown.environment_text.Trim() -eq ('TIDE_BOT_COMMIT=' + ('1' * 40))) 'Recovery Compose down did not receive the validated predecessor interpolation.'
 	$priorUp = @($partial.fixture.calls | Where-Object operation -eq 'docker-compose-up-prior')[0]
 	Assert-True ($priorUp.environment_text.Trim() -eq ('TIDE_BOT_COMMIT=' + ('1' * 40))) 'Recovery Compose interpolation was not supplied from the validated predecessor.'
 
-	$postReplacementRecoveryTrace = @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate', 'docker-inspect-candidate-image', 'docker-compose-up-candidate', 'health', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume', 'docker-compose-up-prior', 'health')
+	$postReplacementRecoveryTrace = @($backupTrace + @('docker-compose-up-candidate', 'health', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume', 'docker-compose-up-prior', 'health'))
 	foreach ($healthFailure in @('local-health', 'public-health', 'socketio-health')) {
 		$postHealthFailure = Invoke-UpdateFixture -Failures @{ $healthFailure = $true }
 		Assert-True ($null -ne $postHealthFailure.error) "$healthFailure post-replacement failure was accepted."
@@ -128,7 +169,7 @@ try {
 
 	$rollbackFailure = Invoke-UpdateFixture -Failures @{ health = $true; 'docker-restore-volume' = $true }
 	Assert-True ($null -ne $rollbackFailure.error) 'Rollback failure was accepted.'
-	Assert-Trace $rollbackFailure.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive', 'docker-build-candidate', 'docker-inspect-candidate-image', 'docker-compose-up-candidate', 'health', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume') 'rollback failure stops before prior up'
+	Assert-Trace $rollbackFailure.trace @($backupTrace + @('docker-compose-up-candidate', 'health', 'docker-compose-down', 'docker-list-archive', 'docker-restore-volume')) 'rollback failure stops before prior up'
 
 	$firstMigration = Invoke-UpdateFixture -NoState -Failures @{ health = $true }
 	Assert-True ($null -ne $firstMigration.error) 'First-migration failure was accepted.'
@@ -144,7 +185,7 @@ try {
 
 	$invalidPredecessor = Invoke-UpdateFixture -NoState -Failures @{ 'bad-predecessor-label' = $true }
 	Assert-True ($null -ne $invalidPredecessor.error) 'Initial migration accepted an invalid predecessor recovery record.'
-	Assert-Trace $invalidPredecessor.trace @('git-fetch-tag', 'git-resolve-deployable', 'git-test-ancestor-main', 'git-status-clean', 'git-switch-detach', 'git-head', 'docker-inspect-current-image', 'docker-inspect-current-labels', 'docker-archive-volume', 'docker-list-archive') 'invalid predecessor rejection'
+	Assert-Trace $invalidPredecessor.trace @($backupTrace + @('docker-compose-start-current')) 'invalid predecessor rejection'
 
 	$rootRefused = $false
 	try { Invoke-TideBotProductionUpdate -RepositoryPath $success.fixture.root -StateRoot $success.fixture.root -StatePath $success.fixture.state_path -ComposeFile $success.fixture.compose_path -CommandRunner (New-FakeUpdateRunner $success.fixture @{} ([Collections.Generic.List[string]]::new())) -HealthRunner (New-FakeHealthRunner @{} ([Collections.Generic.List[string]]::new()) $success.fixture) -SkipLock | Out-Null } catch { $rootRefused = $true }
@@ -156,8 +197,46 @@ try {
 	try { Write-TideBotDeploymentState (Join-Path $success.fixture.root 'unsafe-state.json') $unsafeState } catch { $unsafeRejected = $true }
 	Assert-True $unsafeRejected 'State writer accepted OAuth fields outside the safe schema.'
 
+	$gitContractRoot = Join-Path $success.fixture.root 'git-ref-contract'
+	$remotePath = Join-Path $gitContractRoot 'origin.git'; $seedPath = Join-Path $gitContractRoot 'seed'; $controlledPath = Join-Path $gitContractRoot 'controlled'
+	New-Item -ItemType Directory -Path $gitContractRoot -Force | Out-Null
+	& git init --bare $remotePath | Out-Null
+	& git init -b main $seedPath | Out-Null
+	& git -C $seedPath config user.name fixture
+	& git -C $seedPath config user.email fixture@example.invalid
+	Set-Content -LiteralPath (Join-Path $seedPath 'fixture.txt') -Value first -Encoding ascii
+	& git -C $seedPath add fixture.txt; & git -C $seedPath commit -m first | Out-Null
+	$firstCommit = (& git -C $seedPath rev-parse HEAD).Trim()
+	& git -C $seedPath remote add origin $remotePath; & git -C $seedPath push -u origin main | Out-Null
+	& git clone --branch main $remotePath $controlledPath | Out-Null
+	Set-Content -LiteralPath (Join-Path $seedPath 'fixture.txt') -Value second -Encoding ascii
+	& git -C $seedPath commit -am second | Out-Null
+	$secondCommit = (& git -C $seedPath rev-parse HEAD).Trim()
+	& git -C $seedPath push origin main | Out-Null
+	& git -C $seedPath tag -f tide-bot-deployable $secondCommit
+	& git -C $seedPath push --force origin refs/tags/tide-bot-deployable | Out-Null
+	& git -C $seedPath push origin "$firstCommit`:refs/heads/tide-bot-deployable" | Out-Null
+	Assert-True ((& git -C $controlledPath rev-parse origin/main).Trim() -eq $firstCommit) 'Synthetic controlled checkout did not start with stale origin/main.'
+	Assert-True ((Invoke-TideBotCommand 'git-fetch-tag' @($controlledPath)).exit_code -eq 0) 'Exact synthetic deployable tag fetch failed.'
+	Assert-True ((Invoke-TideBotCommand 'git-fetch-main' @($controlledPath)).exit_code -eq 0) 'Synthetic origin/main refresh failed.'
+	$resolvedTag = (Invoke-TideBotCommand 'git-resolve-deployable' @($controlledPath)).stdout.Trim()
+	Assert-True ($resolvedTag -eq $secondCommit) 'Exact tag ref did not resolve the tagged commit.'
+	Assert-True ((& git -C $controlledPath rev-parse origin/main).Trim() -eq $secondCommit) 'origin/main remained stale after the required refresh.'
+	Assert-True ((Invoke-TideBotCommand 'git-test-ancestor-main' @($controlledPath, $resolvedTag)).exit_code -eq 0) 'Refreshed origin/main ancestry rejected the exact tag.'
+	& git -C $controlledPath fetch origin refs/heads/tide-bot-deployable:refs/remotes/origin/tide-bot-deployable | Out-Null
+	$rejectedRemoteBranchCommit = (& git -C $controlledPath rev-parse 'origin/tide-bot-deployable^{commit}').Trim()
+	Assert-True ($rejectedRemoteBranchCommit -eq $firstCommit -and $rejectedRemoteBranchCommit -ne $resolvedTag) 'Synthetic remote-branch trap did not prove exact-tag resolution rejects the branch formulation.'
+
 	$updaterSource = Get-Content -LiteralPath $updaterPath -Raw
-	Assert-True ($updaterSource -match 'tar --zstd') 'Production dispatcher does not use zstd for .tar.zst archives.'
+	Assert-True ($updaterSource -match 'refs/tags/tide-bot-deployable:refs/tags/tide-bot-deployable') 'Production dispatcher does not fetch the exact deployable tag ref.'
+	Assert-True ($updaterSource -match "rev-parse', 'refs/tags/tide-bot-deployable\^\{commit\}") 'Production dispatcher does not resolve the exact deployable tag ref.'
+	Assert-True ($updaterSource -notmatch 'origin/tide-bot-deployable') 'Production dispatcher still accepts the rejected remote-branch formulation.'
+	Assert-True ($updaterSource -match 'refs/heads/main:refs/remotes/origin/main') 'Production dispatcher does not refresh origin/main before ancestry validation.'
+	Assert-True ($updaterSource -notmatch 'alpine:|apk add|--zstd') 'Production backup still relies on a mutable image, online package installation, or zstd helper tooling.'
+	Assert-True ($updaterSource.IndexOf("'docker-compose-stop-current'") -lt $updaterSource.IndexOf("'docker-archive-volume'")) 'Production backup does not stop the SQLite writer before snapshotting.'
+	Assert-True ($updaterSource -match 'upstream_sha = \$upstreamSha') 'Successful state does not use independently validated upstream provenance.'
+	Assert-True ($updaterSource -match "@\('S-1-5-18', 'S-1-5-32-544'\)") 'Production directory ACL does not restrict access to SYSTEM and Administrators.'
+	Assert-True ($updaterSource -match 'SetAccessRuleProtection\(\$true, \$false\)') 'Production directory ACL still inherits broader parent permissions.'
 
 	$entryOutput = & $updaterPath -WhatIf 2>&1 | Out-String
 	Assert-True ($entryOutput -match 'state\\\\last-successful-deployment.json') 'Normal script entry point did not preserve its StatePath default.'
