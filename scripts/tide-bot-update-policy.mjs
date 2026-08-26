@@ -62,7 +62,12 @@ export function buildUpdateGateCommands(npmCommand) {
 			options: { env: { PYTHONPATH: 'backend', WEBUI_SECRET_KEY: 'update-gate-test-secret' } }
 		},
 		{ name: 'branding audit', command: npmCommand, args: ['run', 'audit:branding'] },
-		{ name: 'production frontend build', command: npmCommand, args: ['run', 'build'] },
+		{
+			name: 'production frontend build',
+			command: npmCommand,
+			args: ['run', 'build'],
+			options: { env: { NODE_OPTIONS: '--max-old-space-size=8192' } }
+		},
 		{
 			name: 'isolated disposable companion smoke',
 			command: npmCommand,

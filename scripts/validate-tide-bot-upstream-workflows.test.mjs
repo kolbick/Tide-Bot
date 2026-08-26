@@ -167,6 +167,19 @@ test('common gate selects companion and real browser voice test commands', () =>
 	});
 });
 
+test('common gate pins the production frontend build heap independently of ambient CI settings', () => {
+	const productionBuild = buildUpdateGateCommands('npm').find(
+		(command) => command.name === 'production frontend build'
+	);
+
+	assert.deepEqual(productionBuild, {
+		name: 'production frontend build',
+		command: 'npm',
+		args: ['run', 'build'],
+		options: { env: { NODE_OPTIONS: '--max-old-space-size=8192' } }
+	});
+});
+
 test('deployable workflow only starts from trusted main push or explicit dispatch', () => {
 	assert.deepEqual(deployable.on.push.branches, ['main']);
 	assert.ok(Object.hasOwn(deployable.on, 'workflow_dispatch'));
