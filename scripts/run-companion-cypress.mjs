@@ -123,9 +123,59 @@ async function findComposePlugin(platform, accessFile) {
 	throw new Error('Docker Compose plugin was not found in a fixed system location');
 }
 
-function sanitizedFailure(operation, result) {
+const failureDiagnosticLimit = 2000;
+
+function isSensitiveFieldName(fieldName) {
+	const segments = fieldName
+		.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+		.toLowerCase()
+		.split(/[-_]+/)
+		.filter(Boolean);
+	if (segments.some((segment) => ['password', 'token', 'secret'].includes(segment))) {
+		return true;
+	}
+	return segments.some(
+		(segment, index) => segment === 'api' && /^keys?$/.test(segments[index + 1] ?? '')
+	);
+}
+
+function hasSensitiveFieldDelimiter(line) {
+	const fieldPattern = /(["']?)([A-Za-z0-9_-]+)\1\s*[:=]/g;
+	return [...line.matchAll(fieldPattern)].some((match) => isSensitiveFieldName(match[2]));
+}
+
+function redactFailureDiagnostic(value, { webuiSecret, privateEnvFile }) {
+	let redacted = String(value ?? '');
+	for (const exactValue of [webuiSecret, privateEnvFile]) {
+		if (exactValue) redacted = redacted.replaceAll(exactValue, '[REDACTED]');
+	}
+	return redacted
+		.replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [REDACTED]')
+		.replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi, '$1[REDACTED]@')
+		.split(/\r?\n/)
+		.filter(
+			(line) =>
+				!/\bAuthorization\s*:/i.test(line) &&
+				!hasSensitiveFieldDelimiter(line) &&
+				!/^\s*request body\s*:/i.test(line)
+		)
+		.join('\n')
+		.trim();
+}
+
+export function sanitizedFailure(operation, result, sensitiveValues = {}) {
 	const code = result?.status ?? 'unknown';
-	return new Error(`${operation} failed with exit ${code}`);
+	const message = `${operation} failed with exit ${code}`;
+	const diagnostic = redactFailureDiagnostic(
+		`${result?.stderr ?? ''}\n${result?.stdout ?? ''}`,
+		sensitiveValues
+	);
+	if (!diagnostic) return new Error(message);
+	const boundedDiagnostic =
+		diagnostic.length > failureDiagnosticLimit
+			? `…${diagnostic.slice(-(failureDiagnosticLimit - 1))}`
+			: diagnostic;
+	return new Error(`${message}: ${boundedDiagnostic}`);
 }
 
 async function waitForFixture(fetchImpl, fixtureOrigin) {
@@ -263,7 +313,7 @@ export async function runCompanionCypress({
 				throw new Error(`${operation} did not complete (${result.error.code ?? 'spawn error'})`);
 			}
 			if (result.status !== 0) {
-				throw sanitizedFailure(operation, result);
+				throw sanitizedFailure(operation, result, { webuiSecret, privateEnvFile });
 			}
 			return result.stdout ?? '';
 		};

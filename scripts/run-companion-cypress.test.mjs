@@ -7,7 +7,7 @@ import test from 'node:test';
 import YAML from 'yaml';
 
 import { createFakeOpenAIServer } from '../deploy/tide-stack/cypress-fake-openai/server.mjs';
-import { runCompanionCypress } from './run-companion-cypress.mjs';
+import { runCompanionCypress, sanitizedFailure } from './run-companion-cypress.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const composeFile = join(repoRoot, 'deploy', 'tide-stack', 'docker-compose.cypress-companion.yml');
@@ -20,7 +20,7 @@ function isCypressBinary(value) {
 	return /[\\/]node_modules[\\/](?:\.bin[\\/]cypress|cypress[\\/]bin[\\/]cypress)$/.test(value);
 }
 
-function fakeSpawnRecorder({ cypressResult = ok('Cypress run complete') } = {}) {
+function fakeSpawnRecorder({ cypressResult = ok('Cypress run complete'), composeUpResult } = {}) {
 	const calls = [];
 	const spawn = (command, args, options) => {
 		calls.push({ command, args: [...args], options: { ...options } });
@@ -46,6 +46,11 @@ function fakeSpawnRecorder({ cypressResult = ok('Cypress run complete') } = {}) 
 		}
 		if (joined.includes('compose') && joined.includes('logs')) {
 			return ok('');
+		}
+		if (joined.includes('compose') && args.includes('up') && composeUpResult) {
+			return typeof composeUpResult === 'function'
+				? composeUpResult(command, args)
+				: composeUpResult;
 		}
 		if (args.some(isCypressBinary)) {
 			return cypressResult;
@@ -351,6 +356,186 @@ test('redacts failed Cypress output and still tears down only the isolated proje
 		assert.deepEqual(await readdir(fixtureRoot), []);
 	} finally {
 		await rm(fixtureRoot, { recursive: true, force: true });
+	}
+});
+
+test('reports bounded Compose failure diagnostics without secrets or private paths', async () => {
+	const fixtureRoot = await mkdtemp(join(tmpdir(), 'companion-compose-diagnostic-test-'));
+	const generatedSecret = 'unit-generated-secret';
+	const bearer = 'bearer-credential';
+	const apiKey = 'sk-sensitive-api-key';
+	const password = 'database-password';
+	const token = 'sensitive-token';
+	const { spawn } = fakeSpawnRecorder({
+		composeUpResult: (_command, args) => {
+			const envFile = args[args.indexOf('--env-file') + 1];
+			return {
+				status: 1,
+				signal: null,
+				stdout: `WEBUI_SECRET_KEY=${generatedSecret}\nAuthorization: Bearer ${bearer}`,
+				stderr: [
+					'x'.repeat(5000),
+					'Container tide-bot Starting',
+					'Error response from daemon: driver failed programming external connectivity: bind: address already in use',
+					`env file ${envFile}`,
+					`OPENAI_API_KEYS=${apiKey}`,
+					`PASSWORD=${password}`,
+					`TOKEN=${token}`,
+					`database postgresql://dbuser:${password}@database.internal/tide`
+				].join('\n')
+			};
+		}
+	});
+
+	try {
+		assert.equal(
+			sanitizedFailure('start isolated stack', { status: 1, stdout: '', stderr: '' }).message,
+			'start isolated stack failed with exit 1'
+		);
+		await assert.rejects(
+			runCompanionCypress({
+				env: { RUN_ID: 'compose-diagnostic', PATH: '/hostile/bin' },
+				argv: ['node', 'run-companion-cypress.mjs'],
+				platform: 'linux',
+				accessFile: async (candidate) => {
+					if (
+						candidate !== '/usr/libexec/docker/cli-plugins/docker-compose' &&
+						candidate !== '/usr/bin/docker'
+					) {
+						throw new Error('not installed');
+					}
+				},
+				linkFile: async () => {},
+				spawn,
+				tempRoot: fixtureRoot,
+				reservePorts: async () => ({ appPort: 49420, fixturePort: 49421 }),
+				randomSecret: () => generatedSecret,
+				fetchImpl: async () => ({ ok: true }),
+				output: () => {},
+				errorOutput: () => {}
+			}),
+			(error) => {
+				assert.match(error.message, /bind: address already in use/);
+				assert.doesNotMatch(
+					error.message,
+					new RegExp(
+						[generatedSecret, bearer, apiKey, password, token, 'companion-cypress\\.env'].join('|')
+					)
+				);
+				assert.ok(error.message.length <= 2100);
+				return true;
+			}
+		);
+	} finally {
+		await rm(fixtureRoot, { recursive: true, force: true });
+	}
+});
+
+test('redacts colon and quoted sensitive-field mutations while preserving Compose causes', () => {
+	const mutations = [
+		['Compose API key', 'OPENAI_API_KEY: sk-compose-secret', 'sk-compose-secret'],
+		['Compose password', 'password: compose-password', 'compose-password'],
+		['Compose token', 'token: compose-token', 'compose-token'],
+		['hyphenated API key header', 'x-api-key: header-secret', 'header-secret'],
+		['quoted JSON API key', '"OPENAI_API_KEY": "sk-json-secret"', 'sk-json-secret'],
+		['quoted JSON password', '"password": "json-password"', 'json-password'],
+		['quoted JSON token', "'token': 'json-token'", 'json-token'],
+		['camel-case API key', 'apiKey: camel-secret', 'camel-secret'],
+		['snake-case access token', 'access_token: snake-secret', 'snake-secret'],
+		['hyphenated client secret', 'client-secret: hyphen-secret', 'hyphen-secret']
+	];
+
+	for (const [name, sensitiveLine, secretValue] of mutations) {
+		const error = sanitizedFailure(
+			'start isolated stack',
+			{
+				status: 1,
+				stdout: '',
+				stderr: `Error response from daemon: network tide-isolated not found\n${sensitiveLine}`
+			},
+			{}
+		);
+		assert.match(error.message, /network tide-isolated not found/, name);
+		assert.doesNotMatch(error.message, new RegExp(secretValue), name);
+	}
+});
+
+test('fully masks escaped JSON and whitespace values without hiding benign field names', () => {
+	const error = sanitizedFailure(
+		'start isolated stack',
+		{
+			status: 1,
+			stdout: '',
+			stderr: [
+				'Error response from daemon: service configuration rejected',
+				'{"password":"abc\\\"def"}',
+				'password: compose password with spaces',
+				'daemon: password: compose password with spaces',
+				'daemon: token=access token with spaces',
+				'daemon: apiKey: sk-inline-secret',
+				'tokenizer: cl100k_base',
+				'passwordless: enabled',
+				'secretary: available',
+				'apiKeyboard: qwerty'
+			].join('\n')
+		},
+		{}
+	);
+
+	assert.match(error.message, /service configuration rejected/);
+	assert.doesNotMatch(
+		error.message,
+		/abc|def|compose password|access token|with spaces|sk-inline-secret/
+	);
+	for (const sensitivePrefix of ['daemon: password:', 'daemon: token=', 'daemon: apiKey:']) {
+		assert.equal(error.message.includes(sensitivePrefix), false, sensitivePrefix);
+	}
+	for (const benignLine of [
+		'tokenizer: cl100k_base',
+		'passwordless: enabled',
+		'secretary: available',
+		'apiKeyboard: qwerty'
+	]) {
+		assert.match(error.message, new RegExp(benignLine), benignLine);
+	}
+});
+
+test('fails closed on sensitive fields in quoted, prefixed, and bracketed contexts', () => {
+	const sensitiveLines = [
+		'daemon: password: "quoted password"',
+		"daemon: token='quoted token'",
+		'daemon: apiKey: "quoted-api-key"',
+		'[password: bracket-password]',
+		'(token: parenthesized-token)',
+		'{"password":"json-password"}',
+		'{"x-api-key":"json-api-key"}'
+	];
+	const benignLines = [
+		'tokenizer: cl100k_base',
+		'passwordless: enabled',
+		'secretary: available',
+		'apiKeyboard: qwerty'
+	];
+	const error = sanitizedFailure(
+		'start isolated stack',
+		{
+			status: 1,
+			stdout: '',
+			stderr: [
+				'Error response from daemon: port is already allocated',
+				...sensitiveLines,
+				...benignLines
+			].join('\n')
+		},
+		{}
+	);
+
+	assert.match(error.message, /port is already allocated/);
+	for (const sensitiveLine of sensitiveLines) {
+		assert.equal(error.message.includes(sensitiveLine), false, sensitiveLine);
+	}
+	for (const benignLine of benignLines) {
+		assert.ok(error.message.includes(benignLine), benignLine);
 	}
 });
 
