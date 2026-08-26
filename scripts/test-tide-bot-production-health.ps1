@@ -29,11 +29,16 @@ function Invoke-HealthFixture {
 
 $connected = '{"connection_present":true,"credential_decryptable":true,"credential_state":"connected","model_catalog_available":true,"model_count":4}'
 $reconnect = '{"connection_present":true,"credential_decryptable":true,"credential_state":"reconnect_required","model_catalog_available":false,"model_count":0}'
+$healthSource = Get-Content -LiteralPath $healthPath -Raw
+Assert-True ($healthSource -match "@\('exec', 'tide-bot', 'python'") 'OAuth health does not target the active Tide-Bot container.'
+Assert-True ($healthSource -notmatch 'tidebot-open-webui|3001') 'Health operations still reference the legacy unrouted stack.'
+Assert-True ($healthSource -match "socketio_path='ws/socket.io'.+transports=\['websocket'\]") 'Socket.IO health does not exercise the public WebSocket transport.'
+Assert-True ($healthSource -notmatch 'transport=polling') 'Socket.IO health still probes the disabled polling transport.'
 
 $healthy = @{
 	'local-health' = @{ exit_code = 0; stdout = '{"status":true}'; stderr = '' }
 	'public-health' = @{ exit_code = 0; stdout = 'OK'; stderr = '' }
-	'socketio-health' = @{ exit_code = 0; stdout = '0{"sid":"fixture"}'; stderr = '' }
+	'socketio-health' = @{ exit_code = 0; stdout = "connected`n"; stderr = '' }
 	'oauth-health' = @{ exit_code = 0; stdout = $connected + "`n"; stderr = 'private diagnostic' }
 }
 

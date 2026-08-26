@@ -30,9 +30,10 @@ function Invoke-TideBotHealthCommand {
 			try { $response = Invoke-WebRequest 'https://tide-bot.com/health' -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop; return @{ exit_code = 0; stdout = $response.Content; stderr = '' } } catch { return @{ exit_code = 1; stdout = ''; stderr = $_.Exception.Message } }
 		}
 		'socketio-health' {
-			try { $response = Invoke-WebRequest 'http://127.0.0.1:3102/socket.io/?EIO=4&transport=polling' -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop; return @{ exit_code = 0; stdout = $response.Content; stderr = '' } } catch { return @{ exit_code = 1; stdout = ''; stderr = $_.Exception.Message } }
+			$code = "import socketio; c=socketio.Client(); c.connect('https://tide-bot.com', socketio_path='ws/socket.io', transports=['websocket'], wait_timeout=15); print('connected' if c.connected else 'disconnected'); c.disconnect()"
+			return Invoke-TideBotHealthProcess -FilePath 'docker' -Arguments @('exec', 'tide-bot', 'python', '-c', $code)
 		}
-		'oauth-health' { return Invoke-TideBotHealthProcess -FilePath 'docker' -Arguments @('exec', 'tidebot-open-webui', 'python', '-m', 'open_webui.cli.verify_chatgpt_subscription') }
+		'oauth-health' { return Invoke-TideBotHealthProcess -FilePath 'docker' -Arguments @('exec', 'tide-bot', 'python', '-m', 'open_webui.cli.verify_chatgpt_subscription') }
 		default { throw "Unknown health operation '$Operation'." }
 	}
 }
@@ -57,7 +58,7 @@ function Invoke-TideBotProductionHealth {
 	$public = & $CommandRunner 'public-health' @()
 	if ($public.exit_code -ne 0) { return @{ healthy = $false; exit_code = 1; local_health = $true; public_health = $false; socketio_health = $false; oauth_healthy = $false; oauth_warning = $null; oauth = $null } }
 	$socket = & $CommandRunner 'socketio-health' @()
-	if ($socket.exit_code -ne 0 -or -not $socket.stdout.StartsWith('0{')) { return @{ healthy = $false; exit_code = 1; local_health = $true; public_health = $true; socketio_health = $false; oauth_healthy = $false; oauth_warning = $null; oauth = $null } }
+	if ($socket.exit_code -ne 0 -or $socket.stdout.Trim() -ne 'connected') { return @{ healthy = $false; exit_code = 1; local_health = $true; public_health = $true; socketio_health = $false; oauth_healthy = $false; oauth_warning = $null; oauth = $null } }
 
 	$oauthCommand = & $CommandRunner 'oauth-health' @()
 	try { $oauth = Get-TideBotOAuthResult -CommandResult $oauthCommand } catch { return @{ healthy = $false; exit_code = 1; local_health = $true; public_health = $true; socketio_health = $true; oauth_healthy = $false; oauth_warning = $null; oauth = $null } }

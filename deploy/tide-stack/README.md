@@ -5,15 +5,19 @@ gateway are privileged integrations and require explicit Compose overlays.
 
 ## Canonical production overlay
 
-The local files in this directory remain development-only. Production uses the
-canonical `docker-compose.live.yml` overlay, which attaches the existing
-`tidebot-webui_tidebot-open-webui` data volume,
-`tidebot-webui_tidebot-computer` terminal volume, and `tidebot-net` network as
-explicit external resources. It never publishes a terminal or CPTR port.
+The base and optional overlays in this directory remain development-only.
+Production uses the canonical `docker-compose.live.yml` overlay, which attaches
+the existing `tide-bot-data` volume and `tide-bot-network` network as explicit
+external resources. Its project, service, and container are all named
+`tide-bot`; its only published port is
+`127.0.0.1:${TIDE_BOT_PORT:-3102}:8080`. It never publishes a terminal or CPTR
+port. The unrouted legacy `tidebot-open-webui` stack and its volumes are outside
+this deployment path and must remain untouched.
 
-Copy only reviewed variable names from the approved legacy environment source
-into the host-only `C:\ProgramData\Tide-Bot\production.env` file using
-`scripts\initialize-tide-bot-production-environment.ps1`. The tracked
+Initialize the host-only `C:\ProgramData\Tide-Bot\production.env` from the
+active public stack environment at `C:\Users\sshkolby\tide-bot-new\deploy\tide-stack\.env` using
+`scripts\initialize-tide-bot-production-environment.ps1`; never print its
+values. The tracked
 `.env.live.example` contains no usable values. The scheduled updater sets the
 immutable `TIDE_BOT_COMMIT`. Task 3 validates a recorded image ID and creates a
 private ignored one-use Compose override for a no-build recovery.

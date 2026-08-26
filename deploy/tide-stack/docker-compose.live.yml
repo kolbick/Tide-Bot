@@ -1,17 +1,17 @@
-name: tidebot-webui
+name: tide-bot
 
 services:
-  tidebot-open-webui:
+  tide-bot:
     build:
       context: ../..
       dockerfile: Dockerfile
       args:
         BUILD_HASH: ${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}
-    image: tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}
-    container_name: tidebot-open-webui
+    image: tide-bot:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}
+    container_name: tide-bot
     restart: unless-stopped
     ports:
-      - '127.0.0.1:${TIDEBOT_OPEN_WEBUI_PORT:-3102}:8080'
+      - '127.0.0.1:${TIDE_BOT_PORT:-3102}:8080'
     environment:
       WEBUI_NAME: Tide-Bot
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY is required}
@@ -37,10 +37,9 @@ services:
       TERMINAL_PROXY_HEADERS: ${TERMINAL_PROXY_HEADERS:-{}}
       ENABLE_TERMINAL: ${ENABLE_TERMINAL:-}
     volumes:
-      - tidebot_data:/app/backend/data
-      - tidebot_computer:/root/.open-webui
+      - tide-bot-data:/app/backend/data
     networks:
-      - tidebot_net
+      - tide-bot-network
     healthcheck:
       test:
         [
@@ -53,14 +52,11 @@ services:
       start_period: 30s
 
 volumes:
-  tidebot_data:
+  tide-bot-data:
     external: true
-    name: tidebot-webui_tidebot-open-webui
-  tidebot_computer:
-    external: true
-    name: tidebot-webui_tidebot-computer
+    name: tide-bot-data
 
 networks:
-  tidebot_net:
+  tide-bot-network:
     external: true
-    name: tidebot-net
+    name: tide-bot-network

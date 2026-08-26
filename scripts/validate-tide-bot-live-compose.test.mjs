@@ -11,7 +11,7 @@ const composePath = resolve(repositoryRoot, 'deploy/tide-stack/docker-compose.li
 const envExamplePath = resolve(repositoryRoot, 'deploy/tide-stack/.env.live.example');
 const initializerPath = resolve(repositoryRoot, 'scripts/initialize-tide-bot-production-environment.ps1');
 
-const approvedContainerNames = new Set(['tidebot-open-webui', 'tide-terminal', 'tide-cptr-gateway']);
+const approvedContainerNames = new Set(['tide-bot']);
 
 async function readCompose() {
 	return YAML.parse(await readFile(composePath, 'utf8'));
@@ -22,7 +22,7 @@ function composeConfig(environment) {
 	for (const name of [
 		'TIDE_BOT_COMMIT',
 		'TIDE_BOT_IMAGE_REF',
-		'TIDEBOT_OPEN_WEBUI_PORT',
+		'TIDE_BOT_PORT',
 		'COMPOSE_FILE',
 		'COMPOSE_PROJECT_NAME',
 		'COMPOSE_PROFILES',
@@ -50,21 +50,23 @@ function composeConfig(environment) {
 	);
 }
 
-test('live compose preserves the legacy resource contract without a host environment file', async () => {
+test('live compose targets only the active public Tide-Bot resources', async () => {
 	const compose = await readCompose();
-	const service = compose.services['tidebot-open-webui'];
+	const service = compose.services['tide-bot'];
 
-	assert.equal(compose.name, 'tidebot-webui');
-	assert.equal(service.container_name, 'tidebot-open-webui');
-	assert.equal(service.ports[0], '127.0.0.1:${TIDEBOT_OPEN_WEBUI_PORT:-3102}:8080');
-	assert.equal(service.image, 'tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}');
+	assert.deepEqual(Object.keys(compose.services), ['tide-bot']);
+	assert.equal(compose.name, 'tide-bot');
+	assert.equal(service.container_name, 'tide-bot');
+	assert.deepEqual(service.ports, ['127.0.0.1:${TIDE_BOT_PORT:-3102}:8080']);
+	assert.equal(service.image, 'tide-bot:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}');
 	assert.equal(service.build.args.BUILD_HASH, '${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}');
-	assert.equal(compose.volumes.tidebot_data.external, true);
-	assert.equal(compose.volumes.tidebot_data.name, 'tidebot-webui_tidebot-open-webui');
-	assert.equal(compose.volumes.tidebot_computer.external, true);
-	assert.equal(compose.volumes.tidebot_computer.name, 'tidebot-webui_tidebot-computer');
-	assert.equal(compose.networks.tidebot_net.external, true);
-	assert.equal(compose.networks.tidebot_net.name, 'tidebot-net');
+	assert.deepEqual(Object.keys(compose.volumes), ['tide-bot-data']);
+	assert.equal(compose.volumes['tide-bot-data'].external, true);
+	assert.equal(compose.volumes['tide-bot-data'].name, 'tide-bot-data');
+	assert.deepEqual(Object.keys(compose.networks), ['tide-bot-network']);
+	assert.equal(compose.networks['tide-bot-network'].external, true);
+	assert.equal(compose.networks['tide-bot-network'].name, 'tide-bot-network');
+	assert.doesNotMatch(await readFile(composePath, 'utf8'), /tidebot-open-webui|tidebot-webui|tidebot-net|3001/);
 	assert.doesNotMatch(await readFile(envExamplePath, 'utf8'), /(?:sk-|Bearer |refresh_token|WEBUI_SECRET_KEY=.{20,})/i);
 
 	for (const configuredService of Object.values(compose.services)) {
@@ -90,8 +92,8 @@ test('live Compose requires a commit and ignores an arbitrary image override', (
 
 	const standardBuild = composeConfig({ TIDE_BOT_COMMIT: 'fixture-commit' });
 	assert.equal(standardBuild.status, 0, standardBuild.stderr);
-	const standardService = JSON.parse(standardBuild.stdout).services['tidebot-open-webui'];
-	assert.equal(standardService.image, 'tidebot-open-webui:fixture-commit');
+	const standardService = JSON.parse(standardBuild.stdout).services['tide-bot'];
+	assert.equal(standardService.image, 'tide-bot:fixture-commit');
 	assert.equal(standardService.build.args.BUILD_HASH, 'fixture-commit');
 
 	const arbitraryImageOverride = composeConfig({
@@ -99,14 +101,14 @@ test('live Compose requires a commit and ignores an arbitrary image override', (
 		TIDE_BOT_IMAGE_REF: 'unrecognized-image:arbitrary-tag'
 	});
 	assert.equal(arbitraryImageOverride.status, 0, arbitraryImageOverride.stderr);
-	assert.equal(JSON.parse(arbitraryImageOverride.stdout).services['tidebot-open-webui'].image, 'tidebot-open-webui:fixture-commit');
+	assert.equal(JSON.parse(arbitraryImageOverride.stdout).services['tide-bot'].image, 'tide-bot:fixture-commit');
 });
 
 test('live Compose omits the OAuth encryption key unless an explicit key is configured', () => {
 	const omitted = composeConfig({ TIDE_BOT_COMMIT: 'fixture-commit' });
 	assert.equal(omitted.status, 0, omitted.stderr);
 	assert.equal(
-		JSON.parse(omitted.stdout).services['tidebot-open-webui'].environment.OAUTH_CLIENT_INFO_ENCRYPTION_KEY,
+		JSON.parse(omitted.stdout).services['tide-bot'].environment.OAUTH_CLIENT_INFO_ENCRYPTION_KEY,
 		null,
 		'Compose null pass-through must remain unset, never an empty string'
 	);
@@ -117,7 +119,7 @@ test('live Compose omits the OAuth encryption key unless an explicit key is conf
 	});
 	assert.equal(explicit.status, 0, explicit.stderr);
 	assert.equal(
-		JSON.parse(explicit.stdout).services['tidebot-open-webui'].environment.OAUTH_CLIENT_INFO_ENCRYPTION_KEY,
+		JSON.parse(explicit.stdout).services['tide-bot'].environment.OAUTH_CLIENT_INFO_ENCRYPTION_KEY,
 		'fixture-explicit-oauth-key'
 	);
 });

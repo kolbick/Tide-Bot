@@ -9,11 +9,18 @@ with the local development Compose files.
 ## Production environment and Compose validation
 
 The host-only environment file is `C:\ProgramData\Tide-Bot\production.env`.
-Initialize it once from the approved legacy source with
-`scripts\initialize-tide-bot-production-environment.ps1`; the initializer
-copies the source without printing its values, leaves the source intact, removes
-only a legacy empty `OAUTH_CLIENT_INFO_ENCRYPTION_KEY=` declaration so the
-backend continues to fall back to `WEBUI_SECRET_KEY`, and
+Initialize it once from the environment used by the active public stack at
+`C:\Users\sshkolby\tide-bot-new\deploy\tide-stack\.env`; do not print or copy its values into
+documentation or version control:
+
+```powershell
+pwsh -NoProfile -File C:\ProgramData\Tide-Bot\repo\scripts\initialize-tide-bot-production-environment.ps1 `
+  -SourceEnvFile C:\Users\sshkolby\tide-bot-new\deploy\tide-stack\.env
+```
+
+The initializer copies the source without printing its values, leaves the
+source intact, removes only an empty `OAUTH_CLIENT_INFO_ENCRYPTION_KEY=`
+declaration so the backend continues to fall back to `WEBUI_SECRET_KEY`, and
 protects the destination ACL for Administrators and the scheduled task
 identity. The optional `-ScheduledTaskIdentity` must name the same specific
 service or user account Task 4 registers; broad Windows groups are rejected.
@@ -71,10 +78,13 @@ confirms both the exact task name and task path before unregistering it.
 pwsh -NoProfile -File scripts\install-tide-bot-production-schedule.ps1 -Disable
 ```
 
-This overlay attaches the existing `tidebot-webui_tidebot-open-webui` and
-`tidebot-webui_tidebot-computer` volumes plus the `tidebot-net` network as
-external resources. Never create replacements or run a volume-removing
-command against them.
+This overlay targets only the active Compose project, service, and container
+named `tide-bot`. It attaches the existing `tide-bot-data` volume and
+`tide-bot-network` network as external resources and binds only
+`127.0.0.1:3102` by default. Never create replacements or run a
+volume-removing command against them. The legacy `tidebot-open-webui` container
+and its volumes are unrouted historical resources; this procedure neither
+stops, replaces, archives, restores, nor removes them.
 
 ## Public proxy
 
@@ -96,8 +106,8 @@ force-refreshes only the exact `refs/tags/tide-bot-deployable` tag ref plus
 `origin/main`, rejects tagged commits outside refreshed `origin/main`, and
 builds the candidate before stopping the application writer. While the service
 is stopped it uses the already-local immutable predecessor image (with pulls
-disabled) to take a consistent archive of exactly
-`tidebot-webui_tidebot-open-webui`, records a SHA-256 manifest, and writes a
+disabled) to take a consistent archive of exactly `tide-bot-data`, records that
+exact volume name and a SHA-256 archive digest in the manifest, and writes a
 sanitized deployment state record. Backups are UTC-sortable files below
 `C:\ProgramData\Tide-Bot\backups`; they are never deleted by the updater. The
 production root and backup tree use protected SYSTEM/Administrators-only ACLs.

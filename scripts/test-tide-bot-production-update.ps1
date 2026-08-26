@@ -16,7 +16,7 @@ function New-UpdateFixture {
 		@{ schema_version = 1; commit = ('1' * 40); upstream_sha = ('1' * 40); image_id = 'sha256:prior'; deployed_at_utc = '2026-08-01T00:00:00Z'; local_health = $true; public_health = $true; socketio_health = $true; oauth = @{ connection_present = $true; credential_decryptable = $true; credential_state = 'connected'; model_catalog_available = $true; model_count = 1 } } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
 	}
 	$composePath = Join-Path $root 'docker-compose.live.yml'
-	Set-Content -LiteralPath $composePath -Value 'name: tidebot-webui' -Encoding utf8NoBOM
+	Set-Content -LiteralPath $composePath -Value 'name: tide-bot' -Encoding utf8NoBOM
 	New-Item -ItemType Directory -Path (Join-Path $root 'docs') -Force | Out-Null
 	Set-Content -LiteralPath (Join-Path $root 'docs\UPSTREAM_MAIN_SHA') -Value ('3' * 40) -Encoding ascii
 	return @{ root = $root; state_path = $statePath; compose_path = $composePath; commit = ('2' * 40); calls = [Collections.Generic.List[object]]::new() }
@@ -40,7 +40,7 @@ function New-FakeUpdateRunner {
 			'git-switch-detach' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'git-head' { return @{ exit_code = 0; stdout = "$($Fixture.commit)`n"; stderr = '' } }
 			'docker-inspect-current-image' { return @{ exit_code = 0; stdout = 'sha256:prior'; stderr = '' } }
-			'docker-inspect-current-labels' { if ($Failures.ContainsKey('bad-predecessor-label')) { return @{ exit_code = 0; stdout = '{"com.docker.compose.project":"tidebot-webui"}'; stderr = '' } }; return @{ exit_code = 0; stdout = '{"com.docker.compose.project":"tidebot-webui","org.opencontainers.image.revision":"1111111111111111111111111111111111111111"}'; stderr = '' } }
+			'docker-inspect-current-labels' { if ($Failures.ContainsKey('bad-predecessor-label')) { return @{ exit_code = 0; stdout = '{"com.docker.compose.project":"tide-bot"}'; stderr = '' } }; return @{ exit_code = 0; stdout = '{"com.docker.compose.project":"tide-bot","org.opencontainers.image.revision":"1111111111111111111111111111111111111111"}'; stderr = '' } }
 			'docker-compose-stop-current' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'docker-compose-start-current' { return @{ exit_code = 0; stdout = ''; stderr = '' } }
 			'docker-archive-volume' { Set-Content -LiteralPath $Arguments[0] -Value 'fixture archive' -Encoding utf8NoBOM; return @{ exit_code = 0; stdout = ''; stderr = '' } }
@@ -237,6 +237,9 @@ try {
 	Assert-True ($updaterSource -match 'upstream_sha = \$upstreamSha') 'Successful state does not use independently validated upstream provenance.'
 	Assert-True ($updaterSource -match "@\('S-1-5-18', 'S-1-5-32-544'\)") 'Production directory ACL does not restrict access to SYSTEM and Administrators.'
 	Assert-True ($updaterSource -match 'SetAccessRuleProtection\(\$true, \$false\)') 'Production directory ACL still inherits broader parent permissions.'
+	Assert-True ($updaterSource -match "'tide-bot-data'") 'Production backup does not name the active Tide-Bot data volume.'
+	Assert-True ($updaterSource -match '"tide-bot:\$\(\$Arguments\[0\]\)"') 'Candidate inspection does not target the immutable Tide-Bot image tag.'
+	Assert-True ($updaterSource -notmatch 'tidebot-open-webui|tidebot-webui|tidebot-net|3001') 'Production updater still references the legacy unrouted stack.'
 
 	$entryOutput = & $updaterPath -WhatIf 2>&1 | Out-String
 	Assert-True ($entryOutput -match 'state\\\\last-successful-deployment.json') 'Normal script entry point did not preserve its StatePath default.'

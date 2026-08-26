@@ -30,25 +30,25 @@ function Invoke-TideBotCommand {
 		'git-status-clean' { $status = Invoke-TideBotProcess git @('-C', $Arguments[0], 'status', '--porcelain=v1', '--untracked-files=all'); if ($status.exit_code -eq 0 -and $status.stdout.Trim().Length -ne 0) { $status.exit_code = 1 }; return $status }
 		'git-switch-detach' { return Invoke-TideBotProcess git @('-C', $Arguments[0], 'switch', '--detach', $Arguments[1]) }
 		'git-head' { return Invoke-TideBotProcess git @('-C', $Arguments[0], 'rev-parse', 'HEAD') }
-		'docker-inspect-current-image' { return Invoke-TideBotProcess docker @('inspect', '--format', '{{.Image}}', 'tidebot-open-webui') }
-		'docker-inspect-current-labels' { return Invoke-TideBotProcess docker @('inspect', '--format', '{{json .Config.Labels}}', 'tidebot-open-webui') }
-		'docker-compose-stop-current' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'stop', 'tidebot-open-webui') }
-		'docker-compose-start-current' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'start', 'tidebot-open-webui') }
+		'docker-inspect-current-image' { return Invoke-TideBotProcess docker @('inspect', '--format', '{{.Image}}', 'tide-bot') }
+		'docker-inspect-current-labels' { return Invoke-TideBotProcess docker @('inspect', '--format', '{{json .Config.Labels}}', 'tide-bot') }
+		'docker-compose-stop-current' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'stop', 'tide-bot') }
+		'docker-compose-start-current' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'start', 'tide-bot') }
 		'docker-archive-volume' {
 			$name = [IO.Path]::GetFileName($Arguments[0]); $code = "import tarfile; archive=tarfile.open('/backup/$name','w:gz'); archive.add('/data',arcname='.'); archive.close()"
-			return Invoke-TideBotProcess docker @('run', '--rm', '--pull=never', '--entrypoint', 'python', '--mount', 'type=volume,src=tidebot-webui_tidebot-open-webui,dst=/data,readonly', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup", $Arguments[2], '-c', $code)
+			return Invoke-TideBotProcess docker @('run', '--rm', '--pull=never', '--entrypoint', 'python', '--mount', 'type=volume,src=tide-bot-data,dst=/data,readonly', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup", $Arguments[2], '-c', $code)
 		}
 		'docker-list-archive' {
 			$name = [IO.Path]::GetFileName($Arguments[0]); $code = "import tarfile; archive=tarfile.open('/backup/$name','r:gz'); print('\\n'.join(archive.getnames())); archive.close()"
 			return Invoke-TideBotProcess docker @('run', '--rm', '--pull=never', '--entrypoint', 'python', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup,readonly", $Arguments[2], '-c', $code)
 		}
 		'docker-build-candidate' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'build', '--quiet') }
-		'docker-inspect-candidate-image' { return Invoke-TideBotProcess docker @('image', 'inspect', '--format', '{{.Id}}', "tidebot-open-webui:$($Arguments[0])") }
+		'docker-inspect-candidate-image' { return Invoke-TideBotProcess docker @('image', 'inspect', '--format', '{{.Id}}', "tide-bot:$($Arguments[0])") }
 		'docker-compose-up-candidate' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'up', '--detach', '--force-recreate', '--no-build') }
 		'docker-compose-down' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], 'down') }
 		'docker-restore-volume' {
 			$name = [IO.Path]::GetFileName($Arguments[0]); $code = "import pathlib,shutil,tarfile; root=pathlib.Path('/data'); [(shutil.rmtree(p) if p.is_dir() else p.unlink()) for p in root.iterdir()]; archive=tarfile.open('/backup/$name','r:gz'); archive.extractall(root); archive.close()"
-			return Invoke-TideBotProcess docker @('run', '--rm', '--pull=never', '--entrypoint', 'python', '--mount', 'type=volume,src=tidebot-webui_tidebot-open-webui,dst=/data', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup,readonly", $Arguments[2], '-c', $code)
+			return Invoke-TideBotProcess docker @('run', '--rm', '--pull=never', '--entrypoint', 'python', '--mount', 'type=volume,src=tide-bot-data,dst=/data', '--mount', "type=bind,src=$($Arguments[1]),dst=/backup,readonly", $Arguments[2], '-c', $code)
 		}
 		'docker-compose-up-prior' { return Invoke-TideBotProcess docker @('compose', '--project-directory', $Arguments[0], '--env-file', $Arguments[1], '--env-file', $Arguments[2], '-f', $Arguments[3], '-f', $Arguments[4], 'up', '--detach', '--force-recreate', '--no-build') }
 		default { throw "Unknown Tide-Bot command '$Operation'." }
@@ -135,11 +135,11 @@ function Write-TideBotFailureRecord {
 }
 function New-TideBotBackupManifest {
 	param([string] $ArchivePath, [string] $CandidateCommit, [string] $ImageId)
-	return [ordered]@{ schema_version = 1; volume_name = 'tidebot-webui_tidebot-open-webui'; archive_file = [IO.Path]::GetFileName($ArchivePath); archive_sha256 = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash; candidate_commit = $CandidateCommit; image_id = $ImageId; created_at_utc = [datetime]::UtcNow.ToString('o') }
+	return [ordered]@{ schema_version = 1; volume_name = 'tide-bot-data'; archive_file = [IO.Path]::GetFileName($ArchivePath); archive_sha256 = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash; candidate_commit = $CandidateCommit; image_id = $ImageId; created_at_utc = [datetime]::UtcNow.ToString('o') }
 }
-function Test-TideBotBackupManifest { param([hashtable] $Manifest, [string] $ArchivePath, [string] $ExpectedImageId); return $Manifest -and $Manifest.volume_name -eq 'tidebot-webui_tidebot-open-webui' -and $Manifest.image_id -eq $ExpectedImageId -and $Manifest.archive_file -eq [IO.Path]::GetFileName($ArchivePath) -and (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -eq $Manifest.archive_sha256 }
+function Test-TideBotBackupManifest { param([hashtable] $Manifest, [string] $ArchivePath, [string] $ExpectedImageId); return $Manifest -and $Manifest.volume_name -eq 'tide-bot-data' -and $Manifest.image_id -eq $ExpectedImageId -and $Manifest.archive_file -eq [IO.Path]::GetFileName($ArchivePath) -and (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -eq $Manifest.archive_sha256 }
 function New-TideBotCommitEnvironment { param([string] $StateRoot, [string] $Commit, [string] $Prefix); if ($Commit -notmatch '^[0-9a-f]{40}$') { throw 'A Compose interpolation commit must be a validated full commit hash.' }; $path = Join-Path $StateRoot (".$Prefix-" + [guid]::NewGuid().ToString('N') + '.env'); "TIDE_BOT_COMMIT=$Commit" | Set-Content -LiteralPath $path -Encoding ascii; return $path }
-function New-TideBotRecoveryOverride { param([string] $StateRoot, [string] $ImageId); $path = Join-Path $StateRoot ('.tide-bot-recovery-' + [guid]::NewGuid().ToString('N') + '.yml'); @('services:', '  tidebot-open-webui:', "    image: $ImageId") | Set-Content -LiteralPath $path -Encoding utf8NoBOM; return $path }
+function New-TideBotRecoveryOverride { param([string] $StateRoot, [string] $ImageId); $path = Join-Path $StateRoot ('.tide-bot-recovery-' + [guid]::NewGuid().ToString('N') + '.yml'); @('services:', '  tide-bot:', "    image: $ImageId") | Set-Content -LiteralPath $path -Encoding utf8NoBOM; return $path }
 function Read-TideBotPredecessorRecovery {
 	param([string] $Path, [string] $ComposeFile, [string] $ExpectedImageId, [string] $ExpectedManifestPath, [string] $ArchivePath)
 	if (-not (Test-Path -LiteralPath $Path)) { throw 'The predecessor recovery record is missing.' }
@@ -193,7 +193,7 @@ function Invoke-TideBotProductionUpdate {
 		if ($priorState -and $priorState.commit -eq $candidate) { return @{ status = 'already_deployed'; commit = $candidate } }
 		$priorImage = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-inspect-current-image' @()).stdout.Trim(); if ($priorImage -notmatch '^sha256:') { throw 'Running container did not provide an immutable image ID.' }
 		$labels = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-inspect-current-labels' @()).stdout | ConvertFrom-Json -AsHashtable -ErrorAction Stop
-		if ($labels.'com.docker.compose.project' -ne 'tidebot-webui') { throw 'Running container is not the Tide-Bot production service.' }
+		if ($labels.'com.docker.compose.project' -ne 'tide-bot') { throw 'Running container is not the Tide-Bot production service.' }
 		if ($priorState -and $priorState.image_id -ne $priorImage) { throw 'The recorded prior image does not match the running container.' }
 		$candidateEnvironment = New-TideBotCommitEnvironment $StateRoot $candidate 'tide-bot-candidate'
 		$failureStage = 'build'
@@ -201,7 +201,7 @@ function Invoke-TideBotProductionUpdate {
 		$candidateImage = (Invoke-TideBotCheckedCommand $CommandRunner 'docker-inspect-candidate-image' @($candidate)).stdout.Trim(); if ($candidateImage -notmatch '^sha256:') { throw 'The candidate image inspection did not return an immutable image ID.' }
 		$failureStage = 'backup'
 		$backupDirectory = Join-Path $StateRoot 'backups'; New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null; & $DirectoryProtector $backupDirectory
-		$archivePath = Join-Path $backupDirectory ("$([datetime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))-$($candidate.Substring(0, 12))-tidebot-data.tar.gz")
+		$archivePath = Join-Path $backupDirectory ("$([datetime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))-$($candidate.Substring(0, 12))-tide-bot-data.tar.gz")
 		$currentStopped = $true; Invoke-TideBotCheckedCommand $CommandRunner 'docker-compose-stop-current' @($RepositoryPath, $EnvironmentFile, $candidateEnvironment, $ComposeFile) | Out-Null
 		Invoke-TideBotCheckedCommand $CommandRunner 'docker-archive-volume' @($archivePath, $backupDirectory, $priorImage) | Out-Null
 		if ((Invoke-TideBotCheckedCommand $CommandRunner 'docker-list-archive' @($archivePath, $backupDirectory, $priorImage)).stdout.Trim().Length -eq 0) { throw 'The backup archive listing was empty.' }
