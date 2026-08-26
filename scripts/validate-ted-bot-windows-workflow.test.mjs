@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { pythonCandidates } from './fixed-tool-candidates.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..');
@@ -22,13 +23,7 @@ function parseYamlWithPython(text) {
 	// this single validator. Spawn the system Python (preferred 3.11/3.12)
 	// which has pyyaml available via the project's dev venv at
 	// /tmp/yaml-venv or via a globally installed pyyaml.
-	const candidates = [
-		'/tmp/yaml-venv/bin/python',
-		process.env.PYTHON_BIN,
-		'/usr/local/bin/python3.12',
-		'/usr/bin/python3',
-		'python3'
-	].filter(Boolean);
+	const candidates = pythonCandidates();
 
 	const script = `
 import yaml, json, sys
@@ -84,9 +79,7 @@ test('workflow: name and triggers', () => {
 
 test('workflow: pinned Node 22.18.0', () => {
 	assert.equal(wf.env.NODE_VERSION, '22.18.0');
-	const nodeStep = wf.jobs['build-windows'].steps.find(
-		(s) => s.name === 'Install Node 22.18.0'
-	);
+	const nodeStep = wf.jobs['build-windows'].steps.find((s) => s.name === 'Install Node 22.18.0');
 	assert.ok(nodeStep, 'Install Node 22.18.0 step required');
 	assert.equal(nodeStep.with['node-version'], '${{ env.NODE_VERSION }}');
 });
@@ -125,9 +118,7 @@ test('workflow: cargo cache key includes Cargo.lock', () => {
 });
 
 test('workflow: build step consumes both origins', () => {
-	const buildStep = wf.jobs['build-windows'].steps.find(
-		(s) => s.name === 'Build Windows artifact'
-	);
+	const buildStep = wf.jobs['build-windows'].steps.find((s) => s.name === 'Build Windows artifact');
 	assert.ok(buildStep, 'build step required');
 	assert.ok(buildStep.env.TIDE_BOT_DESKTOP_PRODUCTION_ORIGIN);
 	assert.ok(buildStep.env.TIDE_BOT_DESKTOP_DEV_ORIGIN);
@@ -149,8 +140,5 @@ test('workflow: windows-latest with 90 minute timeout', () => {
 });
 
 test('workflow: concurrency group', () => {
-	assert.equal(
-		wf.concurrency.group,
-		'ted-bot-windows-${{ github.ref }}'
-	);
+	assert.equal(wf.concurrency.group, 'ted-bot-windows-${{ github.ref }}');
 });
