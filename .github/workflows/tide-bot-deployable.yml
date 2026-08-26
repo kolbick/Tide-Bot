@@ -42,6 +42,19 @@ jobs:
         run: |
           git config user.name 'tide-bot-upstream[bot]'
           git config user.email 'tide-bot-upstream[bot]@users.noreply.github.com'
+      - name: Build local Tide-Bot runtime image
+        shell: bash
+        env:
+          DOCKER_BUILDKIT: '0'
+          DOCKER_CONFIG: /tmp/tide-bot-local-image-docker-config
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$DOCKER_CONFIG"
+          docker build \
+            --pull=false \
+            --build-arg USE_SLIM=true \
+            --tag tide-bot:local \
+            .
       - name: Run common update gate
         run: npm run test:update-gate
       - name: Guard current main tip
