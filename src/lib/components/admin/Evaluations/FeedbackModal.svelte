@@ -55,7 +55,7 @@
 				</button>
 			</div>
 
-			<div class="flex flex-col md:flex-row w-full px-5 pb-4 md:space-x-4 dark:text-gray-200">
+			<div class="flex flex-col md:flex-row w-full px-4 pb-4 md:space-x-4 dark:text-gray-200">
 				{#if loaded}
 					<div class="flex flex-col w-full">
 						<div class="flex flex-col w-full mb-2">
@@ -125,7 +125,8 @@
 							<div class="mb-2 -mx-1">
 								<div class="flex flex-wrap gap-1 mt-1">
 									{#each selectedFeedback?.data?.tags as tag}
-										<span class="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-850 text-[9px]"
+										<span
+											class="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-850 text-[0.5625rem]"
 											>{tag}</span
 										>
 									{/each}

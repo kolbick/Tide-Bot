@@ -1,0 +1,29 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Tide-Bot deployment state",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["schema_version", "commit", "upstream_sha", "image_id", "deployed_at_utc", "local_health", "public_health", "socketio_health", "oauth"],
+	"properties": {
+		"schema_version": { "const": 1 },
+		"commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+		"upstream_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+		"image_id": { "type": "string", "pattern": "^sha256:" },
+		"deployed_at_utc": { "type": "string", "format": "date-time" },
+		"local_health": { "type": "boolean" },
+		"public_health": { "type": "boolean" },
+		"socketio_health": { "type": "boolean" },
+		"oauth": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["connection_present", "credential_decryptable", "credential_state", "model_catalog_available", "model_count"],
+			"properties": {
+				"connection_present": { "type": "boolean" },
+				"credential_decryptable": { "type": "boolean" },
+				"credential_state": { "enum": ["connected", "reconnect_required", "disconnected", "catalog_unavailable"] },
+				"model_catalog_available": { "type": "boolean" },
+				"model_count": { "type": "integer", "minimum": 0 }
+			}
+		}
+	}
+}

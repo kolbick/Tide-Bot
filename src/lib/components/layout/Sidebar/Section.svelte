@@ -24,6 +24,12 @@
 	let loaded = false;
 	let draggedOver = false;
 
+	const setOpen = (state: boolean) => {
+		open = state;
+		dispatch('change', state);
+		localStorage.setItem(`${id}-folder-state`, `${state}`);
+	};
+
 	const onDragOver = (e: DragEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -118,15 +124,7 @@
 		{/if}
 
 		{#if collapsible}
-			<Collapsible
-				bind:open
-				className="w-full"
-				buttonClassName="w-full"
-				onChange={(state: boolean) => {
-					dispatch('change', state);
-					localStorage.setItem(`${id}-folder-state`, `${state}`);
-				}}
-			>
+			<Collapsible bind:open className="w-full" buttonClassName="w-full" onChange={setOpen}>
 				<div class="flex items-center justify-between h-6 w-full pl-3.5 pr-1.5 shrink-0">
 					<button
 						type="button"
@@ -136,21 +134,23 @@
 					>
 						<span>{name}</span>
 						<span
-							class="flex opacity-0 group-hover:opacity-100 transition-all duration-100"
+							class="flex opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-100"
 							style="transform: rotate({open ? '90deg' : '0deg'})"
 						>
-							<ChevronRight className="size-[11px]" />
+							<ChevronRight className="size-[0.6875rem]" />
 						</span>
 					</button>
+
+					<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+					<div class="contents" on:click={(e) => e.stopPropagation()}>
+						<slot name="action" />
+					</div>
 
 					{#if onAdd}
 						<button
 							type="button"
 							class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
 							aria-label={onAddLabel}
-							on:pointerup={(e) => {
-								e.stopPropagation();
-							}}
 							on:click={(e) => {
 								e.stopPropagation();
 								onAdd();

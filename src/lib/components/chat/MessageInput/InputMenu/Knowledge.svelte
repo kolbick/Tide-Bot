@@ -100,11 +100,13 @@
 	let itemsLoading = false;
 	let allItemsLoaded = false;
 	let initialized = false;
+	let searchedQuery = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 	let requestId = 0;
 
-	$: if (initialized) {
-		query;
+	// Only re-run the search when the query actually changes. Flipping `initialized`
+	// after the initial load would otherwise trigger a second, identical request.
+	$: if (initialized && query !== searchedQuery) {
 		scheduleSearch();
 	}
 
@@ -115,6 +117,7 @@
 
 	const init = async () => {
 		requestId += 1;
+		searchedQuery = query;
 		reset();
 		selectedItem = null;
 		await tick();
@@ -151,12 +154,6 @@
 			total = res.total;
 			const pageItems = res.items;
 
-			if ((pageItems ?? []).length === 0) {
-				allItemsLoaded = true;
-			} else {
-				allItemsLoaded = false;
-			}
-
 			if (items) {
 				const existingIds = new Set(items.map((item) => item.id));
 				const newItems = pageItems.filter((item) => !existingIds.has(item.id));
@@ -164,6 +161,11 @@
 			} else {
 				items = pageItems;
 			}
+
+			// The response reports the full count, so the end of the list is known without
+			// probing for an empty page - otherwise a list shorter than one page would
+			// immediately request the next one.
+			allItemsLoaded = (pageItems ?? []).length === 0 || items.length >= (total ?? 0);
 		}
 
 		itemsLoading = false;
@@ -198,7 +200,7 @@
 			{:else}
 				{#each items as item, idx (item.id)}
 					<div
-						class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 {idx ===
+						class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[0.8125rem] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 {idx ===
 						selectedIdx
 							? ' bg-gray-50/40 dark:bg-gray-800/40 dark:text-gray-100 selected-command-option-button'
 							: ''}"
@@ -232,7 +234,7 @@
 									placement="top-start"
 									className="flex flex-1 min-w-0"
 								>
-									<div class="line-clamp-1 flex-1 text-[13px]">
+									<div class="line-clamp-1 flex-1 text-[0.8125rem]">
 										{decodeString(item?.name)}
 									</div>
 								</Tooltip>
@@ -273,7 +275,7 @@
 							{:else}
 								{#each selectedFileItems as file, fileIdx (file.id)}
 									<button
-										class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
+										class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[0.8125rem] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
 										type="button"
 										on:click={() => {
 											console.log(file);
@@ -290,7 +292,7 @@
 											</Tooltip>
 
 											<Tooltip content={decodeString(file?.meta?.name)} placement="top-start">
-												<div class="line-clamp-1 flex-1 text-[13px]">
+												<div class="line-clamp-1 flex-1 text-[0.8125rem]">
 													{decodeString(file?.meta?.name)}
 												</div>
 											</Tooltip>

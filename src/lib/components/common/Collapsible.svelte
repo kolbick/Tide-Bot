@@ -71,9 +71,13 @@
 
 <div {id} class={className}>
 	{#if title !== null}
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
-		<!-- svelte-ignore a11y-click-events-have-key-events -->
-		<div class="{buttonClassName} {disabled ? '' : 'cursor-pointer'}" on:pointerup={toggleOpen}>
+		<button
+			type="button"
+			class="{buttonClassName} block text-start disabled:cursor-default"
+			aria-expanded={open}
+			{disabled}
+			on:click={toggleOpen}
+		>
 			<div
 				class=" w-full flex items-center justify-between gap-2 {attributes?.done &&
 				attributes?.done !== 'true' &&
@@ -128,7 +132,7 @@
 					</div>
 				{/if}
 			</div>
-		</div>
+		</button>
 	{:else}
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -136,8 +140,8 @@
 			class="{buttonClassName} cursor-pointer"
 			on:click={(e) => {
 				e.stopPropagation();
+				toggleOpen();
 			}}
-			on:pointerup={toggleOpen}
 		>
 			<div>
 				<div class="flex items-start justify-between">
@@ -158,7 +162,7 @@
 					{#if open && !hide}
 						<div
 							transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}
-							on:pointerup={(e) => {
+							on:click={(e) => {
 								e.stopPropagation();
 							}}
 						>

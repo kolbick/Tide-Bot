@@ -162,7 +162,9 @@
 
 	// Reload when the period, group, or custom range changes.
 	// In custom mode, wait until both dates are set to avoid a half-specified query.
-	$: if (selectedPeriod === 'custom' ? customStart && customEnd : selectedPeriod) {
+	$: if (selectedPeriod === 'custom' && !(customStart && customEnd)) {
+		loading = false;
+	} else if (selectedPeriod) {
 		// reference customStart/customEnd so this block reruns when they change
 		customStart;
 		customEnd;
@@ -251,14 +253,14 @@
 				type="date"
 				bind:value={customStart}
 				max={customEnd || undefined}
-				class="w-fit rounded-sm px-2 text-xs bg-transparent outline-none"
+				class="w-fit rounded-sm px-2 text-xs bg-transparent outline-none dark:scheme-dark"
 			/>
 			<span class="text-xs text-gray-400">–</span>
 			<input
 				type="date"
 				bind:value={customEnd}
 				min={customStart || undefined}
-				class="w-fit rounded-sm px-2 text-xs bg-transparent outline-none"
+				class="w-fit rounded-sm px-2 text-xs bg-transparent outline-none dark:scheme-dark"
 			/>
 		{/if}
 		<select
@@ -468,7 +470,7 @@
 					<tbody>
 						{#each sortedModels as model, idx (model.model_id)}
 							<tr
-								class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+								class="dark:border-gray-850 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
 								on:click={() => {
 									selectedModel = { id: model.model_id, name: model.name };
 									showModelModal = true;
@@ -482,10 +484,13 @@
 											alt={model.name}
 											class="size-5 rounded-full object-cover shrink-0"
 											on:error={(e) => {
+												// LICENSE covers this Open WebUI fallback logo.
+												// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+												// https://docs.openwebui.com/license.
 												e.target.src = '/favicon.png';
 											}}
 										/>
-										<span class="truncate max-w-[150px]">{model.name}</span>
+										<span class="truncate max-w-[9.375rem]">{model.name}</span>
 									</div>
 								</td>
 								<td class="px-3 py-1 text-right">{model.count.toLocaleString()}</td>
@@ -581,7 +586,7 @@
 					</thead>
 					<tbody>
 						{#each sortedUsers as user, idx (user.user_id)}
-							<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
+							<tr class="dark:border-gray-850 text-xs">
 								<td class="px-3 py-1 text-gray-400">{idx + 1}</td>
 								<td class="px-3 py-1 font-normal text-gray-900 dark:text-white">
 									<div class="flex items-center gap-2">
@@ -593,7 +598,7 @@
 												e.target.src = '/user.png';
 											}}
 										/>
-										<span class="truncate max-w-[150px]"
+										<span class="truncate max-w-[9.375rem]"
 											>{user.name || user.email || user.user_id.substring(0, 8)}</span
 										>
 									</div>

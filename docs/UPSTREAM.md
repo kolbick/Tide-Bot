@@ -38,3 +38,37 @@ must return to explicit release tags and follow the documented sync procedure.
 Use the process in `docs/UPSTREAM_SYNC.md`. Every sync must be reviewed for
 user-visible branding, security-sensitive configuration, licensing, and
 Docker/runtime changes before merging.
+
+## Automated upstream/main integrations
+
+| Date | Upstream commit | Record |
+| --- | --- | --- |
+| 2026-08-25 | `d3e8bf3405e848cfba377814d0aa7ba7290e414d` | Open WebUI `v0.11.1`; explicit merge `b0b299c27f3cf3fd682b526c35f89ef4f14ee1af`, with Tide-Bot first parent `cf3e495c3f3a551d6b90361b2e8f6df862201944` and upstream second parent `d3e8bf3405e848cfba377814d0aa7ba7290e414d`. |
+
+The `Tide-Bot upstream main` workflow fetches a fresh `upstream/main` SHA and
+does no work when that SHA is already an ancestor of `origin/main`. Before it
+attempts a merge, it fetches `v0.11.1`, verifies that its commit equals
+`d3e8bf3405e848cfba377814d0aa7ba7290e414d`, and verifies that it is ancestral
+to the fetched upstream SHA. A
+failed baseline, merge conflict, or gate failure creates a sanitized issue and
+leaves `main` and `tide-bot-deployable` unchanged. Passing integrations use a
+review branch and the repository's protected GitHub pull-request merge path.
+
+The deployable-marker workflow reruns the common gate for eligible `main`
+commits before force-updating only the annotated `tide-bot-deployable` tag. The
+production updater deploys that tag's commit only after it verifies the commit
+is an ancestor of freshly fetched `origin/main`. The updater reads
+`docs/UPSTREAM_MAIN_SHA` from the detached candidate, validates its full SHA,
+and proves it is an ancestor of the candidate before recording `upstream_sha`.
+
+### 2026-08-25 Open WebUI v0.11.1 integration
+
+The official `v0.11.1` tag and the fetched `upstream/main` both resolved to
+`d3e8bf3405e848cfba377814d0aa7ba7290e414d`; the tag was verified as an
+ancestor of the fetched branch before the merge began. The integration keeps
+Tide-Bot branding, ChatGPT subscription device OAuth and encrypted credential
+handling, Responses streaming, the ElevenLabs call overlay and fallback voice
+path, companion presence and restricted desktop origins, browser-extension
+authorization boundaries, and the local-only external-volume production
+topology. Upstream workflows, telemetry, public signup defaults, promotional
+sharing, and public terminal or CPTR exposure were not inherited.

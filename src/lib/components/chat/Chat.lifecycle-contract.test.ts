@@ -76,7 +76,7 @@ test('registers and settles every canonical event callback through one-shot wrap
 	const wrappedAssignments =
 		source.match(/eventCallback\s*=\s*chatLifecycle\.registerPendingEventCallback\(/g) ?? [];
 	const allAssignments = source.match(/eventCallback\s*=/g) ?? [];
-	expect(wrappedAssignments).toHaveLength(5);
+	expect(wrappedAssignments).toHaveLength(6);
 	expect(allAssignments).toHaveLength(wrappedAssignments.length + 1);
 
 	const eventHandler = section('const chatEventHandler', 'const onMessageHandler');
@@ -88,6 +88,9 @@ test('registers and settles every canonical event callback through one-shot wrap
 	);
 	expect(eventHandler).toMatch(/type === 'confirmation'[\s\S]*registerPendingEventCallback\(cb\)/);
 	expect(eventHandler).toMatch(/type === 'input'[\s\S]*registerPendingEventCallback\(cb\)/);
+	expect(eventHandler).toMatch(
+		/type === 'request:user_input'[\s\S]*registerPendingEventCallback\(cb\)/
+	);
 	expect(embeddedHandlers.match(/registerPendingEventCallback\(/g)).toHaveLength(2);
 	expect(dialog.match(/eventCallback\?\.settle\(/g)).toHaveLength(4);
 	expect(dialog).not.toMatch(/eventCallback\?\.\(|eventCallback\(/);

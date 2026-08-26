@@ -72,6 +72,9 @@
 		}
 	};
 
+	const sortState = (key) =>
+		orderBy === key ? (direction === 'asc' ? 'ascending' : 'descending') : 'none';
+
 	const setSortKey = (key) => {
 		if (orderBy === key) {
 			direction = direction === 'asc' ? 'desc' : 'asc';
@@ -221,12 +224,12 @@
 		<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto max-w-full">
 			<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
 				<tr class=" border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
-					<th
-						scope="col"
-						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
-						on:click={() => setSortKey('name')}
-					>
-						<div class="flex gap-1.5 items-center">
+					<th scope="col" class="font-normal select-none" aria-sort={sortState('name')}>
+						<button
+							type="button"
+							class="flex w-full gap-1.5 items-center px-2.5 py-1.5"
+							on:click={() => setSortKey('name')}
+						>
 							{$i18n.t('Name')}
 
 							{#if orderBy === 'name'}
@@ -242,14 +245,14 @@
 									<ChevronUp className="size-2" />
 								</span>
 							{/if}
-						</div>
+						</button>
 					</th>
-					<th
-						scope="col"
-						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
-						on:click={() => setSortKey('role')}
-					>
-						<div class="flex gap-1.5 items-center">
+					<th scope="col" class="font-normal select-none" aria-sort={sortState('role')}>
+						<button
+							type="button"
+							class="flex w-full gap-1.5 items-center px-2.5 py-1.5"
+							on:click={() => setSortKey('role')}
+						>
 							{$i18n.t('Role')}
 
 							{#if orderBy === 'role'}
@@ -265,14 +268,14 @@
 									<ChevronUp className="size-2" />
 								</span>
 							{/if}
-						</div>
+						</button>
 					</th>
-					<th
-						scope="col"
-						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
-						on:click={() => setSortKey('email')}
-					>
-						<div class="flex gap-1.5 items-center">
+					<th scope="col" class="font-normal select-none" aria-sort={sortState('email')}>
+						<button
+							type="button"
+							class="flex w-full gap-1.5 items-center px-2.5 py-1.5"
+							on:click={() => setSortKey('email')}
+						>
 							{$i18n.t('Email')}
 
 							{#if orderBy === 'email'}
@@ -288,15 +291,15 @@
 									<ChevronUp className="size-2" />
 								</span>
 							{/if}
-						</div>
+						</button>
 					</th>
 
-					<th
-						scope="col"
-						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
-						on:click={() => setSortKey('last_active_at')}
-					>
-						<div class="flex gap-1.5 items-center">
+					<th scope="col" class="font-normal select-none" aria-sort={sortState('last_active_at')}>
+						<button
+							type="button"
+							class="flex w-full gap-1.5 items-center px-2.5 py-1.5"
+							on:click={() => setSortKey('last_active_at')}
+						>
 							{$i18n.t('Last Active')}
 							<!-- {$i18n.t('Last Modified')} -->
 
@@ -313,14 +316,14 @@
 									<ChevronUp className="size-2" />
 								</span>
 							{/if}
-						</div>
+						</button>
 					</th>
-					<th
-						scope="col"
-						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
-						on:click={() => setSortKey('created_at')}
-					>
-						<div class="flex gap-1.5 items-center">
+					<th scope="col" class="font-normal select-none" aria-sort={sortState('created_at')}>
+						<button
+							type="button"
+							class="flex w-full gap-1.5 items-center px-2.5 py-1.5"
+							on:click={() => setSortKey('created_at')}
+						>
 							{$i18n.t('Created at')}
 							{#if orderBy === 'created_at'}
 								<span class="font-normal"
@@ -335,7 +338,7 @@
 									<ChevronUp className="size-2" />
 								</span>
 							{/if}
-						</div>
+						</button>
 					</th>
 
 					<th scope="col" class="px-2.5 py-1.5 font-normal text-right"></th>
@@ -343,7 +346,7 @@
 			</thead>
 			<tbody class="">
 				{#each users as user (user.id)}
-					<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
+					<tr class="dark:border-gray-850 text-xs">
 						<td class="px-3 py-1 font-normal text-gray-900 dark:text-white max-w-48">
 							<div class="flex items-center gap-2">
 								<ProfilePreview {user} side="right" align="center" sideOffset={6}>
@@ -352,6 +355,9 @@
 										src={`${WEBUI_API_BASE_URL}/users/${user.id}/profile/image`}
 										alt="user"
 										on:error={(e) => {
+											// LICENSE covers this Open WebUI fallback logo.
+											// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+											// https://docs.openwebui.com/license.
 											e.currentTarget.src = '/favicon.png';
 										}}
 									/>
@@ -472,18 +478,30 @@
 <!-- Tide-Bot is a private deployment; upstream licensing and sponsorship promotion is not shown here. -->
 {#if false}
 	{#if total > 50}
+		<!-- LICENSE covers the Open WebUI branding narrative here.
+		Do not alter, remove, obscure, or replace it except as LICENSE permits:
+		https://docs.openwebui.com/license. -->
 		<div class="mt-3 mb-3 pb-1 text-gray-700 dark:text-gray-300">
 			<div class="max-w-3xl text-xs leading-5">
 				<div class="text-gray-900 dark:text-gray-100">
+					<!-- LICENSE covers this Open WebUI wordmark.
+					Do not alter, remove, obscure, or replace it except as LICENSE permits:
+					https://docs.openwebui.com/license. -->
 					{$i18n.t('Running Open WebUI for a team?')}
 				</div>
 				<div class="mt-2 space-y-2">
 					<p>
+						<!-- LICENSE covers this Open WebUI branding copy.
+						Do not alter, remove, obscure, or replace it except as LICENSE permits:
+						https://docs.openwebui.com/license. -->
 						{$i18n.t(
 							'You have more than 50 users, which often means this workspace is supporting organizational use. Open WebUI is free to use as-is, with no restrictions or hidden limits, and we want to keep it that way.'
 						)}
 					</p>
 					<p class="text-gray-500 dark:text-gray-400">
+						<!-- LICENSE covers this Open WebUI branding copy.
+						Do not alter, remove, obscure, or replace it except as LICENSE permits:
+						https://docs.openwebui.com/license. -->
 						{$i18n.t(
 							'By supporting the project through sponsorship or an enterprise license, you help us stay independent, ship new features faster, improve stability, and grow Open WebUI for the long haul.'
 						)}

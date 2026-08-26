@@ -75,7 +75,7 @@
 
 		<div slot="content">
 			<div
-				class="z-[10000] flex w-64 flex-col rounded-xl border border-gray-200 bg-white p-0.5 text-black shadow-lg dark:border-gray-800 dark:bg-gray-850 dark:text-white"
+				class="z-[10000] flex w-96 max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-gray-200 bg-white p-0.5 text-black shadow-lg dark:border-gray-800 dark:bg-gray-850 dark:text-white"
 			>
 				<div class="flex w-full space-x-1.5 px-1.5 pb-0.5">
 					<div class="flex flex-1">
@@ -86,7 +86,7 @@
 							bind:this={inputElement}
 							bind:value
 							id={`${id}-input`}
-							class="w-full bg-transparent py-0.5 text-[13px] outline-hidden"
+							class="w-full bg-transparent py-0.5 text-[0.8125rem] outline-hidden"
 							type="text"
 							{placeholder}
 							autocomplete="off"
@@ -98,7 +98,7 @@
 					{#if selectedIds !== null && matchedItems.length > 0}
 						<button
 							type="button"
-							class="h-[1.6875rem] w-full rounded-xl px-2 text-left text-[13px] text-gray-700 transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
+							class="h-[1.6875rem] w-full rounded-xl px-2 text-left text-[0.8125rem] text-gray-700 transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
 							on:click={enableItems}
 						>
 							<span class="truncate">Enable all ({matchedItems.length})</span>
@@ -113,7 +113,7 @@
 						{#each matchedItems as item (item.id)}
 							<button
 								type="button"
-								class="flex h-[1.6875rem] w-full items-center justify-between gap-2 rounded-xl px-2 text-left text-[13px] transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 selected-command-option-button"
+								class="flex h-[1.6875rem] w-full items-center justify-between gap-2 rounded-xl px-2 text-left text-[0.8125rem] transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 selected-command-option-button"
 								aria-pressed={selectedIds?.includes(item.id) ?? false}
 								on:click={() => {
 									selectItem(item);

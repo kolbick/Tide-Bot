@@ -9,6 +9,7 @@
 	import { createOpenAITextStream } from '$lib/apis/streaming';
 
 	import ResponseMessage from './ResponseMessage.svelte';
+	import { getOutputText } from './structuredOutput';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Merge from '$lib/components/icons/Merge.svelte';
 
@@ -28,6 +29,7 @@
 
 	export let isLastMessage;
 	export let readOnly = false;
+	export let allowDelete = true;
 	export let compactPreview = false;
 	export let editCodeBlock = true;
 
@@ -46,6 +48,7 @@
 	export let mergeResponses: Function;
 
 	export let addMessages: Function;
+	export let onToolCallResolved: Function = () => {};
 	export let forkHandler: Function | null = null;
 
 	export let triggerScroll: Function;
@@ -226,7 +229,8 @@
 			const { messageIds } = groupedMessageIds[modelIdx];
 			const messageId = messageIds[groupedMessageIdsIdx[modelIdx]];
 
-			return history.messages[messageId].content;
+			const message = history.messages[messageId];
+			return getOutputText(message?.output) || message?.content || '';
 		});
 		mergeResponses(messageId, responses, chatId);
 	};
@@ -325,6 +329,7 @@
 											groupedMessageIds[selectedModelIdx].messageIds.length - 1;
 									}}
 									{addMessages}
+									{onToolCallResolved}
 									{forkHandler}
 									{readOnly}
 									{compactPreview}
@@ -377,6 +382,7 @@
 										{saveMessage}
 										{rateMessage}
 										{deleteMessage}
+										{allowDelete}
 										{actionMessage}
 										{submitMessage}
 										{continueResponse}
@@ -387,6 +393,7 @@
 												groupedMessageIds[modelIdx].messageIds.length - 1;
 										}}
 										{addMessages}
+										{onToolCallResolved}
 										{forkHandler}
 										{readOnly}
 										{compactPreview}
@@ -439,7 +446,7 @@
 										>
 											<time
 												datetime={new Date(message.timestamp * 1000).toISOString()}
-												class="invisible group-hover:visible ml-1 shrink-0 whitespace-nowrap text-[0.6875rem] tabular-nums text-gray-400 dark:text-gray-600 select-none"
+												class="hover-reveal ml-1 shrink-0 whitespace-nowrap text-[0.6875rem] tabular-nums text-gray-400 dark:text-gray-600 select-none"
 											>
 												{formatMessageTimestamp(message.timestamp * 1000)}
 											</time>
@@ -458,7 +465,7 @@
 									id="merge-response-button"
 									class="{true
 										? 'visible'
-										: 'invisible group-hover:visible'} p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition"
+										: 'hover-reveal'} p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition"
 									on:click={() => {
 										mergeResponsesHandler();
 									}}

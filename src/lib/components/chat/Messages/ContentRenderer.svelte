@@ -6,7 +6,7 @@
 	import StructuredOutputRenderer from './StructuredOutputRenderer.svelte';
 	import {
 		artifactCode,
-		chatId,
+		chatId as currentChatId,
 		mobile,
 		settings,
 		showArtifacts,
@@ -68,6 +68,7 @@
 	};
 
 	export let id;
+	export let chatId = '';
 	export let content;
 	/** @type {import('./structuredOutput').OutputItem[]} */
 	export let output = [];
@@ -92,6 +93,7 @@
 	export let onSave = (e) => {};
 	export let onSourceClick = (e) => {};
 	export let onTaskClick = (e) => {};
+	export let onToolCallResolved = (e) => {};
 	export let onSetInputText = (text) => {};
 
 	let contentContainerElement;
@@ -130,16 +132,32 @@
 				)
 			: messageContent;
 
+	let autoOpenedArtifactIds = new Set();
+
+	const hasClosingCodeFence = (raw = '') => /(?:^|\n)```[ \t]*$/.test(raw.trimEnd());
+
 	const markdownUpdateHandler = /** @type {any} */ (
-		async (/** @type {{ lang?: string; text?: string }} */ token) => {
-			const { lang = '', text: code = '' } = token;
+		async (
+			/** @type {{ lang?: string; raw?: string; text?: string }} */ token,
+			codeBlockId = ''
+		) => {
+			const { lang = '', raw = '', text: code = '' } = token;
+			const normalizedLang = lang.toLowerCase();
+			const isArtifact =
+				['html', 'svg'].includes(normalizedLang) ||
+				(normalizedLang === 'xml' && code.toLowerCase().includes('<svg'));
+			const artifactId = codeBlockId || `${normalizedLang}:${raw}`;
 
 			if (
 				($settings?.detectArtifacts ?? true) &&
-				(['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('svg'))) &&
+				!compactPreview &&
+				isArtifact &&
+				hasClosingCodeFence(raw) &&
+				!autoOpenedArtifactIds.has(artifactId) &&
 				!$mobile &&
-				$chatId
+				$currentChatId
 			) {
+				autoOpenedArtifactIds.add(artifactId);
 				await tick();
 				showArtifacts.set(true);
 				showControls.set(true);
@@ -267,6 +285,8 @@
 	{#if output?.length}
 		<StructuredOutputRenderer
 			{id}
+			{chatId}
+			{messageId}
 			{output}
 			{model}
 			{save}
@@ -280,6 +300,7 @@
 			{formatMessageContent}
 			{onSourceClick}
 			{onTaskClick}
+			{onToolCallResolved}
 			{onSave}
 			onUpdate={markdownUpdateHandler}
 			onPreview={previewHandler}
@@ -288,6 +309,8 @@
 		<div class="markdown-prose">
 			<Markdown
 				{id}
+				{chatId}
+				{messageId}
 				content={formatMessageContent(content)}
 				{model}
 				{save}
@@ -299,6 +322,7 @@
 				{sourceIds}
 				{onSourceClick}
 				{onTaskClick}
+				{onToolCallResolved}
 				{onSave}
 				onUpdate={markdownUpdateHandler}
 				onPreview={previewHandler}
@@ -310,7 +334,17 @@
 		{#if extracted.detailsContent}
 			<!-- Render structural blocks (tool calls, reasoning, etc.) through Markdown -->
 			<div class="markdown-prose">
-				<Markdown {id} content={extracted.detailsContent} {preview} {compactPreview} {done} />
+				<Markdown
+					{id}
+					{chatId}
+					{messageId}
+					content={extracted.detailsContent}
+					{save}
+					{preview}
+					{compactPreview}
+					{done}
+					{onToolCallResolved}
+				/>
 			</div>
 		{/if}
 		{#if extracted.plainContent}

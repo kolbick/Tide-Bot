@@ -14,18 +14,21 @@
 
 	onMount(async () => {
 		if ($user?.role !== 'admin') {
-			await goto('/');
+			await goto('/', { replaceState: true });
 		} else if (
 			!$config?.features?.enable_plugins &&
 			$page.url.pathname.includes('/admin/functions')
 		) {
-			await goto('/admin');
+			await goto('/admin', { replaceState: true });
 		}
 		loaded = true;
 	});
 </script>
 
 <svelte:head>
+	<!-- LICENSE covers this Open WebUI browser-title identifier.
+	Do not alter, remove, obscure, or replace it except as LICENSE permits:
+	https://docs.openwebui.com/license. -->
 	<title>
 		{$i18n.t('Admin Panel')} / {$WEBUI_NAME}
 	</title>

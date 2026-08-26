@@ -24,6 +24,7 @@
 	import Switch from '$lib/components/common/Switch.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import ArrowPath from '$lib/components/icons/ArrowPath.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
 
 	import OpenAIConnection from './Connections/OpenAIConnection.svelte';
@@ -60,6 +61,7 @@
 	let pipelineUrls: Record<string, boolean> = {};
 	let showAddOpenAIConnectionModal = false;
 	let showAddOllamaConnectionModal = false;
+	let modelListRefreshing = false;
 
 	let chatGPTSubscriptionStatus: ChatGPTSubscriptionStatus | null = null;
 	let chatGPTDeviceLogin: any = null;
@@ -233,6 +235,19 @@
 		}
 	};
 
+	const refreshModelListHandler = async () => {
+		modelListRefreshing = true;
+
+		try {
+			await models.set(await getModels());
+			toast.success($i18n.t('Model list refreshed'));
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			modelListRefreshing = false;
+		}
+	};
+
 	const addOpenAIConnectionHandler = async (connection: any) => {
 		OPENAI_API_BASE_URLS = [...OPENAI_API_BASE_URLS, connection.url];
 		OPENAI_API_KEYS = [...OPENAI_API_KEYS, connection.key];
@@ -344,12 +359,13 @@
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 		{#if ENABLE_OPENAI_API !== null && ENABLE_OLLAMA_API !== null && connectionsConfig !== null}
 			<AdminSettingSection first>
-				<AdminSettingRow label={$i18n.t('OpenAI API')}>
+				<AdminSettingRow label={$i18n.t('OpenAI API')} let:labelId>
 					<Switch
 						bind:state={ENABLE_OPENAI_API}
 						on:change={async () => {
 							updateOpenAIHandler();
 						}}
+						ariaLabelledbyId={labelId}
 					/>
 				</AdminSettingRow>
 
@@ -506,12 +522,13 @@
 					</div>
 				{/if}
 
-				<AdminSettingRow label={$i18n.t('Ollama API')}>
+				<AdminSettingRow label={$i18n.t('Ollama API')} let:labelId>
 					<Switch
 						bind:state={ENABLE_OLLAMA_API}
 						on:change={async () => {
 							updateOllamaHandler();
 						}}
+						ariaLabelledbyId={labelId}
 					/>
 				</AdminSettingRow>
 
@@ -552,6 +569,7 @@
 											newConfig[newIdx] = OLLAMA_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
 										});
 										OLLAMA_API_CONFIGS = newConfig;
+										updateOllamaHandler();
 									}}
 								/>
 							{/each}
@@ -577,12 +595,14 @@
 					description={$i18n.t(
 						'Direct Connections allow users to connect to their own OpenAI compatible API endpoints.'
 					)}
+					let:labelId
 				>
 					<Switch
 						bind:state={connectionsConfig.ENABLE_DIRECT_CONNECTIONS}
 						on:change={async () => {
 							updateConnectionsHandler();
 						}}
+						ariaLabelledbyId={labelId}
 					/>
 				</AdminSettingRow>
 
@@ -591,13 +611,35 @@
 					description={$i18n.t(
 						'Base Model List Cache speeds up access by fetching base models only at startup or on settings save—faster, but may not show recent base model changes.'
 					)}
+					let:labelId
 				>
-					<Switch
-						bind:state={connectionsConfig.ENABLE_BASE_MODELS_CACHE}
-						on:change={async () => {
-							updateConnectionsHandler();
-						}}
-					/>
+					<div class="flex items-center gap-1.5">
+						{#if connectionsConfig.ENABLE_BASE_MODELS_CACHE}
+							<Tooltip content={$i18n.t('Refresh')}>
+								<button
+									class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
+									type="button"
+									disabled={modelListRefreshing}
+									on:click={refreshModelListHandler}
+									aria-label={$i18n.t('Refresh')}
+								>
+									{#if modelListRefreshing}
+										<Spinner className="size-3.5" />
+									{:else}
+										<ArrowPath className="size-4" />
+									{/if}
+								</button>
+							</Tooltip>
+						{/if}
+
+						<Switch
+							bind:state={connectionsConfig.ENABLE_BASE_MODELS_CACHE}
+							on:change={async () => {
+								updateConnectionsHandler();
+							}}
+							ariaLabelledbyId={labelId}
+						/>
+					</div>
 				</AdminSettingRow>
 			</AdminSettingSection>
 		{:else}

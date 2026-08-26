@@ -1,0 +1,66 @@
+name: tidebot-webui
+
+services:
+  tidebot-open-webui:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        BUILD_HASH: ${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}
+    image: tidebot-open-webui:${TIDE_BOT_COMMIT:?TIDE_BOT_COMMIT is required}
+    container_name: tidebot-open-webui
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${TIDEBOT_OPEN_WEBUI_PORT:-3102}:8080'
+    environment:
+      WEBUI_NAME: Tide-Bot
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY is required}
+      # A null mapping is pass-through: Compose omits the variable when it is absent,
+      # preserving the backend's WEBUI_SECRET_KEY compatibility fallback.
+      OAUTH_CLIENT_INFO_ENCRYPTION_KEY:
+      ENABLE_SIGNUP: 'false'
+      ENABLE_VERSION_UPDATE_CHECK: 'false'
+      ENABLE_COMMUNITY_SHARING: 'false'
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-https://tide-bot.com;https://www.tide-bot.com}
+      ENABLE_OPENAI_API: ${ENABLE_OPENAI_API:-true}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-}
+      OPENAI_API_BASE_URLS: ${OPENAI_API_BASE_URLS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEYS: ${OPENAI_API_KEYS:-}
+      OPENAI_API_CONFIGS: ${OPENAI_API_CONFIGS:-}
+      ENABLE_OLLAMA_API: ${ENABLE_OLLAMA_API:-false}
+      OLLAMA_API_BASE_URL: ${OLLAMA_API_BASE_URL:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_BASE_URLS: ${OLLAMA_BASE_URLS:-}
+      OLLAMA_API_CONFIGS: ${OLLAMA_API_CONFIGS:-}
+      TERMINAL_SERVER_CONNECTIONS: ${TERMINAL_SERVER_CONNECTIONS:-[]}
+      TERMINAL_PROXY_HEADERS: ${TERMINAL_PROXY_HEADERS:-{}}
+      ENABLE_TERMINAL: ${ENABLE_TERMINAL:-}
+    volumes:
+      - tidebot_data:/app/backend/data
+      - tidebot_computer:/root/.open-webui
+    networks:
+      - tidebot_net
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:8080/health'', timeout=5)"'
+        ]
+      interval: 20s
+      timeout: 8s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  tidebot_data:
+    external: true
+    name: tidebot-webui_tidebot-open-webui
+  tidebot_computer:
+    external: true
+    name: tidebot-webui_tidebot-computer
+
+networks:
+  tidebot_net:
+    external: true
+    name: tidebot-net

@@ -17,9 +17,11 @@
 		config,
 		mobile,
 		models as _models,
+		pinnedModels,
 		settings,
 		user,
-		workspaceActions
+		workspaceActions,
+		workspaceCounts
 	} from '$lib/stores';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import {
@@ -163,6 +165,7 @@
 			if (res) {
 				models = res.items;
 				total = res.total;
+				workspaceCounts.update((counts) => ({ ...counts, models: total }));
 
 				// get tags
 				tags = await getModelTags(localStorage.token).catch((error) => {
@@ -269,15 +272,12 @@
 	};
 
 	const pinModelHandler = async (modelId) => {
-		let pinnedModels = $settings?.pinnedModels ?? [];
-
-		if (pinnedModels.includes(modelId)) {
-			pinnedModels = pinnedModels.filter((id) => id !== modelId);
-		} else {
-			pinnedModels = [...new Set([...pinnedModels, modelId])];
-		}
-
-		settings.set({ ...$settings, pinnedModels: pinnedModels });
+		settings.set({
+			...$settings,
+			pinnedModels: $pinnedModels.includes(modelId)
+				? $pinnedModels.filter((id) => id !== modelId)
+				: [...$pinnedModels, modelId]
+		});
 		await updateUserSettings(localStorage.token, { ui: $settings });
 	};
 
@@ -540,6 +540,7 @@
 						align="end"
 						onChange={async (value) => {
 							localStorage.workspaceViewOption = value;
+							page = 1;
 							await tick();
 						}}
 					/>
@@ -551,6 +552,10 @@
 							items={tags.map((tag) => {
 								return { value: tag, label: tag };
 							})}
+							onChange={async () => {
+								page = 1;
+								await tick();
+							}}
 						/>
 					{/if}
 				</div>
@@ -558,7 +563,7 @@
 				<Dropdown align="end">
 					<Tooltip content={$i18n.t('Actions')}>
 						<button
-							class="flex h-8 min-w-0 max-w-28 items-center gap-1.5 rounded-xl bg-transparent px-1.5 text-[13px] font-normal text-gray-700 transition hover:text-gray-900 dark:text-gray-200 dark:hover:text-gray-100"
+							class="flex h-8 min-w-0 max-w-28 items-center gap-1.5 rounded-xl bg-transparent px-1.5 text-[0.8125rem] font-normal text-gray-700 transition hover:text-gray-900 dark:text-gray-200 dark:hover:text-gray-100"
 							type="button"
 						>
 							<span class="min-w-0 truncate">{$i18n.t('Actions')}</span>
@@ -567,9 +572,9 @@
 					</Tooltip>
 
 					<div slot="content">
-						<DropdownMenu className="w-[170px] shadow-sm">
+						<DropdownMenu className="w-[10.625rem] shadow-sm">
 							<button
-								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[0.8125rem] hover:text-gray-900 dark:hover:text-gray-100"
 								type="button"
 								on:click={() => {
 									enableAllHandler();
@@ -580,7 +585,7 @@
 							</button>
 
 							<button
-								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[0.8125rem] hover:text-gray-900 dark:hover:text-gray-100"
 								type="button"
 								on:click={() => {
 									disableAllHandler();
@@ -593,7 +598,7 @@
 							<hr class="mx-1 my-0.5 border-gray-100 dark:border-gray-800" />
 
 							<button
-								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[0.8125rem] hover:text-gray-900 dark:hover:text-gray-100"
 								type="button"
 								on:click={() => {
 									showAllHandler();
@@ -604,7 +609,7 @@
 							</button>
 
 							<button
-								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+								class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[0.8125rem] hover:text-gray-900 dark:hover:text-gray-100"
 								type="button"
 								on:click={() => {
 									hideAllHandler();
@@ -701,21 +706,21 @@
 												<Tooltip content={model.name} className="min-w-0" placement="top-start">
 													<a
 														href={`/?model=${encodeURIComponent(model.id)}`}
-														class="truncate text-[13px] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
+														class="truncate text-[0.8125rem] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
 													>
 														{model.name}
 													</a>
 												</Tooltip>
 
 												<div
-													class="min-w-0 max-w-[40%] shrink-0 truncate text-[11px] leading-5 text-gray-500"
+													class="min-w-0 max-w-[40%] shrink-0 truncate text-[0.6875rem] leading-5 text-gray-500"
 												>
 													{model.id}
 												</div>
 
 												<Tooltip content={dayjs(model.updated_at * 1000).format('LLLL')}>
 													<div
-														class="shrink-0 truncate text-[11px] leading-5 text-gray-400 dark:text-gray-600"
+														class="shrink-0 truncate text-[0.6875rem] leading-5 text-gray-400 dark:text-gray-600"
 													>
 														{dayjs(model.updated_at * 1000).fromNow()}
 													</div>
@@ -746,7 +751,7 @@
 								</div>
 
 								<div
-									class="hidden max-w-44 shrink-0 self-center truncate text-right text-[11px] leading-5 text-gray-500 dark:text-gray-500 md:block"
+									class="hidden max-w-44 shrink-0 self-center truncate text-right text-[0.6875rem] leading-5 text-gray-500 dark:text-gray-500 md:block"
 								>
 									<Tooltip
 										content={model?.user?.email ?? $i18n.t('Deleted User')}

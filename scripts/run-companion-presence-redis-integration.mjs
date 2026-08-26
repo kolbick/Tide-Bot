@@ -4,6 +4,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import {
+	composeInvocation,
+	composePluginCandidates,
+	dockerCliExecutable
+} from './fixed-tool-candidates.mjs';
 
 const rejectedComposeEnvironment = Object.keys(process.env).filter((name) =>
 	name.startsWith('COMPOSE_')
@@ -37,13 +42,8 @@ try {
 	await chmod(runTmpDir, 0o700);
 	const dockerConfigDir = join(runTmpDir, 'docker-config');
 	await mkdir(dockerConfigDir, { mode: 0o700 });
-	const composePluginCandidates = [
-		'/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose',
-		'/usr/local/lib/docker/cli-plugins/docker-compose',
-		'/usr/lib/docker/cli-plugins/docker-compose'
-	];
 	let composePlugin;
-	for (const candidate of composePluginCandidates) {
+	for (const candidate of composePluginCandidates()) {
 		try {
 			await access(candidate);
 			composePlugin = candidate;
@@ -57,8 +57,10 @@ try {
 		throw new Error('Docker Compose plugin was not found in a fixed system location');
 	}
 	const cliPluginsDir = join(dockerConfigDir, 'cli-plugins');
-	await mkdir(cliPluginsDir, { mode: 0o700 });
-	await symlink(composePlugin, join(cliPluginsDir, 'docker-compose'));
+	if (process.platform !== 'win32') {
+		await mkdir(cliPluginsDir, { mode: 0o700 });
+		await symlink(composePlugin, join(cliPluginsDir, 'docker-compose'));
+	}
 	const runEnvFile = join(runTmpDir, 'integration.env');
 	const webuiSecret = randomBytes(32).toString('base64url');
 	const redisKeyPrefix = `${projectName}:`;
@@ -76,11 +78,21 @@ try {
 
 	const cleanEnvironment = {
 		PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
-		TMPDIR: runTmpDir,
-		DOCKER_CONFIG: dockerConfigDir
+		DOCKER_CONFIG: dockerConfigDir,
+		...(process.platform === 'win32'
+			? { SystemRoot: process.env.SystemRoot, TEMP: runTmpDir, TMP: runTmpDir }
+			: { TMPDIR: runTmpDir })
 	};
 
 	function isolatedDocker(args) {
+		if (process.platform === 'win32') {
+			return spawnSync(dockerCliExecutable(), args, {
+				cwd: runTmpDir,
+				encoding: 'utf8',
+				env: cleanEnvironment,
+				maxBuffer: 16 * 1024 * 1024
+			});
+		}
 		return spawnSync(
 			'/usr/bin/env',
 			[
@@ -101,8 +113,7 @@ try {
 	}
 
 	function compose(args) {
-		const result = isolatedDocker([
-			'compose',
+		const composeArgs = [
 			'--file',
 			composeFilePath,
 			'--env-file',
@@ -110,7 +121,17 @@ try {
 			'--project-name',
 			projectName,
 			...args
-		]);
+		];
+		const invocation = composeInvocation(process.platform, composePlugin, composeArgs);
+		const result =
+			process.platform === 'win32'
+				? spawnSync(invocation.file, invocation.args, {
+						cwd: runTmpDir,
+						encoding: 'utf8',
+						env: cleanEnvironment,
+						maxBuffer: 16 * 1024 * 1024
+					})
+				: isolatedDocker(invocation.args);
 		if (result.error) {
 			throw result.error;
 		}

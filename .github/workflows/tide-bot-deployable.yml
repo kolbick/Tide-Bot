@@ -1,0 +1,62 @@
+name: Tide-Bot deployable marker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: tide-bot-deployable-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  mark-deployable:
+    if: >-
+      github.repository == 'kolbick/Tide-Bot' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gate dependencies
+        run: |
+          npm ci
+          python -m pip install --requirement backend/requirements.txt "pytest-asyncio>=1.0.0"
+      - name: Configure Tide-Bot automation identity
+        shell: bash
+        run: |
+          git config user.name 'tide-bot-upstream[bot]'
+          git config user.email 'tide-bot-upstream[bot]@users.noreply.github.com'
+      - name: Run common update gate
+        run: npm run test:update-gate
+      - name: Guard current main tip
+        id: main_tip
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          MAIN_TIP="$(git rev-parse origin/main^{commit})"
+          DECISION="$(node scripts/tide-bot-update-policy.mjs marker --candidate-sha "$GITHUB_SHA" --main-tip-sha "$MAIN_TIP")"
+          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
+      - name: Move tested deployable marker
+        if: steps.main_tip.outputs.decision == 'mark'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag -fa tide-bot-deployable "$GITHUB_SHA" -m "Tide-Bot deployable $GITHUB_SHA"
+          git push origin refs/tags/tide-bot-deployable --force

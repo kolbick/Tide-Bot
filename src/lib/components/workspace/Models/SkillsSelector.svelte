@@ -54,10 +54,11 @@
 	<div class="flex flex-col mb-1">
 		{#if activeSkills.length > 0}
 			<div class=" flex items-center flex-wrap mt-1">
-				{#each selectedSkills as skill, skillIdx}
+				{#each selectedSkills as skill, skillIdx (skill.id)}
 					<div class=" flex items-center gap-2 mr-3">
 						<div class="self-center flex items-center">
 							<Checkbox
+								ariaLabel={skill.name}
 								state="checked"
 								on:change={(e) => {
 									if (e.detail === 'unchecked') {

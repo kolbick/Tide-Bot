@@ -10,7 +10,7 @@
 
 	const i18n = getContext<Writable<i18nType>>('i18n');
 
-	import { WEBUI_NAME, user, workspaceActions } from '$lib/stores';
+	import { WEBUI_NAME, user, workspaceActions, workspaceCounts } from '$lib/stores';
 	import {
 		deleteKnowledgeById,
 		searchKnowledgeBases,
@@ -24,6 +24,8 @@
 	import ItemMenu from './Knowledge/ItemMenu.svelte';
 	import CreateKnowledgeBase from './Knowledge/CreateKnowledgeBase.svelte';
 	import Badge from '../common/Badge.svelte';
+	import ChevronDown from '../icons/ChevronDown.svelte';
+	import ChevronUp from '../icons/ChevronUp.svelte';
 	import Modal from '../common/Modal.svelte';
 	import Search from '../icons/Search.svelte';
 	import Spinner from '../common/Spinner.svelte';
@@ -62,6 +64,8 @@
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 	let viewOption = '';
 	let sourceOption = '';
+	let sortKey = 'updated_at';
+	let sortDirection = 'desc';
 
 	let items: KnowledgeListItem[] | null = null;
 	let total: number | null = null;
@@ -92,9 +96,24 @@
 		clearTimeout(searchDebounceTimer);
 	});
 
-	$: if (loaded && viewOption !== undefined && sourceOption !== undefined) {
+	$: if (
+		loaded &&
+		viewOption !== undefined &&
+		sourceOption !== undefined &&
+		sortKey !== undefined &&
+		sortDirection !== undefined
+	) {
 		init();
 	}
+
+	const setSortKey = (key: string) => {
+		if (sortKey === key) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortKey = key;
+			sortDirection = key === 'updated_at' ? 'desc' : 'asc';
+		}
+	};
 
 	const reset = () => {
 		page = 1;
@@ -124,7 +143,9 @@
 			query,
 			viewOption,
 			page,
-			sourceOption
+			sourceOption,
+			sortKey,
+			sortDirection
 		).catch(() => {
 			return [];
 		});
@@ -132,6 +153,7 @@
 		if (res) {
 			console.log(res);
 			total = res.total;
+			workspaceCounts.update((counts) => ({ ...counts, knowledge: total }));
 			const pageItems: KnowledgeListItem[] = res.items ?? [];
 
 			if ((pageItems ?? []).length === 0) {
@@ -258,6 +280,9 @@
 </script>
 
 <svelte:head>
+	<!-- LICENSE covers this Open WebUI browser-title identifier.
+	Do not alter, remove, obscure, or replace it except as LICENSE permits:
+	https://docs.openwebui.com/license. -->
 	<title>
 		{$i18n.t('Knowledge')} / {$WEBUI_NAME}
 	</title>
@@ -355,15 +380,37 @@
 					<div
 						class="flex w-full items-center gap-2 px-1.5 pb-0.5 text-xs text-gray-400 dark:text-gray-600"
 					>
-						<div class="flex min-w-0 flex-1 items-center gap-1 py-0.5 text-left">
+						<button
+							class="flex min-w-0 flex-1 items-center gap-1 py-0.5 text-left"
+							type="button"
+							on:click={() => setSortKey('name')}
+						>
 							{$i18n.t('Title')}
-						</div>
+							{#if sortKey === 'name'}
+								{#if sortDirection === 'asc'}
+									<ChevronUp className="size-2" />
+								{:else}
+									<ChevronDown className="size-2" />
+								{/if}
+							{/if}
+						</button>
 
 						<div class="hidden w-44 shrink-0 md:block"></div>
 
-						<div class="flex w-36 shrink-0 items-center justify-end gap-1 py-0.5 text-right">
+						<button
+							class="flex w-36 shrink-0 items-center justify-end gap-1 py-0.5 text-right"
+							type="button"
+							on:click={() => setSortKey('updated_at')}
+						>
 							{$i18n.t('Updated at')}
-						</div>
+							{#if sortKey === 'updated_at'}
+								{#if sortDirection === 'asc'}
+									<ChevronUp className="size-2" />
+								{:else}
+									<ChevronDown className="size-2" />
+								{/if}
+							{/if}
+						</button>
 					</div>
 
 					<div class="grid gap-y-0.5">
@@ -395,7 +442,7 @@
 													placement="top-start"
 												>
 													<div
-														class="truncate text-[13px] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
+														class="truncate text-[0.8125rem] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
 													>
 														{item.name}
 													</div>
@@ -415,7 +462,7 @@
 
 												<Tooltip content={dayjs(item.updated_at * 1000).format('LLLL')}>
 													<div
-														class="shrink-0 truncate text-[11px] leading-5 text-gray-400 dark:text-gray-600"
+														class="shrink-0 truncate text-[0.6875rem] leading-5 text-gray-400 dark:text-gray-600"
 													>
 														{dayjs(item.updated_at * 1000).fromNow()}
 													</div>
@@ -436,7 +483,7 @@
 								</div>
 
 								<div
-									class="hidden max-w-44 shrink-0 self-center truncate text-right text-[11px] leading-5 text-gray-500 dark:text-gray-500 md:block"
+									class="hidden max-w-44 shrink-0 self-center truncate text-right text-[0.6875rem] leading-5 text-gray-500 dark:text-gray-500 md:block"
 								>
 									<Tooltip
 										content={item?.user?.email ?? $i18n.t('Deleted User')}

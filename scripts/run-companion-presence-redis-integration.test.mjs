@@ -6,19 +6,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { composePluginCandidates, nullDevice } from './fixed-tool-candidates.mjs';
 
 const wrapper = new URL('./run-companion-presence-redis-integration.mjs', import.meta.url);
 const composeFile = fileURLToPath(
 	new URL('../deploy/tide-stack/docker-compose.presence-integration.yml', import.meta.url)
 );
-const composePluginCandidates = [
-	'/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose',
-	'/usr/local/lib/docker/cli-plugins/docker-compose',
-	'/usr/lib/docker/cli-plugins/docker-compose'
-];
-
 async function findComposePlugin() {
-	for (const candidate of composePluginCandidates) {
+	for (const candidate of composePluginCandidates()) {
 		try {
 			await access(candidate);
 			return candidate;
@@ -47,7 +42,7 @@ test('workers render with retrieval disabled and no network-backed embedding ini
 			'--file',
 			composeFile,
 			'--env-file',
-			'/dev/null',
+			nullDevice(),
 			'--project-name',
 			'tedbot-presence-config-test',
 			'config',
@@ -95,16 +90,25 @@ async function runWithFakeDocker(runId, fakeDockerSource) {
 	return { result, leaked };
 }
 
-test('inventory failure still deletes the private environment directory', async () => {
-	const { result, leaked } = await runWithFakeDocker('cleanup-inventory', '#!/bin/sh\nexit 42\n');
+// These cleanup fixtures intentionally fake the isolated POSIX Docker CLI with a shell script.
+// Windows tool selection is covered above without invoking or mutating the real Docker engine.
+test(
+	'inventory failure still deletes the private environment directory',
+	{ skip: process.platform === 'win32' },
+	async () => {
+		const { result, leaked } = await runWithFakeDocker('cleanup-inventory', '#!/bin/sh\nexit 42\n');
 
-	assert.notEqual(result.status, 0);
-	assert.match(`${result.stdout}\n${result.stderr}`, /inspect pre-existing Tide-Bot containers/);
-	assert.deepEqual(leaked, []);
-});
+		assert.notEqual(result.status, 0);
+		assert.match(`${result.stdout}\n${result.stderr}`, /inspect pre-existing Tide-Bot containers/);
+		assert.deepEqual(leaked, []);
+	}
+);
 
-test('teardown failures preserve the primary error and still delete private files', async () => {
-	const fakeDocker = `#!/bin/sh
+test(
+	'teardown failures preserve the primary error and still delete private files',
+	{ skip: process.platform === 'win32' },
+	async () => {
+		const fakeDocker = `#!/bin/sh
 case " $* " in
   *" compose "*" up "*) exit 41 ;;
   *" compose "*" logs "*) exit 0 ;;
@@ -113,11 +117,12 @@ case " $* " in
   *) exit 0 ;;
 esac
 `;
-	const { result, leaked } = await runWithFakeDocker('cleanup-primary', fakeDocker);
-	const output = `${result.stdout}\n${result.stderr}`;
+		const { result, leaked } = await runWithFakeDocker('cleanup-primary', fakeDocker);
+		const output = `${result.stdout}\n${result.stderr}`;
 
-	assert.notEqual(result.status, 0);
-	assert.match(output, /start isolated presence stack failed/);
-	assert.doesNotMatch(output, /inspect container resources failed with exit 43/);
-	assert.deepEqual(leaked, []);
-});
+		assert.notEqual(result.status, 0);
+		assert.match(output, /start isolated presence stack failed/);
+		assert.doesNotMatch(output, /inspect container resources failed with exit 43/);
+		assert.deepEqual(leaked, []);
+	}
+);

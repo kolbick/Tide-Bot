@@ -1,0 +1,187 @@
+name: Tide-Bot upstream main
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    if: github.repository == 'kolbick/Tide-Bot' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    outputs:
+      upstream_sha: ${{ steps.result.outputs.upstream_sha }}
+      outcome: ${{ steps.result.outputs.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gate dependencies
+        run: |
+          npm ci
+          python -m pip install --requirement backend/requirements.txt "pytest-asyncio>=1.0.0"
+      - name: Fetch and validate upstream baseline
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_BASELINE_SHA='d3e8bf3405e848cfba377814d0aa7ba7290e414d'
+          git remote add upstream https://github.com/open-webui/open-webui.git 2>/dev/null || git remote set-url upstream https://github.com/open-webui/open-webui.git
+          git fetch --no-tags upstream main +refs/tags/v0.11.1:refs/tags/v0.11.1
+          UPSTREAM_SHA="$(git rev-parse upstream/main^{commit})"
+          BASELINE_SHA="$(git rev-parse refs/tags/v0.11.1^{commit})"
+          OUTCOME='review'
+          if [ "$BASELINE_SHA" != "$EXPECTED_BASELINE_SHA" ] || [ "$(node scripts/tide-bot-update-policy.mjs baseline --baseline-sha "$BASELINE_SHA")" != 'ready' ]; then
+            OUTCOME='baseline-mismatch'
+          elif ! git merge-base --is-ancestor "$BASELINE_SHA" "$UPSTREAM_SHA"; then
+            OUTCOME='baseline-not-ancestral'
+          elif git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main; then
+            OUTCOME='no-op'
+          fi
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "outcome=$OUTCOME" >> "$GITHUB_OUTPUT"
+      - name: Merge upstream into a review branch
+        if: steps.upstream.outputs.outcome == 'review'
+        id: merge
+        continue-on-error: true
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name 'tide-bot-upstream[bot]'
+          git config user.email 'tide-bot-upstream[bot]@users.noreply.github.com'
+          git switch --create upstream-verification origin/main
+          if git merge --no-ff --no-commit "$UPSTREAM_SHA"; then
+            echo 'outcome=merged' >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo 'outcome=merge-conflict' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run common update gate
+        if: steps.upstream.outputs.outcome == 'review' && steps.merge.outputs.outcome == 'merged'
+        id: gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          if npm run test:update-gate; then
+            echo 'outcome=passed' >> "$GITHUB_OUTPUT"
+          else
+            echo 'outcome=gate-failed' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Resolve trusted verification result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
+          INITIAL_OUTCOME: ${{ steps.upstream.outputs.outcome }}
+          MERGE_OUTCOME: ${{ steps.merge.outputs.outcome }}
+          GATE_OUTCOME: ${{ steps.gate.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          OUTCOME="$INITIAL_OUTCOME"
+          if [ "$INITIAL_OUTCOME" = 'review' ]; then
+            if [ "$MERGE_OUTCOME" != 'merged' ]; then OUTCOME='merge-conflict'
+            elif [ "$GATE_OUTCOME" = 'passed' ]; then OUTCOME='verified'
+            else OUTCOME='gate-failed'
+            fi
+          fi
+          case "$OUTCOME" in no-op|baseline-mismatch|baseline-not-ancestral|merge-conflict|gate-failed|verified) ;; *) exit 2 ;; esac
+          [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "outcome=$OUTCOME" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: verify
+    if: always() && needs.verify.result == 'success' && needs.verify.outputs.outcome != 'no-op'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+      - name: Validate trusted verification output
+        id: trusted
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ needs.verify.outputs.upstream_sha }}
+          OUTCOME: ${{ needs.verify.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          EXPECTED_BASELINE_SHA='d3e8bf3405e848cfba377814d0aa7ba7290e414d'
+          [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]
+          case "$OUTCOME" in baseline-mismatch|baseline-not-ancestral|merge-conflict|gate-failed|verified) ;; *) exit 2 ;; esac
+          git remote add upstream https://github.com/open-webui/open-webui.git 2>/dev/null || git remote set-url upstream https://github.com/open-webui/open-webui.git
+          git fetch --no-tags upstream main +refs/tags/v0.11.1:refs/tags/v0.11.1
+          git cat-file -e "$UPSTREAM_SHA^{commit}"
+          git merge-base --is-ancestor "$UPSTREAM_SHA" upstream/main
+          BASELINE_SHA="$(git rev-parse refs/tags/v0.11.1^{commit})"
+          case "$OUTCOME" in
+            baseline-mismatch) test "$BASELINE_SHA" != "$EXPECTED_BASELINE_SHA" ;;
+            baseline-not-ancestral) test "$BASELINE_SHA" = "$EXPECTED_BASELINE_SHA"; ! git merge-base --is-ancestor "$BASELINE_SHA" "$UPSTREAM_SHA" ;;
+            merge-conflict|gate-failed|verified) test "$BASELINE_SHA" = "$EXPECTED_BASELINE_SHA"; git merge-base --is-ancestor "$BASELINE_SHA" "$UPSTREAM_SHA" ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/tide-bot-trusted/scripts"
+          cp scripts/record-upstream-integration.mjs "$RUNNER_TEMP/tide-bot-trusted/scripts/record-upstream-integration.mjs"
+          echo "outcome=$OUTCOME" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+      - name: Create sanitized failure issue
+        if: steps.trusted.outputs.outcome != 'verified'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_SHA: ${{ steps.trusted.outputs.upstream_sha }}
+          OUTCOME: ${{ steps.trusted.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          gh issue create --title "Upstream integration blocked ${UPSTREAM_SHA:0:12}" --body "Trusted verification outcome: ${OUTCOME}. Upstream SHA: ${UPSTREAM_SHA}. No Tide-Bot branch or deployable marker was changed."
+      - name: Configure Tide-Bot automation identity
+        if: steps.trusted.outputs.outcome == 'verified'
+        shell: bash
+        run: |
+          git config user.name 'tide-bot-upstream[bot]'
+          git config user.email 'tide-bot-upstream[bot]@users.noreply.github.com'
+      - name: Record and propose passing integration
+        if: steps.trusted.outputs.outcome == 'verified'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_SHA: ${{ steps.trusted.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          BRANCH="automation/upstream-main-${UPSTREAM_SHA:0:12}"
+          git switch --create "$BRANCH" origin/main
+          git merge --no-ff --no-commit "$UPSTREAM_SHA"
+          node "$RUNNER_TEMP/tide-bot-trusted/scripts/record-upstream-integration.mjs" --upstream-sha "$UPSTREAM_SHA" --upstream-path "$GITHUB_WORKSPACE/docs/UPSTREAM.md"
+          printf '%s\n' "$UPSTREAM_SHA" > docs/UPSTREAM_MAIN_SHA
+          git add docs/UPSTREAM.md docs/UPSTREAM_MAIN_SHA
+          git commit -m "chore: integrate Open WebUI main ${UPSTREAM_SHA:0:12}"
+          gh auth setup-git
+          git push origin "$BRANCH"
+          PR_URL="$(gh pr create --base main --head "$BRANCH" --title "chore: integrate Open WebUI main ${UPSTREAM_SHA:0:12}" --body "Automated upstream/main integration passed the credential-free Tide-Bot gate.")"
+          gh pr merge "$PR_URL" --merge --auto
