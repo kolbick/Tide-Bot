@@ -376,7 +376,8 @@ export async function runCompanionCypress({
 					{
 						HOME: runTmpDir,
 						CI: '1',
-						NO_COLOR: '1'
+						NO_COLOR: '1',
+						NODE_OPTIONS: '--max-old-space-size=8192'
 					}
 				),
 				'build current-worktree companion frontend'

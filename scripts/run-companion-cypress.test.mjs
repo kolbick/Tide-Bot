@@ -100,7 +100,11 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 
 	try {
 		const result = await runCompanionCypress({
-			env: { RUN_ID: 'unit-isolation', PATH: '/hostile/bin' },
+			env: {
+				RUN_ID: 'unit-isolation',
+				PATH: '/hostile/bin',
+				NODE_OPTIONS: '--require=/hostile/bootstrap.cjs'
+			},
 			argv: ['node', 'run-companion-cypress.mjs'],
 			platform: 'linux',
 			accessFile: async (candidate) => {
@@ -210,6 +214,14 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 		assert.ok(build, 'the current worktree frontend must be built before Compose starts');
 		assert.ok(calls.indexOf(build) < calls.indexOf(up));
 		assert.notEqual(build.options.cwd, repoRoot);
+		assert.equal(build.options.env.NODE_OPTIONS, '--max-old-space-size=8192');
+		assert.equal(
+			calls
+				.filter((call) => call !== build)
+				.some((call) => Object.hasOwn(call.options.env, 'NODE_OPTIONS')),
+			false,
+			'only the frontend build may receive wrapper-owned NODE_OPTIONS'
+		);
 
 		const cypress = calls.find((call) => call.args.some(isCypressBinary));
 		assert.ok(cypress);
