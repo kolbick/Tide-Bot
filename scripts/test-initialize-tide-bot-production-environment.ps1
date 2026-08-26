@@ -7,6 +7,11 @@ $sentinel = 'TIDE_BOT_TEST_' + 'SENTINEL_DO_NOT_PRINT'
 $scheduledTaskIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $destinationPath = Join-Path $fixtureRoot 'production.env'
 
+$initializerSource = Get-Content -LiteralPath $initializerPath -Raw
+$initializerTopLevel = $initializerSource.Substring($initializerSource.IndexOf('$sourcePath ='))
+$copyEnvironmentIndex = $initializerTopLevel.IndexOf('Copy-ValidatedProductionEnvironment -SourcePath')
+$protectDirectoryIndex = $initializerTopLevel.LastIndexOf('Set-ProductionDirectoryAcl -Path')
+
 function Assert-True {
 	param(
 		[bool] $Condition,
@@ -49,6 +54,9 @@ function Get-AccessRulesForSid {
 }
 
 try {
+	Assert-True ($copyEnvironmentIndex -ge 0) 'Could not locate the production environment copy operation.'
+	Assert-True ($protectDirectoryIndex -gt $copyEnvironmentIndex) 'The production directory ACL is applied before the environment file is copied.'
+
 	New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
 	$sourcePath = Join-Path $fixtureRoot 'legacy.env'
 	@(

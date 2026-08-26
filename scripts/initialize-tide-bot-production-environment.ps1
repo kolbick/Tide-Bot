@@ -150,12 +150,11 @@ if (-not (Test-Path -LiteralPath $destinationDirectory)) {
 	}
 }
 
-if ((Test-Path -LiteralPath $destinationDirectory) -and [System.IO.Path]::GetFullPath($destinationDirectory).TrimEnd('\').Equals($canonicalProductionDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
-	Set-ProductionDirectoryAcl -Path $destinationDirectory
-}
-
 if ($PSCmdlet.ShouldProcess($destinationPath, 'Copy validated production environment file')) {
 	Copy-ValidatedProductionEnvironment -SourcePath $sourcePath -DestinationPath $destinationPath
 	Set-ProductionEnvironmentAcl -Path $destinationPath -ScheduledTaskIdentitySid $scheduledTaskIdentitySid
+	if ([System.IO.Path]::GetFullPath($destinationDirectory).TrimEnd('\').Equals($canonicalProductionDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+		Set-ProductionDirectoryAcl -Path $destinationDirectory
+	}
 	Write-Output 'Production environment file initialized with protected ACL.'
 }
