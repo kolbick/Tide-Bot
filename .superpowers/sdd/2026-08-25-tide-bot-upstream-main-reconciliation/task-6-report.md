@@ -166,3 +166,79 @@ Task 6 brief was also absent.
   migration regression test. The disposable project venv did not include Ruff,
   so the available host executable was used only for these read-only checks.
 - `git diff --check` passed after the fixes.
+
+## Whole-branch release review fix round 2
+
+Commit `e61ba7f8225041c8e1635f76ab37c544611495df` addresses all confirmed
+release-review findings without changing the explicit upstream merge ancestry.
+
+### RED evidence
+
+- The parsed workflow validator failed because the single reconciliation job
+  had global `contents/issues/pull-requests: write`, no `verify`/`publish` job
+  separation, and accepted any 40-character SHA beginning with `d3e8bf3`.
+- The production-environment migration regression failed because a legacy
+  empty `OAUTH_CLIENT_INFO_ENCRYPTION_KEY=` was copied unchanged, defeating the
+  backend's absence-based `WEBUI_SECRET_KEY` fallback.
+- The updater regression failed because it fetched `tide-bot-deployable` as an
+  ambiguous name, resolved `origin/tide-bot-deployable`, did not refresh
+  `origin/main`, archived a live SQLite/WAL volume through mutable Alpine plus
+  online `apk`, and wrote the Tide deploy commit as `upstream_sha`.
+- The rendered Compose regression exposed the old empty-string OAuth variable;
+  the final contract distinguishes null/unset pass-through from an explicit
+  nonempty value. A two-process credential test also proves ciphertext created
+  under the legacy WEBUI secret decrypts when the dedicated OAuth key is absent.
+
+### Implementation
+
+- Compose now uses null pass-through for the optional OAuth encryption key.
+  The initializer removes only a legacy empty declaration, preserves omitted
+  state, and copies an explicit nonempty key unchanged. Reconnect-required
+  remains a non-rollback health warning, while the schedule explicitly refuses
+  that state until OAuth is connected, decryptable, and has a nonempty catalog.
+- Updater and schedule force-fetch the exact tag ref, refresh the exact main
+  tracking ref, resolve only `refs/tags/tide-bot-deployable^{commit}`, and test
+  ancestry. A real temporary bare Git remote proves a stale main refreshes and
+  a conflicting remote branch is rejected in favor of the tag.
+- The upstream workflow now runs merge and gate work in a read-only job with
+  `persist-credentials: false` and no GitHub token. A separate post-verification
+  job revalidates the sanitized outcome/SHA and performs only issue or
+  branch/pull-request mutations. It executes the record helper copied from the
+  trusted base before merging and compares the full v0.11.1 SHA.
+- Candidate build now finishes before downtime. The updater stops the service
+  before snapshotting the data volume, uses the immutable already-local prior
+  image with `--pull=never` and Python's standard-library tar support, and
+  restarts the prior service on any pre-replacement backup failure. No online
+  package install or mutable helper image remains.
+- ProgramData production and backup roots receive protected SYSTEM and
+  Administrators-only ACLs before sensitive writes. Every marker/ref/ancestry/
+  checkout/provenance/build/backup failure writes a stage-only sanitized
+  failure record before rethrowing.
+- `docs/UPSTREAM_MAIN_SHA` records the exact integrated Open WebUI commit. The
+  detached candidate must contain a full SHA that Git proves ancestral before
+  successful state records use it as `upstream_sha`.
+- Production documentation now states that the existing Windows Cloudflared
+  service and `C:\ProgramData\cloudflared\config.yml` routing remain unchanged;
+  the Nginx replacement example was removed.
+
+### GREEN evidence
+
+- Node 22.18.0: live Compose and upstream workflow validators, 19 tests passed.
+- Node 22.18.0: Windows workflow validator, 9 tests passed with the project
+  Python/PyYAML supplied through its documented `PYTHON_BIN` input.
+- Python 3.12: ChatGPT subscription, safe probe CLI, and Responses streaming,
+  19 tests passed; focused legacy ciphertext continuity, 2 tests passed.
+- PowerShell: checkout bootstrap, environment initialization, scheduler,
+  health, and updater safeguard suites all passed. The updater suite includes
+  real synthetic Git refs, ordered stop/snapshot/recovery, ACL ordering,
+  provenance, and all pre-replacement failure categories; it invokes no Docker.
+- Branding audit passed. The production build passed under Node 22.18.0 with an
+  8 GB heap, transformed 6,409 client modules, and wrote the static `build/`.
+- PowerShell parser accepted every changed script; Python compile check passed;
+  `git diff --check` passed.
+
+The first combined Windows validator invocation lacked PyYAML on its default
+Unix-oriented candidate paths; rerunning with the existing project Python via
+`PYTHON_BIN` passed all nine tests. No push, pull request, tag/release mutation,
+deployment, live sign-in, secret access, production access, or live-resource
+operation occurred.
