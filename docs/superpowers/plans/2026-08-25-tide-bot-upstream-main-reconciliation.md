@@ -324,7 +324,7 @@ git commit -m "deploy: automate Tide-Bot backup and rollback"
 
 Test that the bootstrap script rejects a checkout inside a user/developer worktree, clones only `https://github.com/kolbick/Tide-Bot.git`, configures `upstream` as `https://github.com/open-webui/open-webui.git`, checks out the immutable deployable commit, and writes no secret-bearing file.
 
-Test that the schedule script creates exactly `TideBot-Upstream-Deploy`, runs as the designated local deployment account at 15-minute intervals, has `MultipleInstances = IgnoreNew`, and calls the updater by absolute path with `-NoProfile -ExecutionPolicy Bypass`. Add a `-Disable` switch that unregisters only this exact task after confirming its task path and name.
+Test that the schedule script creates exactly `TideBot-Upstream-Deploy`, runs as the designated local deployment account once per day, has `MultipleInstances = IgnoreNew`, and calls the updater by absolute path with `-NoProfile -ExecutionPolicy Bypass`. Add a `-Disable` switch that unregisters only this exact task after confirming its task path and name.
 
 Run:
 
@@ -343,7 +343,7 @@ The first manual run receives the exact `tide-bot-deployable` commit from the up
 
 **Step 3: Implement the schedule installer**
 
-Register a task with `New-ScheduledTaskAction`, `New-ScheduledTaskTrigger -Once` plus a 15-minute repetition interval, `New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable`, and a task description that states it deploys only a tested Git marker. Record the execution account name in the task definition and grant that identity read access to `production.env` during environment initialization.
+Register a task with `New-ScheduledTaskAction`, `New-ScheduledTaskTrigger -Once` plus a one-day repetition interval, `New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable`, and a task description that states it deploys only a tested Git marker. Record the execution account name in the task definition and grant that identity read access to `production.env` during environment initialization.
 
 The default mode is `-Disabled`: it validates all inputs and creates no task. `-Enable` is permitted only after the initial manual cutover task has written a successful state record and the caller confirms the state record commit equals `tide-bot-deployable`.
 

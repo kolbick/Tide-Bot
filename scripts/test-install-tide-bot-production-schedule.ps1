@@ -54,7 +54,7 @@ try {
 	$definition = $calls[0].definition
 	Assert-True ($definition.name -eq 'TideBot-Upstream-Deploy' -and $definition.path -eq '\') 'Schedule did not use the exact task name and path.'
 	Assert-True ($definition.principal.user_id -eq 'SYSTEM' -and $definition.principal.logon_type -eq 'ServiceAccount') 'Schedule did not use explicit LocalSystem semantics.'
-	Assert-True ($definition.trigger.kind -eq 'Once' -and $definition.trigger.repetition_minutes -eq 15) 'Schedule did not create a 15-minute one-time repetition trigger.'
+	Assert-True ($definition.trigger.kind -eq 'Once' -and $definition.trigger.repetition_minutes -eq 1440) 'Schedule did not create a once-daily repetition trigger.'
 	Assert-True ($definition.settings.multiple_instances -eq 'IgnoreNew' -and $definition.settings.start_when_available) 'Schedule did not enforce IgnoreNew and StartWhenAvailable.'
 	$expectedActionArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$updaterPath`" -RepositoryPath `"C:\ProgramData\Tide-Bot\repo`" -StatePath `"C:\ProgramData\Tide-Bot\state\last-successful-deployment.json`""
 	Assert-True ($definition.action.execute -eq 'pwsh.exe' -and $definition.action.arguments -eq $expectedActionArguments) 'Schedule action did not use the canonical updater defaults with guarded PowerShell arguments.'

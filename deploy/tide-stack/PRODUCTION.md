@@ -62,7 +62,7 @@ It uses explicit LocalSystem semantics (`SYSTEM`, documented ACL identity
 `initialize-tide-bot-production-environment.ps1`. Enable it only after the
 manual updater has written a successful state record whose `commit` exactly
 matches the current `tide-bot-deployable` commit. The registered task is exactly
-`\TideBot-Upstream-Deploy`, runs every 15 minutes with `IgnoreNew`, and launches
+`\TideBot-Upstream-Deploy`, runs once per day with `IgnoreNew`, and launches
 the updater through an absolute `pwsh.exe -NoProfile -ExecutionPolicy Bypass`
 action. Its description restricts deployment to a tested Git marker.
 

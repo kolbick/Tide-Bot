@@ -53,7 +53,7 @@ function New-TideBotScheduleDefinition {
 		path = $script:TideBotSchedulePath
 		description = 'Deploys Tide-Bot only after tide-bot-deployable is a tested Git marker.'
 		action = @{ execute = 'pwsh.exe'; arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$absoluteUpdaterPath`" -RepositoryPath `"$script:TideBotCanonicalRepositoryPath`" -StatePath `"$script:TideBotCanonicalStatePath`"" }
-		trigger = @{ kind = 'Once'; repetition_minutes = 15 }
+		trigger = @{ kind = 'Once'; repetition_minutes = 1440 }
 		settings = @{ multiple_instances = 'IgnoreNew'; start_when_available = $true }
 		principal = @{ user_id = 'SYSTEM'; logon_type = 'ServiceAccount'; account_name = $script:TideBotScheduleIdentity }
 	}
