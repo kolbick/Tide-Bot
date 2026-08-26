@@ -341,3 +341,46 @@ discovery and presence-runner support.
 No Docker stack was started, stopped, or changed. No push, pull request,
 tag/release mutation, deployment, production/live access, secret access, or
 remote operation occurred.
+
+## Verification-only fix round 5
+
+Commit `efec857af4d0de758424b744ec83aee22eb10952` strengthens only the
+source-security contract around the already in-process workflow YAML validator.
+No runtime or production implementation changed.
+
+### RED evidence
+
+- Mutation-style cases supplied equivalent forbidden source snippets to the
+  existing detector. Under Node 22.18.0 the focused suite failed 1/7 and
+  reported nine accepted mutations: unprefixed `child_process`, `spawn`,
+  `exec`, `execSync`, `execFile`, `execFileSync`, bare `python`, `python.exe`,
+  and `process.env.PATH`.
+- The original detector caught only its exact `node:child_process`,
+  `spawnSync`, and `python3` spellings; passing the actual safe validator alone
+  therefore did not prove equivalent external-command paths would be denied.
+
+### Contract repair
+
+- The detector now rejects both `child_process` import spellings, the
+  `spawn`/`spawnSync` and `exec`/`execSync`/`execFile`/`execFileSync` families,
+  Python launcher tokens including bare `python`, `python.exe`, and `python3`,
+  and direct `process.env.PATH` access.
+- Twelve named mutations exercise those forbidden spellings. The same detector
+  is applied to the real workflow validator source, which must also retain its
+  explicit in-process `yaml` import and parse call.
+- This is deliberately a source-contract assertion, not a claim that regexes
+  prove arbitrary program semantics. It protects the specific external-command
+  mechanisms prohibited for this tracked validator.
+
+### GREEN evidence
+
+- Node 22.18.0 fixed-tool/parser contract and direct workflow validator: 16/16
+  passed, including all twelve synthesized forbidden-source mutations.
+- Full `npm run test:frontend -- --run` under Node 22.18.0 passed all 43 test
+  files and all 148 tests. The two documented POSIX-only fake-shell fixture
+  skips remain unchanged.
+- Focused Prettier verification passed and `git diff --check` passed.
+
+No Docker stack was started, stopped, or changed. No push, pull request,
+tag/release mutation, deployment, production/live access, secret access, or
+remote operation occurred.
