@@ -125,3 +125,44 @@ The first build attempt reached chunk rendering but exhausted Node's default
 approximately 4 GB heap. A shell-default Node 25 rerun was stopped immediately
 and is not counted as evidence. The successful build above used only the pinned
 Node 22.18.0 runtime.
+
+## Review fix round 1
+
+Independent review found that the upstream merge left two Alembic heads and
+introduced the unapproved upstream `issue-label.yaml` workflow. The expected
+Task 6 brief was also absent.
+
+### RED evidence
+
+- `test_migration_graph_has_exactly_one_head` failed with the literal heads
+  `['c9f5e7a2b310', 'd4c1a8e37b62']`.
+- `test_custom_pre_merge_database_upgrades_through_v0_11_1` first upgraded a
+  disposable SQLite database to and verified stamp `c9f5e7a2b310`, then failed
+  `upgrade('head')` with Alembic's `MultipleHeads` error naming both heads.
+- `workflow directory contains only approved Tide-Bot workflows` failed because
+  actual workflow files included unapproved `issue-label.yaml` in addition to
+  the four expected Tide-Bot workflows.
+
+### Implementation and GREEN evidence
+
+- Added no-op merge revision `e8a7c2d4f691` with down revisions
+  `c9f5e7a2b310` and `d4c1a8e37b62`. This joins version history only; it does
+  not alter the existing migration environment, database URL handling, or
+  synchronous/async application database configuration.
+- The real SQLite upgrade test now passes from the custom pre-merge head to the
+  single integrated head. It verifies upstream `chat.variables`,
+  `chat.timer_at`, `user.variables`, and `automation.folder_id`, plus Tide-Bot
+  browser rotation-grace columns.
+- Removed `.github/workflows/issue-label.yaml` and added an exact workflow
+  allowlist validator covering the four required Tide-Bot workflows and
+  rejecting any unapproved YAML workflow introduction.
+- Added `task-6-brief.md` with scope, constraints, and acceptance criteria.
+- Focused GREEN run: 2 Alembic tests passed; 13 upstream workflow validator
+  tests passed under Node 22.18.0.
+- Broader affected-path GREEN run: 52 backend OAuth, Responses, companion, and
+  migration tests passed; 25 Windows/live-compose/upstream-workflow validators
+  passed under Node 22.18.0; the branding audit passed.
+- Ruff 0.15.10 check and format verification passed for the new migration and
+  migration regression test. The disposable project venv did not include Ruff,
+  so the available host executable was used only for these read-only checks.
+- `git diff --check` passed after the fixes.

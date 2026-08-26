@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +75,20 @@ function assertNoOpControlFlow(workflow) {
 
 const upstream = await readWorkflow('tide-bot-upstream-main.yml');
 const deployable = await readWorkflow('tide-bot-deployable.yml');
+
+test('workflow directory contains only approved Tide-Bot workflows', async () => {
+	const approved = [
+		'ted-bot-windows.yml',
+		'tide-bot-browser-extension.yml',
+		'tide-bot-deployable.yml',
+		'tide-bot-upstream-main.yml'
+	];
+	const actual = (await readdir(join(repoRoot, '.github', 'workflows')))
+		.filter((name) => /\.ya?ml$/i.test(name))
+		.sort();
+
+	assert.deepEqual(actual, approved);
+});
 
 test('upstream workflow has a trusted hourly review path with configured commit identity', () => {
 	assert.equal(upstream.on.schedule[0].cron, '0 * * * *');

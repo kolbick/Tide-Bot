@@ -62,3 +62,5 @@ Task 5: fix round 1/5 (8 addressed, 1 open — structured policy test was discon
 Task 5: fix round 2/5 (1 addressed, 0 open — the parsed ancestry step invokes the tested policy and gates all mutations; commits f5e9aab..cf3e495)
 Task 5: complete (commits 068747d..cf3e495, independent reviews clean)
 Task 6: complete (explicit merge b0b299c27; first parent cf3e495c3, second parent d3e8bf340; v0.11.1 verified; focused gates and Node 22 production build passed; disposable smoke environment-blocked by fixed-path Compose discovery)
+Task 6: review 1 open — Critical: the integrated Alembic graph has two heads and `upgrade('head')` can fail; Important: upstream `issue-label.yaml` was inherited with issue-write permission; Important: `task-6-brief.md` is missing.
+Task 6: fix round 1/5 (3 addressed, 0 open — no-op merge revision joins both schema branches with a real custom-head upgrade regression; exact workflow allowlist removes and prevents unapproved workflow inheritance; Task 6 brief restored)
