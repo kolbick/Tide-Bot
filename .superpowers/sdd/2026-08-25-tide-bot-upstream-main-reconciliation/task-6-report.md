@@ -242,3 +242,59 @@ Unix-oriented candidate paths; rerunning with the existing project Python via
 `PYTHON_BIN` passed all nine tests. No push, pull request, tag/release mutation,
 deployment, live sign-in, secret access, production access, or live-resource
 operation occurred.
+
+## Verification-only fix round 3
+
+Commit `19954a24c805ca3b9b874554f77947a74c2310c7` fixes the two Node test
+entry points that assumed POSIX-only tool locations when the full frontend
+suite runs on Windows. It does not change deployment configuration, production
+state, live resources, remote refs, or the explicit upstream merge ancestry.
+
+### RED evidence
+
+- With Node 22.18.0 and `PYTHON_BIN` genuinely absent,
+  `validate-ted-bot-windows-workflow.test.mjs` failed before running its nine
+  assertions because it tried only POSIX Python locations and `python3`.
+- `run-companion-presence-redis-integration.test.mjs` failed all three tests
+  because its Compose discovery tried only the macOS and Linux plugin paths,
+  even though Docker Desktop's fixed Windows plugin was installed and rendered
+  the presence Compose file successfully when invoked directly.
+- The new focused discovery contract initially failed 4/4 assertions because
+  the shared module did not exist. Two added runner-invocation assertions then
+  failed because the fixed Windows Docker CLI and direct Compose invocation
+  helpers were not yet implemented.
+
+### Implementation
+
+- A small shared helper now returns platform-specific approved candidates:
+  Docker Desktop's exact Compose plugin and Docker CLI locations on Windows,
+  the unchanged fixed macOS/Linux Compose locations, the correct platform null
+  device, and the already-supported Python candidates. It does not add a bare
+  `docker-compose` candidate or arbitrary Compose/Docker PATH lookup.
+- The Windows workflow validator accepts the standard `python` launcher and
+  still honors an explicit `PYTHON_BIN`; non-Windows candidate order and fixed
+  locations remain unchanged.
+- The presence config test invokes the validated Windows Compose plugin
+  directly. The real integration runner uses that same fixed plugin and the
+  fixed Docker Desktop CLI on Windows, while retaining the private plugin
+  symlink and isolated Docker configuration on POSIX systems.
+- The two cleanup tests use intentional `#!/bin/sh` fake-Docker fixtures. They
+  remain active on POSIX and are explicitly skipped on Windows so a fake test
+  can never fall through to the real Docker engine. Windows discovery and real
+  Compose rendering remain active tests and perform no container mutation.
+
+### GREEN evidence
+
+- Node 22.18.0 focused discovery contract: 6/6 passed.
+- Node 22.18.0 Windows workflow validator, with `PYTHON_BIN` removed: 9/9
+  passed using the host's compatible `python` plus PyYAML.
+- Node 22.18.0 presence validator: the real fixed-path Windows Compose config
+  render passed; two POSIX-only fake-shell cleanup fixtures were skipped.
+- Full `npm run test:frontend -- --run` under Node 22.18.0 passed all 43 test
+  files and all 148 tests. There were no remaining environmental failures.
+- Focused Prettier verification passed for all five changed test/runner files,
+  and `git diff --check` passed.
+
+No Docker stack was started, stopped, or changed. No push, pull request,
+tag/release mutation, deployment, production/live access, secret access, or
+remote operation occurred.

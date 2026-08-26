@@ -6,7 +6,7 @@
 - [x] Task 2: Add a sanitized in-container ChatGPT subscription health verifier
 - [x] Task 3: Build the locked production updater, backup, recovery, and safe state record
 - [x] Task 4: Bootstrap the controlled checkout and install the guarded Windows schedule
-- [ ] Task 5: Add repeatable upstream and deployable-marker test gates
+- [x] Task 5: Add repeatable upstream and deployable-marker test gates
 - [x] Task 6: Integrate the current Open WebUI main SHA without losing Tide-Bot behavior
 - [ ] Task 7: Perform the observed initial cutover and enable automatic updates
 
@@ -67,3 +67,5 @@ Task 6: fix round 1/5 (3 addressed, 0 open — no-op merge revision joins both s
 Task 6: complete (commits cf3e495..f1d323b plus repair ded9ae2; independent re-review clean; one Alembic head and four approved workflows verified)
 Task 6: release review 2 open — Critical: OAuth fallback continuity, deployable tag namespace, and workflow credential isolation; Important: atomic backup, ProgramData ACL, upstream state provenance, sanitized setup-failure state, exact baseline SHA; Minor: retain Windows Cloudflared ingress documentation.
 Task 6: fix round 2/5 (9 addressed, 0 open — commit e61ba7f82 preserves omitted/explicit OAuth semantics and reconnect gating; exact tag plus fresh main refs; credential-free verification and isolated writes; stopped immutable-local backups; SYSTEM/Admin ACL; checked-out upstream provenance; sanitized setup failures; full v0.11.1 SHA; Cloudflared docs)
+Task 6: verification review 3 open — Windows full-suite discovery assumed POSIX-only Python and Docker Compose locations despite compatible fixed Windows tools.
+Task 6: fix round 3/5 (1 addressed, 0 open — commit 19954a24c adds strict cross-platform fixed-tool discovery; Node 22 focused validators and the 43-file/148-test frontend suite pass on Windows)
