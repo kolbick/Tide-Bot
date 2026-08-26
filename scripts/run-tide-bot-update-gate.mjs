@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { buildUpdateGateCommands } from './tide-bot-update-policy.mjs';
 
 const expectedNode = '22.18';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -36,45 +37,7 @@ if (!process.versions.node.startsWith(`${expectedNode}.`)) {
 	process.exit(1);
 }
 
-const commands = [
-	[
-		'frontend companion and voice contracts',
-		npmCommand,
-		[
-			'exec',
-			'vitest',
-			'--',
-			'run',
-			'src/lib/ted-bot',
-			'src/lib/components/ted-bot',
-			'src/lib/components/chat/MessageInput'
-		]
-	],
-	[
-		'backend ChatGPT subscription and Responses streaming',
-		'python',
-		[
-			'-m',
-			'pytest',
-			'-q',
-			'backend/tests/test_verify_chatgpt_subscription_cli.py',
-			'backend/tests/test_chatgpt_subscription.py',
-			'backend/tests/test_responses_streaming.py'
-		],
-		{ env: { PYTHONPATH: 'backend', WEBUI_SECRET_KEY: 'update-gate-test-secret' } }
-	],
-	['branding audit', npmCommand, ['run', 'audit:branding']],
-	['production frontend build', npmCommand, ['run', 'build']],
-	[
-		'isolated disposable companion smoke',
-		npmCommand,
-		['run', 'test:companion:e2e'],
-		{ env: { RUN_ID: `update-gate-${process.pid}` } }
-	],
-	['whitespace diff check', 'git', ['diff', '--check']]
-];
-
-for (const [name, command, args, options] of commands) {
+for (const { name, command, args, options } of buildUpdateGateCommands(npmCommand)) {
 	if (!run(name, command, args, options)) {
 		process.exit(1);
 	}
