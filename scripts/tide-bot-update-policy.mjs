@@ -1,6 +1,44 @@
 import { fileURLToPath } from 'node:url';
 
 const expectedBaselineSha = 'd3e8bf3405e848cfba377814d0aa7ba7290e414d';
+const defaultDiagnosticOutputChars = 4000;
+
+export function redactDiagnostic(value) {
+	return String(value)
+		.replace(/https?:\/\/[^\s]+/gi, '[REDACTED_URL]')
+		.replace(/\b(?:sk|ghp|github_pat|xox)[A-Za-z0-9_-]{8,}\b/g, '[REDACTED]')
+		.replace(/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED]')
+		.replace(/\bBearer\s+[^\s]+/gi, 'Bearer [REDACTED]')
+		.replace(
+			/\b(refresh_token|access_token|api[_-]?key|secret|password)\s*[=:]\s*[^\s,;]+/gi,
+			'$1=[REDACTED]'
+		);
+}
+
+export function formatSubprocessResult(
+	name,
+	result,
+	{ maxOutputChars = defaultDiagnosticOutputChars } = {}
+) {
+	if (!result.error && result.status === 0) {
+		return [`PASS ${name}`];
+	}
+
+	const detail = redactDiagnostic(result.error?.message ?? `exit ${result.status ?? 'unknown'}`);
+	const output = redactDiagnostic([result.stdout, result.stderr].filter(Boolean).join('\n')).trim();
+	if (!output) {
+		return [`FAIL ${name}: ${detail}`];
+	}
+
+	const limit =
+		Number.isInteger(maxOutputChars) && maxOutputChars > 0
+			? maxOutputChars
+			: defaultDiagnosticOutputChars;
+	return [
+		`FAIL ${name}: ${detail}`,
+		`diagnostic tail (max ${limit} chars):\n${output.slice(-limit)}`
+	];
+}
 
 function isSha(value) {
 	return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value);

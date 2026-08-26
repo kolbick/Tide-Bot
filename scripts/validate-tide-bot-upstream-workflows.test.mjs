@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import * as updatePolicy from './tide-bot-update-policy.mjs';
 import {
 	buildUpdateGateCommands,
 	decideUpstreamRun,
@@ -178,6 +179,45 @@ test('common gate pins the production frontend build heap independently of ambie
 		args: ['run', 'build'],
 		options: { env: { NODE_OPTIONS: '--max-old-space-size=8192' } }
 	});
+});
+
+test('failed gate commands expose only a bounded redacted output tail', () => {
+	assert.equal(typeof updatePolicy.formatSubprocessResult, 'function');
+	const messages = updatePolicy.formatSubprocessResult(
+		'isolated disposable companion smoke',
+		{
+			status: 1,
+			stdout: [
+				'early-output-sentinel',
+				'filler '.repeat(100),
+				'request https://private.example.test/path?access_token=url-secret'
+			].join('\n'),
+			stderr: 'Bearer sk-example-token-123456 password=hunter2\nfinal cypress failure'
+		},
+		{ maxOutputChars: 180 }
+	);
+
+	assert.equal(messages[0], 'FAIL isolated disposable companion smoke: exit 1');
+	assert.equal(messages.length, 2);
+	assert.match(messages[1], /^diagnostic tail \(max 180 chars\):\n/);
+	assert.match(messages[1], /final cypress failure/);
+	assert.doesNotMatch(
+		messages.join('\n'),
+		/early-output-sentinel|private\.example|sk-example|hunter2|url-secret/
+	);
+	assert.ok(messages[1].length <= 220);
+});
+
+test('successful gate commands do not emit captured child output', () => {
+	assert.equal(typeof updatePolicy.formatSubprocessResult, 'function');
+	assert.deepEqual(
+		updatePolicy.formatSubprocessResult('browser voice', {
+			status: 0,
+			stdout: 'noisy child stdout',
+			stderr: 'noisy child stderr'
+		}),
+		['PASS browser voice']
+	);
 });
 
 test('deployable workflow only starts from trusted main push or explicit dispatch', () => {
