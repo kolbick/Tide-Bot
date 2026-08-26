@@ -47,6 +47,32 @@ function gitIdentityStepIsBefore(workflow, writerStep) {
 	assert.ok(stepIndex(workflow, identity.name) < stepIndex(workflow, writerStep));
 }
 
+function assertNoOpControlFlow(workflow) {
+	const noOp = namedStep(workflow, 'Fetch and validate upstream baseline');
+	const ancestryGuard = noOp.run.indexOf('if git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main; then');
+	const noOpDecision = noOp.run.indexOf('upstream --already-on-main true');
+	const reviewDecision = noOp.run.indexOf('upstream --already-on-main false');
+	const earlyExit = noOp.run.indexOf("if [ \"$UPSTREAM_DECISION\" = 'no-op' ]; then");
+	const output = noOp.run.indexOf('echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"');
+
+	for (const index of [ancestryGuard, noOpDecision, reviewDecision, earlyExit, output]) {
+		assert.ok(index >= 0, 'missing a required no-op control-flow operation');
+	}
+	assert.ok(ancestryGuard < noOpDecision);
+	assert.ok(noOpDecision < reviewDecision);
+	assert.ok(reviewDecision < earlyExit);
+	assert.ok(earlyExit < output);
+	assert.match(noOp.run.slice(earlyExit, output), /exit 0/);
+
+	for (const name of [
+		'Merge upstream into a review branch',
+		'Run common update gate',
+		'Record and propose passing integration'
+	]) {
+		assert.equal(namedStep(workflow, name).if, "steps.upstream.outputs.upstream_sha != ''");
+	}
+}
+
 const upstream = await readWorkflow('tide-bot-upstream-main.yml');
 const deployable = await readWorkflow('tide-bot-deployable.yml');
 
@@ -80,6 +106,19 @@ test('upstream workflow handles a wrong baseline hash through the sanitized issu
 	assert.match(baseline.run, /node scripts\/tide-bot-update-policy\.mjs baseline/);
 	assert.match(baseline.run, /gh issue create/);
 	assert.match(baseline.run, /git merge-base --is-ancestor/);
+});
+
+test('workflow no-op decision prevents every later upstream mutation', () => {
+	assertNoOpControlFlow(upstream);
+});
+
+test('no-op workflow semantics reject a disconnected ancestry guard', () => {
+	const broken = structuredClone(upstream);
+	namedStep(broken, 'Fetch and validate upstream baseline').run = namedStep(broken, 'Fetch and validate upstream baseline').run.replace(
+		'if git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main; then',
+		'if false; then'
+	);
+	assert.throws(() => assertNoOpControlFlow(broken), /missing a required no-op control-flow operation/);
 });
 
 test('common gate selects companion and real browser voice test commands', () => {

@@ -55,7 +55,18 @@ jobs:
             gh issue create --title "Upstream baseline v0.11.1 is not ancestral" --body "v0.11.1 (${BASELINE_SHA}) is not an ancestor of upstream/main (${UPSTREAM_SHA}). No Tide-Bot branch or marker was changed."
             exit 1
           fi
-          git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main && exit 0
+          if git merge-base --is-ancestor "$UPSTREAM_SHA" origin/main; then
+            UPSTREAM_DECISION="$(node scripts/tide-bot-update-policy.mjs upstream --already-on-main true)"
+          else
+            UPSTREAM_DECISION="$(node scripts/tide-bot-update-policy.mjs upstream --already-on-main false)"
+          fi
+          if [ "$UPSTREAM_DECISION" = 'no-op' ]; then
+            exit 0
+          fi
+          if [ "$UPSTREAM_DECISION" != 'review' ]; then
+            echo "Unexpected upstream decision: $UPSTREAM_DECISION" >&2
+            exit 2
+          fi
           echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
       - name: Merge upstream into a review branch
         if: steps.upstream.outputs.upstream_sha != ''

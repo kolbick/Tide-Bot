@@ -83,6 +83,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	if (operation === 'baseline') {
 		const result = validateBaselineTag(option(process.argv, '--baseline-sha'));
 		process.stdout.write(`${result.outcome}\n`);
+	} else if (operation === 'upstream') {
+		const alreadyOnMain = option(process.argv, '--already-on-main');
+		if (alreadyOnMain !== 'true' && alreadyOnMain !== 'false') {
+			throw new Error('Expected --already-on-main true or false.');
+		}
+		process.stdout.write(`${decideUpstreamRun({ upstreamIsAlreadyOnMain: alreadyOnMain === 'true' }).outcome}\n`);
 	} else if (operation === 'marker') {
 		process.stdout.write(
 			`${decideMarker({
@@ -91,6 +97,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 			})}\n`
 		);
 	} else {
-		throw new Error('Expected a policy operation of baseline or marker.');
+		throw new Error('Expected a policy operation of baseline, upstream, or marker.');
 	}
 }
