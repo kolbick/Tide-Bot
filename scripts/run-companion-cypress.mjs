@@ -107,7 +107,7 @@ function npmCliPath(platform, nodeExecutable) {
 function fixedChildPath(platform, nodeExecutable) {
 	const nodeDirectory = dirname(nodeExecutable);
 	return platform === 'win32'
-		? `${nodeDirectory};C:\\Windows\\System32;C:\\Windows`
+		? `${nodeDirectory};C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\WindowsPowerShell\\v1.0`
 		: `${nodeDirectory}:/usr/bin:/bin`;
 }
 
@@ -488,6 +488,13 @@ export async function runCompanionCypress({
 				],
 				{
 					HOME: runTmpDir,
+					...(platform === 'win32'
+						? {
+								USERPROFILE: homeDirectory,
+								APPDATA: join(homeDirectory, 'AppData', 'Roaming'),
+								LOCALAPPDATA: join(homeDirectory, 'AppData', 'Local')
+							}
+						: {}),
 					CYPRESS_CACHE_FOLDER:
 						platform === 'win32'
 							? join(homeDirectory, 'AppData', 'Local', 'Cypress', 'Cache')

@@ -274,6 +274,7 @@ test('Windows ignores hostile PATH and invokes only fixed Docker and Node execut
 	const dockerExecutable = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe';
 	const composeExecutable =
 		'C:\\Program Files\\Docker\\Docker\\resources\\cli-plugins\\docker-compose.exe';
+	const homeDirectory = 'C:\\Users\\tide-bot-cypress';
 	let linkCalls = 0;
 
 	try {
@@ -289,6 +290,7 @@ test('Windows ignores hostile PATH and invokes only fixed Docker and Node execut
 			},
 			spawn,
 			tempRoot: fixtureRoot,
+			homeDirectory,
 			reservePorts: async () => ({ appPort: 49320, fixturePort: 49321 }),
 			randomSecret: () => 'unit-generated-secret',
 			fetchImpl: async () => ({ ok: true }),
@@ -306,6 +308,16 @@ test('Windows ignores hostile PATH and invokes only fixed Docker and Node execut
 		assert.ok(calls.some((call) => call.command === dockerExecutable));
 		assert.ok(calls.some((call) => call.command === composeExecutable));
 		assert.equal(linkCalls, 0);
+		const cypress = calls.find((call) => call.args.some(isCypressBinary));
+		assert.equal(cypress.options.env.USERPROFILE, homeDirectory);
+		assert.equal(cypress.options.env.APPDATA, join(homeDirectory, 'AppData', 'Roaming'));
+		assert.equal(cypress.options.env.LOCALAPPDATA, join(homeDirectory, 'AppData', 'Local'));
+		assert.ok(
+			cypress.options.env.PATH.split(';').includes(
+				'C:\\Windows\\System32\\WindowsPowerShell\\v1.0'
+			),
+			'Cypress must receive the fixed system PowerShell directory it uses on Windows'
+		);
 		assert.ok(
 			calls
 				.filter((call) => call.command !== dockerExecutable && call.command !== composeExecutable)
