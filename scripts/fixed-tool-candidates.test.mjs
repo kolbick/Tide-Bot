@@ -37,7 +37,8 @@ test('non-Windows Compose discovery remains restricted to approved fixed locatio
 	const expected = [
 		'/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose',
 		'/usr/local/lib/docker/cli-plugins/docker-compose',
-		'/usr/lib/docker/cli-plugins/docker-compose'
+		'/usr/lib/docker/cli-plugins/docker-compose',
+		'/usr/libexec/docker/cli-plugins/docker-compose'
 	];
 	assert.deepEqual(discovery.composePluginCandidates('darwin'), expected);
 	assert.deepEqual(discovery.composePluginCandidates('linux'), expected);
@@ -93,24 +94,52 @@ test('Compose config uses the platform null device', () => {
 	assert.equal(discovery.nullDevice('linux'), '/dev/null');
 });
 
-test('Windows Docker CLI invocation uses the fixed Docker Desktop executable', () => {
-	assert.equal(typeof discovery.dockerCliExecutable, 'function');
-	assert.equal(
-		discovery.dockerCliExecutable('win32'),
+test('Docker CLI discovery uses only approved fixed platform locations', () => {
+	assert.equal(typeof discovery.dockerCliCandidates, 'function');
+	assert.deepEqual(discovery.dockerCliCandidates('win32'), [
 		'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe'
+	]);
+	assert.deepEqual(discovery.dockerCliCandidates('darwin'), [
+		'/Applications/Docker.app/Contents/Resources/bin/docker',
+		'/usr/local/bin/docker'
+	]);
+	assert.deepEqual(discovery.dockerCliCandidates('linux'), [
+		'/usr/local/bin/docker',
+		'/usr/bin/docker'
+	]);
+});
+
+test('Docker CLI selection validates candidates and falls back without PATH lookup', async () => {
+	assert.equal(typeof discovery.findDockerCliExecutable, 'function');
+	const checked = [];
+	const selected = await discovery.findDockerCliExecutable('linux', async (candidate) => {
+		checked.push(candidate);
+		if (candidate !== '/usr/bin/docker') throw new Error('not installed');
+	});
+
+	assert.equal(selected, '/usr/bin/docker');
+	assert.deepEqual(checked, ['/usr/local/bin/docker', '/usr/bin/docker']);
+	await assert.rejects(
+		discovery.findDockerCliExecutable('darwin', async () => {
+			throw new Error('not installed');
+		}),
+		/approved fixed location/
 	);
-	assert.equal(discovery.dockerCliExecutable('linux'), 'docker');
 });
 
 test('Windows Compose invocation executes the validated plugin directly', () => {
 	assert.equal(typeof discovery.composeInvocation, 'function');
 	const plugin = 'C:\\Program Files\\Docker\\Docker\\resources\\cli-plugins\\docker-compose.exe';
-	assert.deepEqual(discovery.composeInvocation('win32', plugin, ['config']), {
+	const dockerCli = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe';
+	assert.deepEqual(discovery.composeInvocation('win32', plugin, dockerCli, ['config']), {
 		file: plugin,
 		args: ['config']
 	});
-	assert.deepEqual(discovery.composeInvocation('linux', plugin, ['config']), {
-		file: 'docker',
-		args: ['compose', 'config']
-	});
+	assert.deepEqual(
+		discovery.composeInvocation('linux', plugin, '/usr/local/bin/docker', ['config']),
+		{
+			file: '/usr/local/bin/docker',
+			args: ['compose', 'config']
+		}
+	);
 });

@@ -16,25 +16,38 @@ function ok(stdout = '') {
 	return { status: 0, signal: null, stdout, stderr: '' };
 }
 
+function isCypressBinary(value) {
+	return /[\\/]node_modules[\\/](?:\.bin[\\/]cypress|cypress[\\/]bin[\\/]cypress)$/.test(value);
+}
+
 function fakeSpawnRecorder({ cypressResult = ok('Cypress run complete') } = {}) {
 	const calls = [];
 	const spawn = (command, args, options) => {
 		calls.push({ command, args: [...args], options: { ...options } });
 		const joined = args.join(' ');
 
-		if (joined.includes(' ps -a --format ')) {
+		if (
+			(args[0] === 'ps' || joined.includes(' ps ')) &&
+			args.includes('-a') &&
+			args.includes('{{.ID}}|{{.Names}}')
+		) {
 			return ok('existing-id|tide-bot-user-stack\n');
 		}
-		if (joined.includes(' inspect --format ')) {
+		if (args[0] === 'inspect' || joined.includes(' inspect ')) {
 			return ok('container:existing-id|/tide-bot-user-stack|2026-01-01T00:00:00Z|0\n');
 		}
-		if (joined.includes(' network ls ') || joined.includes(' volume ls ')) {
+		if (
+			(args[0] === 'network' && args[1] === 'ls') ||
+			(args[0] === 'volume' && args[1] === 'ls') ||
+			joined.includes(' network ls ') ||
+			joined.includes(' volume ls ')
+		) {
 			return ok('');
 		}
 		if (joined.includes('compose') && joined.includes('logs')) {
 			return ok('');
 		}
-		if (args.some((arg) => arg.endsWith('/node_modules/.bin/cypress'))) {
+		if (args.some(isCypressBinary)) {
 			return cypressResult;
 		}
 		return ok('');
@@ -43,6 +56,9 @@ function fakeSpawnRecorder({ cypressResult = ok('Cypress run complete') } = {}) 
 }
 
 function composeInvocation(call) {
+	if (/docker-compose(?:\.exe)?$/i.test(call.command)) {
+		return call.args;
+	}
 	const index = call.args.indexOf('compose');
 	return index === -1 ? null : call.args.slice(index + 1);
 }
@@ -79,11 +95,26 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 	const fixtureRoot = await mkdtemp(join(tmpdir(), 'companion-cypress-runner-test-'));
 	const { calls, spawn } = fakeSpawnRecorder();
 	const output = [];
+	let pluginLink;
+	const accessedTools = [];
 
 	try {
 		const result = await runCompanionCypress({
-			env: { RUN_ID: 'unit-isolation', PATH: '/usr/bin:/bin' },
+			env: { RUN_ID: 'unit-isolation', PATH: '/hostile/bin' },
 			argv: ['node', 'run-companion-cypress.mjs'],
+			platform: 'linux',
+			accessFile: async (candidate) => {
+				accessedTools.push(candidate);
+				if (
+					candidate !== '/usr/libexec/docker/cli-plugins/docker-compose' &&
+					candidate !== '/usr/bin/docker'
+				) {
+					throw new Error('not installed');
+				}
+			},
+			linkFile: async (source, destination) => {
+				pluginLink = { source, destination };
+			},
 			spawn,
 			tempRoot: fixtureRoot,
 			reservePorts: async () => ({ appPort: 49120, fixturePort: 49121 }),
@@ -97,6 +128,19 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 		assert.equal(result.fixtureOrigin, 'http://127.0.0.1:49121');
 		assert.match(output.join('\n'), /PROJECT tedbot-companion-cypress-unit-isolation/);
 		assert.doesNotMatch(output.join('\n'), /unit-generated-secret|PRIVATE_ENV/);
+		assert.equal(pluginLink.source, '/usr/libexec/docker/cli-plugins/docker-compose');
+		assert.match(pluginLink.destination, /docker-config[\\/]cli-plugins[\\/]docker-compose$/);
+		assert.ok(accessedTools.includes('/usr/local/bin/docker'));
+		assert.ok(accessedTools.includes('/usr/bin/docker'));
+		assert.equal(
+			calls.some((call) => call.command === '/usr/bin/env'),
+			false
+		);
+		assert.equal(
+			calls.some((call) => String(call.options.env.PATH).includes('/hostile/bin')),
+			false
+		);
+		assert.ok(calls.some((call) => call.command === '/usr/bin/docker'));
 
 		const composeCalls = calls.filter((call) => composeInvocation(call));
 		assert.ok(composeCalls.length >= 3);
@@ -157,7 +201,8 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 		);
 		const build = calls.find(
 			(call) =>
-				call.args.includes('npm') &&
+				call.command === process.execPath &&
+				call.args.some((arg) => /[\\/]npm[\\/]bin[\\/]npm-cli\.js$/.test(arg)) &&
 				call.args.includes('--prefix') &&
 				call.args.includes(repoRoot) &&
 				call.args.includes('build')
@@ -166,9 +211,7 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 		assert.ok(calls.indexOf(build) < calls.indexOf(up));
 		assert.notEqual(build.options.cwd, repoRoot);
 
-		const cypress = calls.find((call) =>
-			call.args.some((arg) => arg.endsWith('/node_modules/.bin/cypress'))
-		);
+		const cypress = calls.find((call) => call.args.some(isCypressBinary));
 		assert.ok(cypress);
 		assert.deepEqual(cypress.args.slice(-11), [
 			'run',
@@ -197,6 +240,54 @@ test('uses exact isolated Compose invocations, generated loopback origins, and p
 
 		await assert.rejects(stat(result.privateEnvFile), /ENOENT/);
 		assert.deepEqual(await readdir(fixtureRoot), []);
+	} finally {
+		await rm(fixtureRoot, { recursive: true, force: true });
+	}
+});
+
+test('Windows ignores hostile PATH and invokes only fixed Docker and Node executables', async () => {
+	const fixtureRoot = await mkdtemp(join(tmpdir(), 'companion-cypress-windows-path-test-'));
+	const { calls, spawn } = fakeSpawnRecorder();
+	const dockerExecutable = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe';
+	const composeExecutable =
+		'C:\\Program Files\\Docker\\Docker\\resources\\cli-plugins\\docker-compose.exe';
+	let linkCalls = 0;
+
+	try {
+		await runCompanionCypress({
+			env: { RUN_ID: 'windows-fixed-tools', PATH: 'C:\\hostile-tools' },
+			argv: ['node', 'run-companion-cypress.mjs'],
+			platform: 'win32',
+			accessFile: async (candidate) => {
+				assert.ok([composeExecutable, dockerExecutable].includes(candidate));
+			},
+			linkFile: async () => {
+				linkCalls += 1;
+			},
+			spawn,
+			tempRoot: fixtureRoot,
+			reservePorts: async () => ({ appPort: 49320, fixturePort: 49321 }),
+			randomSecret: () => 'unit-generated-secret',
+			fetchImpl: async () => ({ ok: true }),
+			output: () => {}
+		});
+
+		assert.equal(
+			calls.some((call) => call.command === '/usr/bin/env'),
+			false
+		);
+		assert.equal(
+			calls.some((call) => String(call.options.env.PATH).includes('hostile-tools')),
+			false
+		);
+		assert.ok(calls.some((call) => call.command === dockerExecutable));
+		assert.ok(calls.some((call) => call.command === composeExecutable));
+		assert.equal(linkCalls, 0);
+		assert.ok(
+			calls
+				.filter((call) => call.command !== dockerExecutable && call.command !== composeExecutable)
+				.every((call) => call.command === process.execPath)
+		);
 	} finally {
 		await rm(fixtureRoot, { recursive: true, force: true });
 	}

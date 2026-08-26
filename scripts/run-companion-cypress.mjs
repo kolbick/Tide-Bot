@@ -2,9 +2,15 @@ import { randomBytes } from 'node:crypto';
 import { access, chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+
+import {
+	composeInvocation,
+	composePluginCandidates,
+	findDockerCliExecutable
+} from './fixed-tool-candidates.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const composeFilePath = join(
@@ -16,17 +22,12 @@ const composeFilePath = join(
 const fakeOpenAIContextPath = join(repoRoot, 'deploy', 'tide-stack', 'cypress-fake-openai');
 const gatewayContextPath = join(repoRoot, 'deploy', 'tide-stack', 'cypress-loopback-gateway');
 const cypressSpecPath = join(repoRoot, 'cypress', 'e2e', 'ted-bot-companion.cy.ts');
-const cypressBinaryPath = join(repoRoot, 'node_modules', '.bin', 'cypress');
+const cypressCliPath = join(repoRoot, 'node_modules', 'cypress', 'bin', 'cypress');
 // Cypress resolves --config-file against the project root, and its config loader
 // resolves `typescript` from that same directory, so the config has to be the
 // tracked repository one rather than a file in the private run directory.
 const cypressConfigFileName = 'cypress.config.ts';
 const cypressTimeoutMs = 15 * 60 * 1000;
-const composePluginCandidates = [
-	'/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose',
-	'/usr/local/lib/docker/cli-plugins/docker-compose',
-	'/usr/lib/docker/cli-plugins/docker-compose'
-];
 const forbiddenEnvironment = [
 	'CYPRESS_BASE_URL',
 	'BASE_URL',
@@ -97,10 +98,23 @@ async function defaultReservePorts() {
 	return { appPort, fixturePort };
 }
 
-async function findComposePlugin() {
-	for (const candidate of composePluginCandidates) {
+function npmCliPath(platform, nodeExecutable) {
+	return platform === 'win32'
+		? join(dirname(nodeExecutable), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+		: resolve(dirname(nodeExecutable), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+}
+
+function fixedChildPath(platform, nodeExecutable) {
+	const nodeDirectory = dirname(nodeExecutable);
+	return platform === 'win32'
+		? `${nodeDirectory};C:\\Windows\\System32;C:\\Windows`
+		: `${nodeDirectory}:/usr/bin:/bin`;
+}
+
+async function findComposePlugin(platform, accessFile) {
+	for (const candidate of composePluginCandidates(platform)) {
 		try {
-			await access(candidate);
+			await accessFile(candidate);
 			return candidate;
 		} catch {
 			// Continue through fixed system plugin locations only.
@@ -138,6 +152,10 @@ export async function runCompanionCypress({
 	env = process.env,
 	argv = process.argv,
 	spawn = spawnSync,
+	platform = process.platform,
+	nodeExecutable = process.execPath,
+	accessFile = access,
+	linkFile = symlink,
 	tempRoot = tmpdir(),
 	reservePorts = defaultReservePorts,
 	randomSecret = () => randomBytes(32).toString('base64url'),
@@ -157,12 +175,15 @@ export async function runCompanionCypress({
 	let fixtureOrigin;
 
 	try {
-		await chmod(runTmpDir, 0o700);
+		if (platform !== 'win32') await chmod(runTmpDir, 0o700);
 		const dockerConfigDir = join(runTmpDir, 'docker-config');
 		const cliPluginsDir = join(dockerConfigDir, 'cli-plugins');
 		await mkdir(cliPluginsDir, { recursive: true, mode: 0o700 });
-		const composePlugin = await findComposePlugin();
-		await symlink(composePlugin, join(cliPluginsDir, 'docker-compose'));
+		const composePlugin = await findComposePlugin(platform, accessFile);
+		const dockerCli = await findDockerCliExecutable(platform, accessFile);
+		if (platform !== 'win32') {
+			await linkFile(composePlugin, join(cliPluginsDir, 'docker-compose'));
+		}
 
 		const { appPort, fixturePort } = await reservePorts();
 		if (
@@ -194,11 +215,19 @@ export async function runCompanionCypress({
 			].join('\n'),
 			{ mode: 0o600 }
 		);
-		await chmod(privateEnvFile, 0o600);
+		if (platform !== 'win32') await chmod(privateEnvFile, 0o600);
 
 		const cleanEnvironment = {
-			PATH: env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+			PATH: fixedChildPath(platform, nodeExecutable),
 			TMPDIR: runTmpDir,
+			...(platform === 'win32'
+				? {
+						ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+						SystemRoot: 'C:\\Windows',
+						TEMP: runTmpDir,
+						TMP: runTmpDir
+					}
+				: {}),
 			DOCKER_CONFIG: dockerConfigDir,
 			// The fixture images build from local sources and an already-pulled base.
 			// BuildKit still resolves its frontend over the network first, which has
@@ -207,28 +236,18 @@ export async function runCompanionCypress({
 			DOCKER_BUILDKIT: '0'
 		};
 		const spawnClean = (command, args, extraEnvironment = {}, extraOptions = {}) =>
-			spawn(
-				'/usr/bin/env',
-				[
-					'-i',
-					...Object.entries({ ...cleanEnvironment, ...extraEnvironment }).map(
-						([name, value]) => `${name}=${value}`
-					),
-					command,
-					...args
-				],
-				{
-					cwd: runTmpDir,
-					encoding: 'utf8',
-					env: cleanEnvironment,
-					maxBuffer: 16 * 1024 * 1024,
-					...extraOptions
-				}
-			);
-		const docker = (args) => spawnClean('docker', args);
-		const compose = (args) =>
-			docker([
-				'compose',
+			spawn(command, args, {
+				cwd: runTmpDir,
+				encoding: 'utf8',
+				env: { ...cleanEnvironment, ...extraEnvironment },
+				maxBuffer: 16 * 1024 * 1024,
+				shell: false,
+				windowsHide: true,
+				...extraOptions
+			});
+		const docker = (args) => spawnClean(dockerCli, args);
+		const compose = (args) => {
+			const invocation = composeInvocation(platform, composePlugin, dockerCli, [
 				'--file',
 				composeFilePath,
 				'--env-file',
@@ -237,6 +256,8 @@ export async function runCompanionCypress({
 				projectName,
 				...args
 			]);
+			return spawnClean(invocation.file, invocation.args);
+		};
 		const requireSuccess = (result, operation) => {
 			if (result.error) {
 				throw new Error(`${operation} did not complete (${result.error.code ?? 'spawn error'})`);
@@ -349,11 +370,15 @@ export async function runCompanionCypress({
 			output(`APP_ORIGIN ${baseUrl}`);
 			output(`FIXTURE_ORIGIN ${fixtureOrigin}`);
 			requireSuccess(
-				spawnClean('npm', ['--prefix', repoRoot, 'run', 'build'], {
-					HOME: env.HOME ?? runTmpDir,
-					CI: '1',
-					NO_COLOR: '1'
-				}),
+				spawnClean(
+					nodeExecutable,
+					[npmCliPath(platform, nodeExecutable), '--prefix', repoRoot, 'run', 'build'],
+					{
+						HOME: runTmpDir,
+						CI: '1',
+						NO_COLOR: '1'
+					}
+				),
 				'build current-worktree companion frontend'
 			);
 			// Compose resolves registry credentials for every service before it
@@ -394,8 +419,9 @@ export async function runCompanionCypress({
 			await waitForFixture(fetchImpl, fixtureOrigin);
 
 			const cypress = spawnClean(
-				cypressBinaryPath,
+				nodeExecutable,
 				[
+					cypressCliPath,
 					'run',
 					'--project',
 					repoRoot,
@@ -409,7 +435,7 @@ export async function runCompanionCypress({
 					`fixtureOrigin=${fixtureOrigin}`
 				],
 				{
-					HOME: env.HOME ?? runTmpDir,
+					HOME: runTmpDir,
 					CI: '1',
 					NO_COLOR: '1'
 				},
