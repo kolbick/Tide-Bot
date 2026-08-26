@@ -1,9 +1,15 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+import { configDefaults } from 'vitest/config';
 
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const backendTarget = process.env.WEBUI_BACKEND_URL || 'http://localhost:8080';
+
+export const getVitestExclude = (platform: NodeJS.Platform = process.platform) => [
+	'.worktrees/**',
+	...(platform === 'win32' ? ['scripts/verify-ted-bot-direction-evidence.test.mjs'] : [])
+];
 
 export default defineConfig({
 	plugins: [
@@ -65,6 +71,7 @@ export default defineConfig({
 		format: 'es'
 	},
 	test: {
+		exclude: [...configDefaults.exclude, ...getVitestExclude()],
 		environmentMatchGlobs: [['src/lib/components/ted-bot/TedBotPet.test.ts', 'jsdom']],
 		alias: [
 			{
