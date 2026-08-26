@@ -69,3 +69,5 @@ Task 6: release review 2 open — Critical: OAuth fallback continuity, deployabl
 Task 6: fix round 2/5 (9 addressed, 0 open — commit e61ba7f82 preserves omitted/explicit OAuth semantics and reconnect gating; exact tag plus fresh main refs; credential-free verification and isolated writes; stopped immutable-local backups; SYSTEM/Admin ACL; checked-out upstream provenance; sanitized setup failures; full v0.11.1 SHA; Cloudflared docs)
 Task 6: verification review 3 open — Windows full-suite discovery assumed POSIX-only Python and Docker Compose locations despite compatible fixed Windows tools.
 Task 6: fix round 3/5 (1 addressed, 0 open — commit 19954a24c adds strict cross-platform fixed-tool discovery; Node 22 focused validators and the 43-file/148-test frontend suite pass on Windows)
+Task 6: verification review 4 open — the Windows workflow validator's bare `python` launcher still allowed caller-PATH command resolution.
+Task 6: fix round 4/5 (1 addressed, 0 open — commit 86ec21b75 parses workflow YAML in-process with the pinned Node dependency and removes all Python candidates; focused and 43-file/148-test frontend suites pass)

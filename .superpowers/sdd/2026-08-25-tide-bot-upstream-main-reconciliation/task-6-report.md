@@ -298,3 +298,46 @@ state, live resources, remote refs, or the explicit upstream merge ancestry.
 No Docker stack was started, stopped, or changed. No push, pull request,
 tag/release mutation, deployment, production/live access, secret access, or
 remote operation occurred.
+
+## Verification-only fix round 4
+
+Commit `86ec21b75e9407e0808bbd64e5a7c1aa86e9a8ee` removes the remaining
+bare-command lookup from the Windows workflow validator. This supersedes round
+3's Python-launcher implementation while retaining its fixed Docker Desktop
+discovery and presence-runner support.
+
+### RED evidence
+
+- A focused source/behavior contract replaced the obsolete Python-candidate
+  assertion. Under Node 22.18.0 it failed 1/6 because the validator did not
+  import the installed `yaml` parser and still contained `node:child_process`,
+  `spawnSync`, `pythonCandidates`, and Python launcher strings.
+- The failure showed the security seam directly: a caller-controlled `PATH`
+  could decide which executable the bare `python` command launched.
+
+### Implementation
+
+- The validator now reads the tracked workflow and parses it in-process with
+  `parse` from the repository's existing pinned `yaml` dependency.
+- All external Python spawning, candidates, install guidance, and the obsolete
+  `pythonCandidates` helper were removed. No Python executable is consulted by
+  the validator on any platform.
+- The focused contract requires the in-process parser call and rejects any
+  external child-process or Python candidate path. Docker Compose and Docker
+  CLI discovery remain restricted to the exact approved fixed locations from
+  round 3.
+
+### GREEN evidence
+
+- Node 22.18.0 direct Windows workflow validator: 9/9 passed.
+- Node 22.18.0 fixed-tool and parser security contract: 6/6 passed.
+- Full `npm run test:frontend -- --run` under Node 22.18.0 passed all 43 test
+  files and all 148 tests; the previously documented two POSIX-only fake-shell
+  fixture skips remain platform-specific and are not environmental failures.
+- Focused Prettier verification passed for all three changed files, the search
+  found no production Python/child-process tokens in those files, and
+  `git diff --check` passed.
+
+No Docker stack was started, stopped, or changed. No push, pull request,
+tag/release mutation, deployment, production/live access, secret access, or
+remote operation occurred.
