@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 let discovery;
@@ -34,19 +35,15 @@ test('non-Windows Compose discovery remains restricted to approved fixed locatio
 	);
 });
 
-test('Windows Python discovery accepts the standard launcher without weakening POSIX candidates', () => {
-	assert.ok(discovery, 'cross-platform fixed-tool discovery module is missing');
-	assert.deepEqual(discovery.pythonCandidates('win32', {}), ['python']);
-	assert.deepEqual(
-		discovery.pythonCandidates('win32', { PYTHON_BIN: 'C:\\approved\\python.exe' }),
-		['C:\\approved\\python.exe', 'python']
+test('workflow validator parses YAML in-process without an external command candidate', async () => {
+	const source = await readFile(
+		new URL('./validate-ted-bot-windows-workflow.test.mjs', import.meta.url),
+		'utf8'
 	);
-	assert.deepEqual(discovery.pythonCandidates('linux', {}), [
-		'/tmp/yaml-venv/bin/python',
-		'/usr/local/bin/python3.12',
-		'/usr/bin/python3',
-		'python3'
-	]);
+
+	assert.match(source, /import \{ parse \} from 'yaml';/);
+	assert.match(source, /const wf = parse\(await readFile\(workflowPath, 'utf8'\)\);/);
+	assert.doesNotMatch(source, /node:child_process|spawnSync|pythonCandidates|PYTHON_BIN|python3/);
 });
 
 test('Compose config uses the platform null device', () => {

@@ -10,19 +10,6 @@ export function composePluginCandidates(platform = process.platform) {
 		: [...posixComposePluginCandidates];
 }
 
-export function pythonCandidates(platform = process.platform, environment = process.env) {
-	const configured = environment.PYTHON_BIN ? [environment.PYTHON_BIN] : [];
-	return platform === 'win32'
-		? [...configured, 'python']
-		: [
-				'/tmp/yaml-venv/bin/python',
-				...configured,
-				'/usr/local/bin/python3.12',
-				'/usr/bin/python3',
-				'python3'
-			];
-}
-
 export function nullDevice(platform = process.platform) {
 	return platform === 'win32' ? 'NUL' : '/dev/null';
 }
